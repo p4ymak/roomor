@@ -6,6 +6,7 @@ use std::thread;
 
 fn main() {
     let my_ip = local_ip().expect("Couldn't retrieve local IP");
+    println!("{}", my_ip);
     let port = 4400;
     let socket =
         Arc::new(UdpSocket::bind(format!("{}:{}", my_ip, port)).expect("Couldn't bind to address"));
