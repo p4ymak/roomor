@@ -5,13 +5,15 @@ use std::sync::Arc;
 use std::thread;
 
 fn main() {
-    let mut username = String::new();
-    let stdin = io::stdin();
-    stdin.lock().read_line(&mut username).unwrap();
     let my_ip = local_ip().expect("Couldn't retrieve local IP");
     let port = 4400;
     let socket =
         Arc::new(UdpSocket::bind(format!("{}:{}", my_ip, port)).expect("Couldn't bind to address"));
+
+    println!("{:?}", socket);
+    let mut username = String::new();
+    let stdin = io::stdin();
+    stdin.lock().read_line(&mut username).unwrap();
 
     let reader = socket.clone();
     thread::spawn(move || {
