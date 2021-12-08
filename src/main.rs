@@ -1,11 +1,13 @@
-use local_ip_address::local_ip;
+// use local_ip_address::local_ip;
+use local_ipaddress;
 use std::io::{self, BufRead};
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::thread;
 
 fn main() {
-    let my_ip = local_ip().expect("Couldn't retrieve local IP");
+    // let my_ip = local_ip().expect("Couldn't retrieve local IP");
+    let my_ip = local_ipaddress::get().expect("Couldn't retrieve local IP");
     println!("{}", my_ip);
     let port = 4400;
     let socket =
