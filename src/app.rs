@@ -120,6 +120,7 @@ impl epi::App for ChatApp {
         });
 
         self.handle_keys(ctx);
+        ctx.request_repaint();
     }
 }
 impl Default for ChatApp {
@@ -150,35 +151,13 @@ impl ChatApp {
             }
         }
         self.message = String::new();
-        // self.read();
     }
-    // fn read(&mut self) {
-    //     let reader = self.socket.clone().unwrap();
-    //     let read = thread::spawn(move || {
-    //         let mut buf = [0; 32];
-    //         if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
-    //             let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
-    //             println!("{:?}:  {:?}", src_addr, filled_buf);
-    //             return [src_addr.ip().to_string(), filled_buf.to_string()];
-    //         }
-    //         ["0.0.0.0".to_string(), "".to_string()]
-    //     });
-    //     if let Ok(message) = read.join() {
-    //         if !message.is_empty() {
-    //             self.chat.push(message);
-    //         }
-    //     }
-    // }
     fn read(&mut self) {
-        println!("read");
         if let Ok(message) = self.sync_receiver.try_recv() {
-            println!("read message");
             if !message.is_empty() {
-                println!("read message ok");
                 self.chat.push(message);
             }
         }
-        println!("read_ok");
     }
     fn handle_keys(&mut self, ctx: &egui::CtxRef) {
         for event in &ctx.input().raw.events {
