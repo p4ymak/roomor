@@ -3,7 +3,6 @@ use egui::*;
 use epi::Storage;
 
 // use local_ipaddress;
-use std::io::{self, BufRead};
 use std::net::UdpSocket;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -13,7 +12,7 @@ pub struct ChatApp {
     socket: Option<Arc<UdpSocket>>,
     ip: String,
     port: usize,
-    name: String,
+    _name: String,
     sync_sender: mpsc::SyncSender<[String; 2]>,
     sync_receiver: mpsc::Receiver<[String; 2]>,
     message: String,
@@ -54,11 +53,11 @@ impl epi::App for ChatApp {
         let reader = self.socket.clone().unwrap();
         let sender = self.sync_sender.clone();
         thread::spawn(move || {
-            let mut buf = [0; 32];
+            let mut buf = [0; 512];
             loop {
                 if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
                     let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
-                    println!("{:?}:  {:?}", src_addr, filled_buf);
+                    // println!("{:?}:  {:?}", src_addr, filled_buf);
                     sender
                         .send([src_addr.ip().to_string(), filled_buf.to_string()])
                         .unwrap();
@@ -70,20 +69,22 @@ impl epi::App for ChatApp {
         self.send();
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         self.read();
-        egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.label(format!("{}:{}", self.ip, self.port));
-        });
-        egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
-            let message_box = ui.add(
-                egui::TextEdit::multiline(&mut self.message)
-                    .desired_width(f32::INFINITY)
-                    .code_editor()
-                    .id(egui::Id::new("text_input")),
-            );
-            message_box.request_focus();
-        });
+        // egui::TopBottomPanel::top("socket").show(ctx, |ui| {
+        //     ui.label(format!("{}:{}", self.ip, self.port));
+        // });
+        egui::TopBottomPanel::bottom("my_panel")
+            .resizable(true)
+            .show(ctx, |ui| {
+                let message_box = ui.add(
+                    egui::TextEdit::multiline(&mut self.message)
+                        .desired_width(f32::INFINITY)
+                        // .code_editor()
+                        .id(egui::Id::new("text_input")),
+                );
+                message_box.request_focus();
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if !self.chat.is_empty() {
@@ -130,7 +131,7 @@ impl Default for ChatApp {
             socket: None,
             ip: "0.0.0.0".to_string(),
             port: 4444,
-            name: "Unknown".to_string(),
+            _name: "Unknown".to_string(),
             sync_sender: tx,
             sync_receiver: rx,
             message: String::new(),
@@ -167,6 +168,11 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => self.send(),
+                Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    ..
+                } => self.chat.clear(),
                 _ => (),
             }
         }
