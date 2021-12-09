@@ -21,7 +21,7 @@ pub struct ChatApp {
 
 impl epi::App for ChatApp {
     fn name(&self) -> &str {
-        "Chat"
+        "UDP Chat"
     }
     fn warm_up_enabled(&self) -> bool {
         true
@@ -81,6 +81,7 @@ impl epi::App for ChatApp {
                     egui::TextEdit::multiline(&mut self.message)
                         .desired_width(f32::INFINITY)
                         // .code_editor()
+                        .text_style(egui::TextStyle::Heading)
                         .id(egui::Id::new("text_input")),
                 );
                 message_box.request_focus();
@@ -93,28 +94,40 @@ impl epi::App for ChatApp {
                     .always_show_scroll(true)
                     .stick_to_bottom()
                     .show(ui, |ui| {
-                        self.chat.iter().for_each(|m| {
-                            if m[0] == self.ip {
-                                ui.with_layout(egui::Layout::right_to_left(), |line| {
-                                    line.add(egui::Label::new(&m[0]).wrap(true).strong());
-                                    line.add(
-                                        egui::Button::new(&m[1])
-                                            .wrap(true)
-                                            .text_style(egui::TextStyle::Heading)
-                                            .fill(egui::Color32::from_rgb(44, 44, 44)),
-                                    );
-                                });
-                            } else {
-                                ui.with_layout(egui::Layout::left_to_right(), |line| {
-                                    line.add(egui::Label::new(&m[0]).wrap(true).strong());
-                                    line.add(
-                                        egui::Button::new(&m[1])
-                                            .wrap(true)
-                                            .text_style(egui::TextStyle::Heading)
-                                            .fill(egui::Color32::from_rgb(44, 44, 44)),
-                                    );
-                                });
-                            }
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                            self.chat.iter().for_each(|m| {
+                                if m[0] == self.ip {
+                                    ui.with_layout(egui::Layout::right_to_left(), |line| {
+                                        if line
+                                            .add(
+                                                egui::Label::new(&m[0])
+                                                    .wrap(false)
+                                                    .strong()
+                                                    .sense(Sense::click()),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.message = format!("{}, {}", &m[0], self.message);
+                                        };
+                                        line.add(
+                                            egui::Button::new(&m[1])
+                                                .wrap(true)
+                                                .text_style(egui::TextStyle::Heading)
+                                                .fill(egui::Color32::from_rgb(44, 44, 44)),
+                                        );
+                                    });
+                                } else {
+                                    ui.with_layout(egui::Layout::left_to_right(), |line| {
+                                        line.add(egui::Label::new(&m[0]).wrap(true).strong());
+                                        line.add(
+                                            egui::Button::new(&m[1])
+                                                .wrap(true)
+                                                .text_style(egui::TextStyle::Heading)
+                                                .fill(egui::Color32::from_rgb(44, 44, 44)),
+                                        );
+                                    });
+                                }
+                            });
                         });
                     });
             }
