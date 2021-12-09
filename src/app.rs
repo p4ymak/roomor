@@ -74,18 +74,16 @@ impl epi::App for ChatApp {
         // egui::TopBottomPanel::top("socket").show(ctx, |ui| {
         //     ui.label(format!("{}:{}", self.ip, self.port));
         // });
-        egui::TopBottomPanel::bottom("my_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                let message_box = ui.add(
-                    egui::TextEdit::multiline(&mut self.message)
-                        .desired_width(f32::INFINITY)
-                        // .code_editor()
-                        .text_style(egui::TextStyle::Heading)
-                        .id(egui::Id::new("text_input")),
-                );
-                message_box.request_focus();
-            });
+        egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
+            let message_box = ui.add(
+                egui::TextEdit::multiline(&mut self.message)
+                    .desired_width(f32::INFINITY)
+                    // .code_editor()
+                    .text_style(egui::TextStyle::Heading)
+                    .id(egui::Id::new("text_input")),
+            );
+            message_box.request_focus();
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if !self.chat.is_empty() {
@@ -118,7 +116,17 @@ impl epi::App for ChatApp {
                                     });
                                 } else {
                                     ui.with_layout(egui::Layout::left_to_right(), |line| {
-                                        line.add(egui::Label::new(&m[0]).wrap(true).strong());
+                                        if line
+                                            .add(
+                                                egui::Label::new(&m[0])
+                                                    .wrap(false)
+                                                    .strong()
+                                                    .sense(Sense::click()),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.message = format!("{}, {}", &m[0], self.message);
+                                        };
                                         line.add(
                                             egui::Button::new(&m[1])
                                                 .wrap(true)
