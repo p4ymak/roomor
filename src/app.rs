@@ -14,6 +14,8 @@ pub struct ChatApp {
     ip: String,
     port: usize,
     name: String,
+    sync_sender: mpsc::SyncSender<[String; 2]>,
+    sync_receiver: mpsc::Receiver<[String; 2]>,
     message: String,
     chat: Vec<[String; 2]>,
 }
@@ -48,11 +50,28 @@ impl epi::App for ChatApp {
                 _ => None,
             };
         }
+
+        let reader = self.socket.clone().unwrap();
+        let sender = self.sync_sender.clone();
+        thread::spawn(move || {
+            let mut buf = [0; 32];
+            loop {
+                if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
+                    let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
+                    println!("{:?}:  {:?}", src_addr, filled_buf);
+                    sender
+                        .send([src_addr.ip().to_string(), filled_buf.to_string()])
+                        .unwrap();
+                }
+            }
+        });
+
         self.message = "---- ENTERED ----".to_string();
         self.send();
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+        self.read();
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
             ui.label(format!("{}:{}", self.ip, self.port));
         });
@@ -76,25 +95,23 @@ impl epi::App for ChatApp {
                         self.chat.iter().for_each(|m| {
                             if m[0] == self.ip {
                                 ui.with_layout(egui::Layout::right_to_left(), |line| {
-                                    line.label(m[0].to_owned());
+                                    line.add(egui::Label::new(&m[0]).wrap(true).strong());
                                     line.add(
-                                        egui::TextEdit::multiline(&mut m[1].to_owned())
-                                            // .desired_width(f32::INFINITY)
-                                            .desired_rows(1)
-                                            .interactive(false),
-                                    )
-                                    .surrender_focus()
+                                        egui::Button::new(&m[1])
+                                            .wrap(true)
+                                            .text_style(egui::TextStyle::Heading)
+                                            .fill(egui::Color32::from_rgb(44, 44, 44)),
+                                    );
                                 });
                             } else {
                                 ui.with_layout(egui::Layout::left_to_right(), |line| {
-                                    line.label(m[0].to_owned());
+                                    line.add(egui::Label::new(&m[0]).wrap(true).strong());
                                     line.add(
-                                        egui::TextEdit::multiline(&mut m[1].to_owned())
-                                            // .desired_width(f32::INFINITY)
-                                            .desired_rows(1)
-                                            .interactive(false),
-                                    )
-                                    .surrender_focus()
+                                        egui::Button::new(&m[1])
+                                            .wrap(true)
+                                            .text_style(egui::TextStyle::Heading)
+                                            .fill(egui::Color32::from_rgb(44, 44, 44)),
+                                    );
                                 });
                             }
                         });
@@ -107,11 +124,14 @@ impl epi::App for ChatApp {
 }
 impl Default for ChatApp {
     fn default() -> Self {
+        let (tx, rx) = mpsc::sync_channel::<[String; 2]>(0);
         ChatApp {
             socket: None,
             ip: "0.0.0.0".to_string(),
             port: 4444,
             name: "Unknown".to_string(),
+            sync_sender: tx,
+            sync_receiver: rx,
             message: String::new(),
             chat: Vec::<[String; 2]>::new(),
         }
@@ -130,24 +150,35 @@ impl ChatApp {
             }
         }
         self.message = String::new();
-        self.read();
+        // self.read();
     }
+    // fn read(&mut self) {
+    //     let reader = self.socket.clone().unwrap();
+    //     let read = thread::spawn(move || {
+    //         let mut buf = [0; 32];
+    //         if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
+    //             let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
+    //             println!("{:?}:  {:?}", src_addr, filled_buf);
+    //             return [src_addr.ip().to_string(), filled_buf.to_string()];
+    //         }
+    //         ["0.0.0.0".to_string(), "".to_string()]
+    //     });
+    //     if let Ok(message) = read.join() {
+    //         if !message.is_empty() {
+    //             self.chat.push(message);
+    //         }
+    //     }
+    // }
     fn read(&mut self) {
-        let reader = self.socket.clone().unwrap();
-        let read = thread::spawn(move || {
-            let mut buf = [0; 32];
-            if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
-                let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
-                println!("{:?}:  {:?}", src_addr, filled_buf);
-                return [src_addr.ip().to_string(), filled_buf.to_string()];
-            }
-            ["0.0.0.0".to_string(), "".to_string()]
-        });
-        if let Ok(message) = read.join() {
+        println!("read");
+        if let Ok(message) = self.sync_receiver.try_recv() {
+            println!("read message");
             if !message.is_empty() {
+                println!("read message ok");
                 self.chat.push(message);
             }
         }
+        println!("read_ok");
     }
     fn handle_keys(&mut self, ctx: &egui::CtxRef) {
         for event in &ctx.input().raw.events {
