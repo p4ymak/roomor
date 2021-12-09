@@ -45,7 +45,11 @@ impl epi::App for ChatApp {
         if let Some(my_ip) = local_ipaddress::get() {
             self.ip = my_ip.to_owned();
             self.socket = match UdpSocket::bind(format!("{}:{}", my_ip, self.port)) {
-                Ok(socket) => Some(Arc::new(socket)),
+                Ok(socket) => {
+                    socket.set_broadcast(true).unwrap();
+                    socket.set_multicast_loop_v4(false).unwrap();
+                    Some(Arc::new(socket))
+                }
                 _ => None,
             };
         }
