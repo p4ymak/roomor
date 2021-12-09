@@ -164,7 +164,7 @@ impl ChatApp {
     fn send(&mut self) {
         if !self.message.trim().is_empty() {
             if let Some(socket) = &self.socket {
-                for i in 0..=255 {
+                for i in 0..=254 {
                     let destination = format!("192.168.0.{}:{}", i, self.port);
                     socket
                         .send_to(self.message.trim().as_bytes(), &destination)
