@@ -60,7 +60,10 @@ impl epi::App for ChatApp {
             let mut buf = [0; 512];
             loop {
                 if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
-                    let filled_buf = std::str::from_utf8(&buf[..number_of_bytes]).unwrap();
+                    let filled_buf = &buf[..number_of_bytes]
+                        .iter()
+                        .map(|b| u8::from_be(*b) as char)
+                        .collect::<String>();
                     // println!("{:?}:  {:?}", src_addr, filled_buf);
                     sender
                         .send([src_addr.ip().to_string(), filled_buf.to_string()])
@@ -69,7 +72,11 @@ impl epi::App for ChatApp {
             }
         });
 
-        self.message = "---- ENTERED ----".to_string();
+        self.message = "---- JOINED CHAT ----".to_string();
+        self.send();
+    }
+    fn on_exit(&mut self) {
+        self.message = "---- LEFT CHAT ----".to_string();
         self.send();
     }
 
@@ -167,17 +174,22 @@ impl Default for ChatApp {
 impl ChatApp {
     fn send(&mut self) {
         if !self.message.trim().is_empty() {
+            let bytes = self
+                .message
+                .trim()
+                .chars()
+                .map(|c| u8::to_be(c as u8))
+                .collect::<Vec<u8>>();
             if let Some(socket) = &self.socket {
                 for i in 0..=254 {
                     let destination = format!("192.168.0.{}:{}", i, self.port);
-                    socket
-                        .send_to(self.message.trim().as_bytes(), &destination)
-                        .ok();
+                    socket.send_to(&bytes, &destination).ok();
                 }
             }
         }
         self.message = String::new();
     }
+
     fn read(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
             if !message.is_empty() {
@@ -185,6 +197,7 @@ impl ChatApp {
             }
         }
     }
+
     fn handle_keys(&mut self, ctx: &egui::CtxRef) {
         for event in &ctx.input().raw.events {
             match event {
