@@ -73,8 +73,8 @@ impl ChatApp {
         if !self.text.trim().is_empty() {
             self.chat.message = Command::Text(self.text.clone());
             self.chat.send();
-            self.text = String::new();
         }
+        self.text = String::new();
     }
     fn draw(&mut self, ctx: &egui::CtxRef) {
         egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {

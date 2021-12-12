@@ -122,7 +122,10 @@ impl UdpChat {
                 if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
                     if let SocketAddr::V4(src_addr_v4) = src_addr {
                         receiver
-                            .send((*src_addr_v4.ip(), Command::from_be_bytes(&buf)))
+                            .send((
+                                *src_addr_v4.ip(),
+                                Command::from_be_bytes(&buf[..number_of_bytes]),
+                            ))
                             .unwrap();
                     }
                 }
@@ -162,7 +165,10 @@ impl UdpChat {
                 Command::Enter(_name) => {
                     self.peers.insert(message.0);
                 }
-                Command::Text(text) => self.history.push((message.0, text)),
+                Command::Text(text) => {
+                    self.history.push((message.0, text));
+                    self.peers.insert(message.0);
+                }
                 Command::Exit => {
                     self.peers.remove(&message.0);
                 }
