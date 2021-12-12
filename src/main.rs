@@ -1,5 +1,6 @@
 // use local_ip_address::local_ip;
 mod app;
+mod chat;
 use app::ChatApp;
 use eframe::egui::Vec2;
 fn main() {
