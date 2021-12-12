@@ -177,7 +177,7 @@ impl UdpChat {
                 Command::Enter(_name) => {
                     self.peers.insert(message.0);
                     self.message = Command::Enter("HI".to_string());
-                    self.send(true)
+                    self.send(false)
                 }
                 Command::Text(text) => {
                     self.history.push((message.0, text));
