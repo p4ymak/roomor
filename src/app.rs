@@ -34,7 +34,7 @@ impl epi::App for ChatApp {
     }
     fn on_exit(&mut self) {
         self.chat.message = Command::Exit;
-        self.chat.send();
+        self.chat.send(true);
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
@@ -69,7 +69,7 @@ impl ChatApp {
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
             self.chat.message = Command::Text(self.text.clone());
-            self.chat.send();
+            self.chat.send(false);
         }
         self.text = String::new();
     }

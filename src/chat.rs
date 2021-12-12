@@ -110,7 +110,7 @@ impl UdpChat {
 
         self.receive();
         self.message = Command::Enter(self.name.to_owned());
-        self.send();
+        self.send(true);
     }
 
     fn receive(&self) {
@@ -133,14 +133,17 @@ impl UdpChat {
         });
     }
 
-    pub fn send(&mut self) {
+    pub fn send(&mut self, mut everyone: bool) {
         match self.message {
             Command::Empty => (),
             _ => {
                 let bytes = self.message.to_be_bytes();
                 if let Some(socket) = &self.socket {
-                    let recepients: Vec<String> = match self.peers.len() {
-                        0..=1 => (0..=254)
+                    if self.peers.len() < 2 {
+                        everyone = true;
+                    }
+                    let recepients: Vec<String> = match everyone {
+                        true => (0..=254)
                             .map(|i| {
                                 format!(
                                     "{}.{}.{}.{}:{}",
@@ -152,7 +155,7 @@ impl UdpChat {
                                 )
                             })
                             .collect(),
-                        _ => self
+                        false => self
                             .peers
                             .iter()
                             .map(|ip| format!("{}:{}", ip, self.port))
@@ -173,6 +176,8 @@ impl UdpChat {
             match message.1 {
                 Command::Enter(_name) => {
                     self.peers.insert(message.0);
+                    self.message = Command::Enter("HI".to_string());
+                    self.send(true)
                 }
                 Command::Text(text) => {
                     self.history.push((message.0, text));
