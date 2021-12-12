@@ -39,9 +39,6 @@ impl epi::App for ChatApp {
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         self.chat.read();
-        // egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-        //     ui.label(format!("{}:{}", self.ip, self.port));
-        // });
         self.draw(ctx);
         self.handle_keys(ctx);
         ctx.request_repaint();
@@ -77,6 +74,10 @@ impl ChatApp {
         self.text = String::new();
     }
     fn draw(&mut self, ctx: &egui::CtxRef) {
+        egui::TopBottomPanel::top("socket").show(ctx, |ui| {
+            ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
+            ui.label(format!("Online: {}", self.chat.peers.len()));
+        });
         egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
             let message_box = ui.add(
                 egui::TextEdit::multiline(&mut self.text)
