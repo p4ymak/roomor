@@ -21,22 +21,16 @@ fn ipv4_from_str(string: &str) -> Option<Ipv4Addr> {
 }
 
 fn string_from_be_u8(bytes: &[u8]) -> String {
-    std::str::from_utf8(
-        &bytes[1..]
-            .iter()
-            .map(|b| u8::from_be(*b))
-            .collect::<Vec<u8>>(),
-    )
-    .unwrap_or("UNKNOWN")
-    .to_string()
+    std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
+        .unwrap_or("UNKNOWN")
+        .to_string()
 }
 
 fn be_u8_from_str(text: &str) -> Vec<u8> {
-    text.trim()
-        .as_bytes()
-        .iter()
-        .map(|c| u8::to_be(*c))
-        .collect::<Vec<u8>>()
+    text.trim().as_bytes().to_owned()
+    // .iter()
+    // .map(|c| u8::to_be(*c))
+    // .collect::<Vec<u8>>()
 }
 
 #[derive(Debug)]
@@ -66,6 +60,8 @@ impl Command {
     pub fn from_be_bytes(bytes: &[u8]) -> Self {
         match bytes.get(0) {
             Some(0) => Command::Text(string_from_be_u8(&bytes[1..])),
+            Some(1) => Command::Enter(string_from_be_u8(&bytes[1..])),
+            Some(4) => Command::Exit,
             _ => Command::Empty,
         }
     }
@@ -100,10 +96,8 @@ impl UdpChat {
 
     pub fn connect(&mut self) {
         if let Some(local_ip) = local_ipaddress::get() {
-            println!("{}", local_ip);
             if let Some(my_ip) = ipv4_from_str(&local_ip) {
                 self.ip = my_ip;
-                println!("{}", self.ip);
                 self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
                     Ok(socket) => {
                         socket.set_broadcast(true).unwrap();
@@ -138,7 +132,6 @@ impl UdpChat {
     }
 
     pub fn send(&mut self) {
-        println!("----");
         match self.message {
             Command::Empty => (),
             _ => {
@@ -154,9 +147,8 @@ impl UdpChat {
                             .map(|ip| format!("{}:{}", ip, self.port))
                             .collect(),
                     };
-
+                    println!("Send to: {}", recepients.len());
                     for recepient in recepients {
-                        println!("sent to: {}", recepient);
                         socket.send_to(&bytes, recepient).ok();
                     }
                 }
@@ -167,7 +159,6 @@ impl UdpChat {
 
     pub fn read(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
-            println!("{:?}", message.1);
             match message.1 {
                 Command::Enter(_name) => {
                     self.peers.insert(message.0);
