@@ -123,17 +123,14 @@ impl UdpChat {
         let reader = self.socket.clone().unwrap();
         let receiver = self.sync_sender.clone();
         thread::spawn(move || {
-            let mut buf = [0; 512];
+            let mut buf = [0; 2048];
             loop {
-                if let Ok((number_of_bytes, src_addr)) = reader.recv_from(&mut buf) {
-                    if let SocketAddr::V4(src_addr_v4) = src_addr {
-                        receiver
-                            .send((
-                                *src_addr_v4.ip(),
-                                Command::from_be_bytes(&buf[..number_of_bytes]),
-                            ))
-                            .unwrap();
-                    }
+                if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
+                    reader.recv_from(&mut buf)
+                {
+                    let ip = *src_addr_v4.ip();
+                    let message = Command::from_be_bytes(&buf[..number_of_bytes.min(512)]);
+                    receiver.send((ip, message)).ok();
                 }
             }
         });
@@ -145,7 +142,7 @@ impl UdpChat {
             _ => {
                 let bytes = self.message.to_be_bytes();
                 if let Some(socket) = &self.socket {
-                    if self.peers.len() < 2 {
+                    if self.peers.len() == 1 {
                         addrs = Recepients::All;
                     }
                     let recepients: Vec<String> = match addrs {
