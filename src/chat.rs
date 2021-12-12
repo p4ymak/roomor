@@ -32,6 +32,12 @@ fn be_u8_from_str(text: &str) -> Vec<u8> {
     // .collect::<Vec<u8>>()
 }
 
+pub enum Recepients {
+    One(Ipv4Addr),
+    Peers,
+    All,
+}
+
 #[derive(Debug)]
 pub enum Command {
     Text(String),
@@ -48,7 +54,7 @@ impl Command {
                 v
             }
             Command::Enter(name) => {
-                let mut v = vec![0];
+                let mut v = vec![1];
                 v.extend(be_u8_from_str(name));
                 v
             }
@@ -110,7 +116,7 @@ impl UdpChat {
 
         self.receive();
         self.message = Command::Enter(self.name.to_owned());
-        self.send(true);
+        self.send(Recepients::All);
     }
 
     fn receive(&self) {
@@ -133,17 +139,17 @@ impl UdpChat {
         });
     }
 
-    pub fn send(&mut self, mut everyone: bool) {
+    pub fn send(&mut self, mut addrs: Recepients) {
         match self.message {
             Command::Empty => (),
             _ => {
                 let bytes = self.message.to_be_bytes();
                 if let Some(socket) = &self.socket {
                     if self.peers.len() < 2 {
-                        everyone = true;
+                        addrs = Recepients::All;
                     }
-                    let recepients: Vec<String> = match everyone {
-                        true => (0..=254)
+                    let recepients: Vec<String> = match addrs {
+                        Recepients::All => (0..=254)
                             .map(|i| {
                                 format!(
                                     "{}.{}.{}.{}:{}",
@@ -155,11 +161,12 @@ impl UdpChat {
                                 )
                             })
                             .collect(),
-                        false => self
+                        Recepients::Peers => self
                             .peers
                             .iter()
                             .map(|ip| format!("{}:{}", ip, self.port))
                             .collect(),
+                        Recepients::One(ip) => vec![format!("{}:{}", ip, self.port)],
                     };
                     println!("Send to: {}", recepients.len());
                     for recepient in recepients {
@@ -175,13 +182,23 @@ impl UdpChat {
         if let Ok(message) = self.sync_receiver.try_recv() {
             match message.1 {
                 Command::Enter(_name) => {
-                    self.peers.insert(message.0);
-                    self.message = Command::Enter("HI".to_string());
-                    self.send(false)
+                    if !self.peers.contains(&message.0) {
+                        self.peers.insert(message.0);
+                        if message.0 != self.ip {
+                            self.message = Command::Enter(self.name.to_owned());
+                            self.send(Recepients::One(message.0));
+                        }
+                    }
                 }
                 Command::Text(text) => {
                     self.history.push((message.0, text));
-                    self.peers.insert(message.0);
+                    if !self.peers.contains(&message.0) {
+                        self.peers.insert(message.0);
+                        if message.0 != self.ip {
+                            self.message = Command::Enter(self.name.to_owned());
+                            self.send(Recepients::One(message.0));
+                        }
+                    }
                 }
                 Command::Exit => {
                     self.peers.remove(&message.0);

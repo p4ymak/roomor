@@ -1,4 +1,4 @@
-use super::chat::{Command, UdpChat};
+use super::chat::{Command, Recepients, UdpChat};
 use eframe::{egui, epi};
 use egui::*;
 use epi::Storage;
@@ -34,7 +34,7 @@ impl epi::App for ChatApp {
     }
     fn on_exit(&mut self) {
         self.chat.message = Command::Exit;
-        self.chat.send(true);
+        self.chat.send(Recepients::All);
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
@@ -69,14 +69,20 @@ impl ChatApp {
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
             self.chat.message = Command::Text(self.text.clone());
-            self.chat.send(false);
+            self.chat.send(Recepients::Peers);
         }
         self.text = String::new();
     }
     fn draw(&mut self, ctx: &egui::CtxRef) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
-            ui.label(format!("Online: {}", self.chat.peers.len()));
+            ui.with_layout(egui::Layout::right_to_left(), |ui| {
+                ui.add(
+                    egui::Label::new(format!("Online: {}", self.chat.peers.len()))
+                        .wrap(false)
+                        .strong(), // .sense(Sense::click()),
+                );
+                ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
+            });
         });
         egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
             let message_box = ui.add(
