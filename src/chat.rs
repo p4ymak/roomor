@@ -141,7 +141,16 @@ impl UdpChat {
                 if let Some(socket) = &self.socket {
                     let recepients: Vec<String> = match self.peers.len() {
                         0..=1 => (0..=254)
-                            .map(|i| format!("192.168.0.{}:{}", i, self.port))
+                            .map(|i| {
+                                format!(
+                                    "{}.{}.{}.{}:{}",
+                                    self.ip.octets()[0],
+                                    self.ip.octets()[1],
+                                    self.ip.octets()[2],
+                                    i,
+                                    self.port
+                                )
+                            })
                             .collect(),
                         _ => self
                             .peers
