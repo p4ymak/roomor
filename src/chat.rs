@@ -21,9 +21,8 @@ fn ipv4_from_str(string: &str) -> Option<Ipv4Addr> {
 }
 
 fn string_from_be_u8(bytes: &[u8]) -> String {
-    std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
-        .unwrap_or("UNKNOWN")
-        .to_string()
+    // std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
+    std::str::from_utf8(bytes).unwrap_or("UNKNOWN").to_string()
 }
 
 fn be_u8_from_str(text: &str) -> Vec<u8> {
@@ -53,7 +52,7 @@ impl Command {
                 v.extend(be_u8_from_str(name));
                 v
             }
-            Command::Exit => vec![u8::to_be(4)],
+            Command::Exit => vec![4],
             Command::Empty => vec![],
         }
     }
