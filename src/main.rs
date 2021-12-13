@@ -1,4 +1,3 @@
-// use local_ip_address::local_ip;
 mod app;
 mod chat;
 use app::ChatApp;
@@ -14,7 +13,7 @@ fn main() {
         drag_and_drop_support: true,
         transparent: true,
         // icon_data: Some(icon),
-        initial_window_size: Some(Vec2 { x: 400.0, y: 150.0 }),
+        initial_window_size: Some(Vec2 { x: 350.0, y: 550.0 }),
         ..Default::default()
     };
 

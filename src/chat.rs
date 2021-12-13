@@ -114,12 +114,12 @@ impl UdpChat {
             }
         }
 
-        self.receive();
+        self.listen();
         self.message = Command::Enter(self.name.to_owned());
         self.send(Recepients::All);
     }
 
-    fn receive(&self) {
+    fn listen(&self) {
         let reader = self.socket.clone().unwrap();
         let receiver = self.sync_sender.clone();
         thread::spawn(move || {
@@ -137,45 +137,43 @@ impl UdpChat {
     }
 
     pub fn send(&mut self, mut addrs: Recepients) {
-        match self.message {
-            Command::Empty => (),
-            _ => {
-                let bytes = self.message.to_be_bytes();
-                if let Some(socket) = &self.socket {
-                    if self.peers.len() == 1 {
-                        addrs = Recepients::All;
-                    }
-                    let recepients: Vec<String> = match addrs {
-                        Recepients::All => (0..=254)
-                            .map(|i| {
-                                format!(
-                                    "{}.{}.{}.{}:{}",
-                                    self.ip.octets()[0],
-                                    self.ip.octets()[1],
-                                    self.ip.octets()[2],
-                                    i,
-                                    self.port
-                                )
-                            })
-                            .collect(),
-                        Recepients::Peers => self
-                            .peers
-                            .iter()
-                            .map(|ip| format!("{}:{}", ip, self.port))
-                            .collect(),
-                        Recepients::One(ip) => vec![format!("{}:{}", ip, self.port)],
-                    };
-                    println!("Send to: {}", recepients.len());
-                    for recepient in recepients {
-                        socket.send_to(&bytes, recepient).ok();
-                    }
-                }
-                self.message = Command::Empty;
+        if let Command::Empty = self.message {
+            return;
+        }
+        let bytes = self.message.to_be_bytes();
+        if let Some(socket) = &self.socket {
+            if self.peers.len() == 1 {
+                addrs = Recepients::All;
+            }
+            let recepients: Vec<String> = match addrs {
+                Recepients::All => (0..=254)
+                    .map(|i| {
+                        format!(
+                            "{}.{}.{}.{}:{}",
+                            self.ip.octets()[0],
+                            self.ip.octets()[1],
+                            self.ip.octets()[2],
+                            i,
+                            self.port
+                        )
+                    })
+                    .collect(),
+                Recepients::Peers => self
+                    .peers
+                    .iter()
+                    .map(|ip| format!("{}:{}", ip, self.port))
+                    .collect(),
+                Recepients::One(ip) => vec![format!("{}:{}", ip, self.port)],
+            };
+            // println!("Send to: {}", recepients.len());
+            for recepient in recepients {
+                socket.send_to(&bytes, recepient).ok();
             }
         }
+        self.message = Command::Empty;
     }
 
-    pub fn read(&mut self) {
+    pub fn receive(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
             match message.1 {
                 Command::Enter(_name) => {

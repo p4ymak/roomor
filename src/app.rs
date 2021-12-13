@@ -15,12 +15,12 @@ impl epi::App for ChatApp {
     fn warm_up_enabled(&self) -> bool {
         true
     }
-    // fn persist_native_window(&self) -> bool {
-    //     false
-    // }
-    // fn persist_egui_memory(&self) -> bool {
-    //     false
-    // }
+    fn persist_native_window(&self) -> bool {
+        false
+    }
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
     // fn auto_save_interval(&self) -> Duration {
     //     Duration::MAX
     // }
@@ -38,7 +38,7 @@ impl epi::App for ChatApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        self.chat.read();
+        self.chat.receive();
         self.draw(ctx);
         self.handle_keys(ctx);
         ctx.request_repaint();
@@ -98,43 +98,42 @@ impl ChatApp {
             egui::ScrollArea::vertical()
                 .max_width(f32::INFINITY)
                 .stick_to_bottom()
-                .always_show_scroll(true)
                 .show(ui, |ui| {
-                    ui.with_layout(
-                        egui::Layout::from_main_dir_and_cross_align(
-                            egui::Direction::BottomUp,
-                            egui::Align::Max,
-                        ),
-                        |ui| {
-                            self.chat.history.iter().for_each(|m| {
-                                let direction = match &m.0 {
-                                    x if x == &self.chat.ip => egui::Direction::RightToLeft,
-                                    _ => egui::Direction::LeftToRight,
-                                };
-                                ui.with_layout(
-                                    egui::Layout::from_main_dir_and_cross_align(
-                                        direction,
-                                        egui::Align::Max,
-                                    ),
-                                    |line| {
-                                        line.add(
-                                            egui::Label::new(&m.0)
-                                                .wrap(false)
-                                                .strong()
-                                                .sense(Sense::click()),
-                                        )
-                                        .clicked();
-                                        line.add(
-                                            egui::Button::new(&m.1)
-                                                .wrap(true)
-                                                .text_style(egui::TextStyle::Heading)
-                                                .fill(egui::Color32::from_rgb(42, 42, 42)),
-                                        );
-                                    },
+                    self.chat.history.iter().for_each(|m| {
+                        let (direction, fill_color) = match &m.0 {
+                            x if x == &self.chat.ip => (
+                                egui::Direction::RightToLeft,
+                                egui::Color32::from_rgb(70, 70, 70),
+                            ),
+                            _ => (
+                                egui::Direction::LeftToRight,
+                                egui::Color32::from_rgb(42, 42, 42),
+                            ),
+                        };
+                        ui.with_layout(
+                            egui::Layout::from_main_dir_and_cross_align(
+                                direction,
+                                egui::Align::Min,
+                            ),
+                            |line| {
+                                if m.0 != self.chat.ip {
+                                    line.add(
+                                        egui::Label::new(&m.0)
+                                            .wrap(false)
+                                            .strong()
+                                            .sense(Sense::click()),
+                                    )
+                                    .clicked();
+                                }
+                                line.add(
+                                    egui::Button::new(&m.1)
+                                        .wrap(true)
+                                        .text_style(egui::TextStyle::Heading)
+                                        .fill(fill_color),
                                 );
-                            });
-                        },
-                    );
+                            },
+                        );
+                    });
                 });
         });
     }
