@@ -4,22 +4,6 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-fn ipv4_from_str(string: &str) -> Option<Ipv4Addr> {
-    let ip_vec: Vec<u8> = string
-        .split('.')
-        .filter_map(|o| o.parse::<u8>().ok())
-        .collect();
-
-    if ip_vec.len() != 4 {
-        return None;
-    }
-    let a = *ip_vec.get(0)?;
-    let b = *ip_vec.get(1)?;
-    let c = *ip_vec.get(2)?;
-    let d = *ip_vec.get(3)?;
-    Some(Ipv4Addr::new(a, b, c, d))
-}
-
 fn string_from_be_u8(bytes: &[u8]) -> String {
     // std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
     std::str::from_utf8(bytes).unwrap_or("UNKNOWN").to_string()
@@ -101,7 +85,7 @@ impl UdpChat {
 
     pub fn connect(&mut self) {
         if let Some(local_ip) = local_ipaddress::get() {
-            if let Some(my_ip) = ipv4_from_str(&local_ip) {
+            if let Ok(my_ip) = local_ip.parse::<Ipv4Addr>() {
                 self.ip = my_ip;
                 self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
                     Ok(socket) => {
