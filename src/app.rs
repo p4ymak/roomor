@@ -96,14 +96,17 @@ impl ChatApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if !self.chat.history.is_empty() {
-                egui::ScrollArea::vertical()
-                    .max_width(f32::INFINITY)
-                    .stick_to_bottom()
-                    .always_show_scroll(true)
-                    .show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                            self.chat.history.iter().for_each(|m| {
+            egui::ScrollArea::vertical()
+                .max_width(f32::INFINITY)
+                .stick_to_bottom()
+                .always_show_scroll(true)
+                .show(ui, |ui| {
+                    ui.with_layout(egui::Layout::top_down(egui::Align::BOTTOM), |ui| {
+                        ui.label("START");
+                        // self.chat.history.iter().for_each(|m| {
+
+                        for m in &self.chat.history {
+                            ui.group(|ui| {
                                 if m.0 == self.chat.ip {
                                     ui.with_layout(egui::Layout::right_to_left(), |line| {
                                         line.add(
@@ -137,9 +140,9 @@ impl ChatApp {
                                     });
                                 }
                             });
-                        });
+                        }
                     });
-            }
+                });
         });
     }
 }
