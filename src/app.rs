@@ -88,7 +88,6 @@ impl ChatApp {
             let message_box = ui.add(
                 egui::TextEdit::multiline(&mut self.text)
                     .desired_width(f32::INFINITY)
-                    // .code_editor()
                     .text_style(egui::TextStyle::Heading)
                     .id(egui::Id::new("text_input")),
             );
@@ -101,29 +100,23 @@ impl ChatApp {
                 .stick_to_bottom()
                 .always_show_scroll(true)
                 .show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::BOTTOM), |ui| {
-                        ui.label("START");
-                        // self.chat.history.iter().for_each(|m| {
-
-                        for m in &self.chat.history {
-                            ui.group(|ui| {
-                                if m.0 == self.chat.ip {
-                                    ui.with_layout(egui::Layout::right_to_left(), |line| {
-                                        line.add(
-                                            egui::Label::new(&m.0)
-                                                .wrap(false)
-                                                .strong()
-                                                .sense(Sense::click()),
-                                        );
-                                        line.add(
-                                            egui::Button::new(&m.1)
-                                                .wrap(true)
-                                                .text_style(egui::TextStyle::Heading)
-                                                .fill(egui::Color32::from_rgb(44, 44, 44)),
-                                        );
-                                    });
-                                } else {
-                                    ui.with_layout(egui::Layout::left_to_right(), |line| {
+                    ui.with_layout(
+                        egui::Layout::from_main_dir_and_cross_align(
+                            egui::Direction::BottomUp,
+                            egui::Align::Max,
+                        ),
+                        |ui| {
+                            self.chat.history.iter().for_each(|m| {
+                                let direction = match &m.0 {
+                                    x if x == &self.chat.ip => egui::Direction::RightToLeft,
+                                    _ => egui::Direction::LeftToRight,
+                                };
+                                ui.with_layout(
+                                    egui::Layout::from_main_dir_and_cross_align(
+                                        direction,
+                                        egui::Align::Max,
+                                    ),
+                                    |line| {
                                         line.add(
                                             egui::Label::new(&m.0)
                                                 .wrap(false)
@@ -135,13 +128,13 @@ impl ChatApp {
                                             egui::Button::new(&m.1)
                                                 .wrap(true)
                                                 .text_style(egui::TextStyle::Heading)
-                                                .fill(egui::Color32::from_rgb(44, 44, 44)),
+                                                .fill(egui::Color32::from_rgb(42, 42, 42)),
                                         );
-                                    });
-                                }
+                                    },
+                                );
                             });
-                        }
-                    });
+                        },
+                    );
                 });
         });
     }
