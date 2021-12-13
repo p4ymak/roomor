@@ -1,5 +1,7 @@
+use rusqlite::{Connection, Result, NO_PARAMS};
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -66,10 +68,15 @@ pub struct UdpChat {
     pub message: Command,
     pub history: Vec<(Ipv4Addr, String)>,
     pub peers: HashSet<Ipv4Addr>,
+    db: Option<Connection>,
 }
 impl UdpChat {
-    pub fn new(name: String, port: usize) -> Self {
+    pub fn new(name: String, port: usize, db_path: Option<PathBuf>) -> Self {
         let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Command)>(0);
+        let db = match db_path {
+            Some(path) => Connection::open(path).ok(),
+            None => None,
+        };
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -80,6 +87,7 @@ impl UdpChat {
             message: Command::Text("".to_string()),
             history: Vec::<(Ipv4Addr, String)>::new(),
             peers: HashSet::<Ipv4Addr>::new(),
+            db,
         }
     }
 

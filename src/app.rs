@@ -1,8 +1,8 @@
 use super::chat::{Command, Recepients, UdpChat};
+use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
 use epi::Storage;
-
 pub struct ChatApp {
     chat: UdpChat,
     text: String,
@@ -47,8 +47,12 @@ impl epi::App for ChatApp {
 
 impl Default for ChatApp {
     fn default() -> Self {
+        let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
+            std::fs::create_dir_all(&p.data_dir()).ok();
+            p.data_dir().join("history.db")
+        });
         ChatApp {
-            chat: UdpChat::new("XXX".to_string(), 4444),
+            chat: UdpChat::new("XXX".to_string(), 4444, db_path),
             text: String::new(),
         }
     }
