@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, NO_PARAMS};
+use rusqlite::{Connection, Result};
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
@@ -69,14 +69,16 @@ pub struct UdpChat {
     pub history: Vec<(Ipv4Addr, String)>,
     pub peers: HashSet<Ipv4Addr>,
     db: Option<Connection>,
+    pub db_status: String,
 }
 impl UdpChat {
     pub fn new(name: String, port: usize, db_path: Option<PathBuf>) -> Self {
         let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Command)>(0);
-        let db = match db_path {
-            Some(path) => Connection::open(path).ok(),
-            None => None,
+        let (db, db_status) = match db_path {
+            Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
+            None => (None, "DB! offline".to_string()),
         };
+
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -88,10 +90,29 @@ impl UdpChat {
             history: Vec::<(Ipv4Addr, String)>::new(),
             peers: HashSet::<Ipv4Addr>::new(),
             db,
+            db_status,
         }
     }
-
-    pub fn connect(&mut self) {
+    pub fn prelude(&mut self) {
+        if let Some(db) = &self.db {
+            self.db_status = match db.execute(
+                "create table if not exists chat_history (
+                time text primary key,
+                ip text not null,
+                message text not null
+                )",
+                [],
+            ) {
+                Ok(_) => "DB is ready.".to_string(),
+                Err(err) => format!("DB Err: {}", err),
+            };
+        }
+        if let Ok(history) = self.db_get_all() {
+            self.history = history;
+        };
+        self.connect();
+    }
+    fn connect(&mut self) {
         if let Some(local_ip) = local_ipaddress::get() {
             if let Ok(my_ip) = local_ip.parse::<Ipv4Addr>() {
                 self.ip = my_ip;
@@ -157,7 +178,6 @@ impl UdpChat {
                     .collect(),
                 Recepients::One(ip) => vec![format!("{}:{}", ip, self.port)],
             };
-            // println!("Send to: {}", recepients.len());
             for recepient in recepients {
                 socket.send_to(&bytes, recepient).ok();
             }
@@ -178,6 +198,7 @@ impl UdpChat {
                     }
                 }
                 Command::Text(text) => {
+                    self.db_save(message.0, &text);
                     self.history.push((message.0, text));
                     if !self.peers.contains(&message.0) {
                         self.peers.insert(message.0);
@@ -193,5 +214,45 @@ impl UdpChat {
                 _ => (),
             }
         }
+    }
+    fn db_save(&mut self, ip: Ipv4Addr, text: &str) {
+        if let Some(db) = &self.db {
+            self.db_status = match db.execute(
+                "INSERT INTO chat_history (time, ip, message) values (?1, ?2, ?3)",
+                [
+                    format!("{:?}", std::time::SystemTime::now()),
+                    ip.to_string(),
+                    text.to_string(),
+                ],
+            ) {
+                Ok(_) => "DB appended.".to_string(),
+                Err(err) => format!("DB: {}", err),
+            };
+        }
+    }
+    fn db_get_all(&mut self) -> Result<Vec<(Ipv4Addr, String)>> {
+        if let Some(db) = &self.db {
+            let mut stmt = db.prepare("SELECT ip, message FROM chat_history")?;
+            let mut rows = stmt.query([])?;
+
+            let mut story = Vec::<(String, String)>::new();
+            while let Some(row) = rows.next()? {
+                story.push((row.get(0)?, row.get(1)?));
+            }
+
+            Ok(story
+                .iter()
+                .map(|row| (row.0.parse::<Ipv4Addr>().unwrap(), row.1.to_owned()))
+                .collect())
+        } else {
+            Ok(Vec::<(Ipv4Addr, String)>::new())
+        }
+    }
+    pub fn clear_history(&mut self) {
+        if let Some(db) = &self.db {
+            db.execute("DELETE FROM chat_history", []).ok();
+            self.db_status = "DB: cleared!".to_string();
+        }
+        self.history = Vec::<(Ipv4Addr, String)>::new();
     }
 }

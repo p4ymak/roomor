@@ -30,7 +30,7 @@ impl epi::App for ChatApp {
         _frame: &mut epi::Frame<'_>,
         _storage: Option<&dyn Storage>,
     ) {
-        self.chat.connect();
+        self.chat.prelude();
     }
     fn on_exit(&mut self) {
         self.chat.message = Command::Exit;
@@ -66,26 +66,33 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => self.send(),
+                Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    ..
+                } => self.chat.clear_history(),
                 _ => (),
             }
         }
     }
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
-            self.chat.message = Command::Text(self.text.clone());
+            self.chat.message =
+                Command::Text(self.text.chars().filter(|c| !c.is_control()).collect());
             self.chat.send(Recepients::Peers);
         }
         self.text = String::new();
     }
     fn draw(&mut self, ctx: &egui::CtxRef) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::right_to_left(), |ui| {
+            ui.with_layout(egui::Layout::left_to_right(), |ui| {
                 ui.add(
                     egui::Label::new(format!("Online: {}", self.chat.peers.len()))
                         .wrap(false)
                         .strong(), // .sense(Sense::click()),
                 );
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                ui.label(&self.chat.db_status);
             });
         });
         egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {

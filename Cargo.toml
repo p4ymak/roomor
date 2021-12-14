@@ -5,7 +5,6 @@ edition = "2021"
 authors = ["Roman Chumak <p4ymak@gmail.com>"]
 resolver = "2"
 description = "Chat over local network."
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 local_ipaddress = "0.1.3"
