@@ -16,6 +16,6 @@ fn main() {
         initial_window_size: Some(Vec2 { x: 350.0, y: 550.0 }),
         ..Default::default()
     };
-
+    env_logger::init();
     eframe::run_native(Box::new(start_state), options);
 }

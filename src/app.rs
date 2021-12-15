@@ -1,4 +1,5 @@
-use super::chat::{Command, Recepients, UdpChat};
+use super::chat::chat::{Recepients, UdpChat};
+use super::chat::message::Message;
 use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
@@ -21,9 +22,6 @@ impl epi::App for ChatApp {
     fn persist_egui_memory(&self) -> bool {
         false
     }
-    // fn auto_save_interval(&self) -> Duration {
-    //     Duration::MAX
-    // }
     fn setup(
         &mut self,
         _ctx: &egui::CtxRef,
@@ -33,7 +31,7 @@ impl epi::App for ChatApp {
         self.chat.prelude();
     }
     fn on_exit(&mut self) {
-        self.chat.message = Command::Exit;
+        self.chat.message = Message::exit();
         self.chat.send(Recepients::All);
     }
 
@@ -71,14 +69,14 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => self.chat.clear_history(),
+
                 _ => (),
             }
         }
     }
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
-            self.chat.message =
-                Command::Text(self.text.chars().filter(|c| !c.is_control()).collect());
+            self.chat.message = Message::text(&self.text);
             self.chat.send(Recepients::Peers);
         }
         self.text = String::new();
@@ -89,7 +87,7 @@ impl ChatApp {
                 ui.add(
                     egui::Label::new(format!("Online: {}", self.chat.peers.len()))
                         .wrap(false)
-                        .strong(), // .sense(Sense::click()),
+                        .strong(),
                 );
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
                 ui.label(&self.chat.db_status);
