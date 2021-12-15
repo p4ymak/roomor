@@ -1,5 +1,4 @@
 use super::message::{Command, Message};
-// use log::{info, warn};
 use rusqlite::{Connection, Result};
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -34,7 +33,6 @@ impl UdpChat {
             Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
             None => (None, "DB! offline".to_string()),
         };
-        // info!("{:?}", db_status);
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -49,25 +47,15 @@ impl UdpChat {
             db_status,
         }
     }
+
     pub fn prelude(&mut self) {
-        if let Some(db) = &self.db {
-            self.db_status = match db.execute(
-                "create table if not exists chat_history (
-                id integer primary key,
-                ip text not null,
-                message_text text not null
-                )",
-                [],
-            ) {
-                Ok(_) => "DB is ready.".to_string(),
-                Err(err) => format!("DB Err: {}", err),
-            };
-        }
+        self.db_create();
         if let Ok(history) = self.db_get_all() {
             self.history = history;
         };
         self.connect();
     }
+
     fn connect(&mut self) {
         if let Some(local_ip) = local_ipaddress::get() {
             if let Ok(my_ip) = local_ip.parse::<Ipv4Addr>() {
@@ -111,9 +99,9 @@ impl UdpChat {
     }
 
     pub fn send(&mut self, mut addrs: Recepients) {
-        // if let Command::Empty = self.message {
-        //     return;
-        // }
+        if let Command::Empty = self.message.command {
+            return;
+        }
         let bytes = self.message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.len() == 1 {
@@ -148,7 +136,6 @@ impl UdpChat {
 
     pub fn receive(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
-            println!("{:?}", message);
             match message.1.command {
                 Command::Enter => {
                     if !self.peers.contains(&message.0) {
@@ -190,12 +177,24 @@ impl UdpChat {
             }
         }
     }
+
+    fn db_create(&mut self) {
+        if let Some(db) = &self.db {
+            self.db_status = match db.execute(
+                "create table if not exists chat_history (
+                id integer primary key,
+                ip text not null,
+                message_text text not null
+                )",
+                [],
+            ) {
+                Ok(_) => "DB is ready.".to_string(),
+                Err(err) => format!("DB Err: {}", err),
+            };
+        }
+    }
     fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
         if let Some(db) = &self.db {
-            println!(
-                "{:?}",
-                [message.id.to_string(), ip.to_string(), message.read_text()],
-            );
             self.db_status = match db.execute(
                 "INSERT INTO chat_history (id, ip, message_text) values (?1, ?2, ?3)",
                 [message.id.to_string(), ip.to_string(), message.read_text()],
@@ -206,7 +205,6 @@ impl UdpChat {
         }
     }
     fn db_get_all(&mut self) -> Result<Vec<(Ipv4Addr, String)>> {
-        println!("TRY READ DB!");
         if let Some(db) = &self.db {
             let mut stmt = db.prepare("SELECT ip, message_text FROM chat_history")?;
             let mut rows = stmt.query([])?;
@@ -225,8 +223,11 @@ impl UdpChat {
     }
     pub fn clear_history(&mut self) {
         if let Some(db) = &self.db {
-            db.execute("DELETE FROM chat_history", []).ok();
-            self.db_status = "DB: cleared!".to_string();
+            if let Some(db_path) = db.path() {
+                std::fs::remove_file(db_path).ok();
+                self.db_create();
+                self.db_status = "DB: cleared!".to_string();
+            }
         }
         self.history = Vec::<(Ipv4Addr, String)>::new();
     }

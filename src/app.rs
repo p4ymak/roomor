@@ -72,6 +72,7 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => self.chat.clear_history(),
+
                 _ => (),
             }
         }

@@ -20,7 +20,6 @@ impl Command {
         self as u8
     }
     pub fn from_code(code: u8) -> Self {
-        println!("{}", code);
         Command::n(code).unwrap_or(Command::Error)
     }
 }
@@ -85,7 +84,6 @@ impl Message {
             0..=7 => [].to_vec(),
             _ => bytes[7..].to_owned(),
         };
-        println!("MESSAGE: {:?}\n{:?}\n{:?}", id, command, data);
         if checksum == CRC.checksum(&data) {
             Some(Message {
                 id,
@@ -112,18 +110,10 @@ impl Message {
     }
 }
 
-// fn is_valid_len(bytes: &[u8]) -> bool {
-//     bytes.len() >= std::mem::size_of::<Message>()
-// }
-
 fn string_from_be_u8(bytes: &[u8]) -> String {
-    // std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
     std::str::from_utf8(bytes).unwrap_or("UNKNOWN").to_string()
 }
 
 fn be_u8_from_str(text: &str) -> Vec<u8> {
     text.trim().as_bytes().to_owned()
-    // .iter()
-    // .map(|c| u8::to_be(*c))
-    // .collect::<Vec<u8>>()
 }
