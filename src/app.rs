@@ -1,4 +1,5 @@
-use super::chat::{Command, Recepients, UdpChat};
+use super::chat::{Recepients, UdpChat};
+use super::message::Message;
 use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
@@ -33,7 +34,7 @@ impl epi::App for ChatApp {
         self.chat.prelude();
     }
     fn on_exit(&mut self) {
-        self.chat.message = Command::Exit;
+        self.chat.message = Message::exit();
         self.chat.send(Recepients::All);
     }
 
@@ -77,8 +78,7 @@ impl ChatApp {
     }
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
-            self.chat.message =
-                Command::Text(self.text.chars().filter(|c| !c.is_control()).collect());
+            self.chat.message = Message::text(&self.text);
             self.chat.send(Recepients::Peers);
         }
         self.text = String::new();

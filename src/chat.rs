@@ -1,3 +1,5 @@
+use super::message::{Command, Message};
+// use log::{info, warn};
 use rusqlite::{Connection, Result};
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -6,56 +8,10 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-fn string_from_be_u8(bytes: &[u8]) -> String {
-    // std::str::from_utf8(&bytes.iter().map(|b| u8::from_be(*b)).collect::<Vec<u8>>())
-    std::str::from_utf8(bytes).unwrap_or("UNKNOWN").to_string()
-}
-
-fn be_u8_from_str(text: &str) -> Vec<u8> {
-    text.trim().as_bytes().to_owned()
-    // .iter()
-    // .map(|c| u8::to_be(*c))
-    // .collect::<Vec<u8>>()
-}
-
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
     All,
-}
-
-#[derive(Debug)]
-pub enum Command {
-    Text(String),
-    Enter(String),
-    Empty,
-    Exit,
-}
-impl Command {
-    pub fn to_be_bytes(&self) -> Vec<u8> {
-        match self {
-            Command::Text(text) => {
-                let mut v = vec![0];
-                v.extend(be_u8_from_str(text));
-                v
-            }
-            Command::Enter(name) => {
-                let mut v = vec![1];
-                v.extend(be_u8_from_str(name));
-                v
-            }
-            Command::Exit => vec![4],
-            Command::Empty => vec![],
-        }
-    }
-    pub fn from_be_bytes(bytes: &[u8]) -> Self {
-        match bytes.get(0) {
-            Some(0) => Command::Text(string_from_be_u8(&bytes[1..])),
-            Some(1) => Command::Enter(string_from_be_u8(&bytes[1..])),
-            Some(4) => Command::Exit,
-            _ => Command::Empty,
-        }
-    }
 }
 
 pub struct UdpChat {
@@ -63,9 +19,9 @@ pub struct UdpChat {
     pub ip: Ipv4Addr,
     pub port: usize,
     pub name: String,
-    sync_sender: mpsc::SyncSender<(Ipv4Addr, Command)>,
-    sync_receiver: mpsc::Receiver<(Ipv4Addr, Command)>,
-    pub message: Command,
+    sync_sender: mpsc::SyncSender<(Ipv4Addr, Message)>,
+    sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
+    pub message: Message,
     pub history: Vec<(Ipv4Addr, String)>,
     pub peers: HashSet<Ipv4Addr>,
     db: Option<Connection>,
@@ -73,12 +29,12 @@ pub struct UdpChat {
 }
 impl UdpChat {
     pub fn new(name: String, port: usize, db_path: Option<PathBuf>) -> Self {
-        let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Command)>(0);
+        let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Message)>(0);
         let (db, db_status) = match db_path {
             Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
             None => (None, "DB! offline".to_string()),
         };
-
+        // info!("{:?}", db_status);
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -86,7 +42,7 @@ impl UdpChat {
             name,
             sync_sender: tx,
             sync_receiver: rx,
-            message: Command::Text("".to_string()),
+            message: Message::empty(),
             history: Vec::<(Ipv4Addr, String)>::new(),
             peers: HashSet::<Ipv4Addr>::new(),
             db,
@@ -97,9 +53,9 @@ impl UdpChat {
         if let Some(db) = &self.db {
             self.db_status = match db.execute(
                 "create table if not exists chat_history (
-                time text primary key,
+                id integer primary key,
                 ip text not null,
-                message text not null
+                message_text text not null
                 )",
                 [],
             ) {
@@ -128,31 +84,36 @@ impl UdpChat {
         }
 
         self.listen();
-        self.message = Command::Enter(self.name.to_owned());
+        self.message = Message::enter(&self.name);
         self.send(Recepients::All);
     }
 
     fn listen(&self) {
-        let reader = self.socket.clone().unwrap();
-        let receiver = self.sync_sender.clone();
-        thread::spawn(move || {
-            let mut buf = [0; 2048];
-            loop {
-                if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
-                    reader.recv_from(&mut buf)
-                {
-                    let ip = *src_addr_v4.ip();
-                    let message = Command::from_be_bytes(&buf[..number_of_bytes.min(512)]);
-                    receiver.send((ip, message)).ok();
+        if let Some(socket) = &self.socket {
+            let reader = Arc::clone(socket);
+            let receiver = self.sync_sender.clone();
+            thread::spawn(move || {
+                let mut buf = [0; 2048];
+                loop {
+                    if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
+                        reader.recv_from(&mut buf)
+                    {
+                        let ip = *src_addr_v4.ip();
+                        if let Some(message) =
+                            Message::from_be_bytes(&buf[..number_of_bytes.min(512)])
+                        {
+                            receiver.send((ip, message)).ok();
+                        }
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     pub fn send(&mut self, mut addrs: Recepients) {
-        if let Command::Empty = self.message {
-            return;
-        }
+        // if let Command::Empty = self.message {
+        //     return;
+        // }
         let bytes = self.message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.len() == 1 {
@@ -182,30 +143,44 @@ impl UdpChat {
                 socket.send_to(&bytes, recepient).ok();
             }
         }
-        self.message = Command::Empty;
+        self.message = Message::empty();
     }
 
     pub fn receive(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
-            match message.1 {
-                Command::Enter(_name) => {
+            println!("{:?}", message);
+            match message.1.command {
+                Command::Enter => {
                     if !self.peers.contains(&message.0) {
                         self.peers.insert(message.0);
                         if message.0 != self.ip {
-                            self.message = Command::Enter(self.name.to_owned());
+                            self.message = Message::enter(&self.name);
                             self.send(Recepients::One(message.0));
                         }
                     }
                 }
-                Command::Text(text) => {
-                    self.db_save(message.0, &text);
+                Command::Text => {
+                    let text = message.1.read_text();
+                    self.db_save(message.0, &message.1);
                     self.history.push((message.0, text));
                     if !self.peers.contains(&message.0) {
                         self.peers.insert(message.0);
                         if message.0 != self.ip {
-                            self.message = Command::Enter(self.name.to_owned());
+                            self.message = Message::enter(&self.name);
                             self.send(Recepients::One(message.0));
                         }
+                    }
+                }
+                Command::Damaged => {
+                    if message.0 != self.ip {
+                        self.message = Message::new(Command::Retry, message.1.data);
+                        self.send(Recepients::One(message.0));
+                    }
+                }
+                Command::Retry => {
+                    if message.0 != self.ip {
+                        self.message = Message::new(Command::Text, vec![4, 4, 4, 4]); //TODO
+                        self.send(Recepients::One(message.0));
                     }
                 }
                 Command::Exit => {
@@ -215,15 +190,15 @@ impl UdpChat {
             }
         }
     }
-    fn db_save(&mut self, ip: Ipv4Addr, text: &str) {
+    fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
         if let Some(db) = &self.db {
+            println!(
+                "{:?}",
+                [message.id.to_string(), ip.to_string(), message.read_text()],
+            );
             self.db_status = match db.execute(
-                "INSERT INTO chat_history (time, ip, message) values (?1, ?2, ?3)",
-                [
-                    format!("{:?}", std::time::SystemTime::now()),
-                    ip.to_string(),
-                    text.to_string(),
-                ],
+                "INSERT INTO chat_history (id, ip, message_text) values (?1, ?2, ?3)",
+                [message.id.to_string(), ip.to_string(), message.read_text()],
             ) {
                 Ok(_) => "DB appended.".to_string(),
                 Err(err) => format!("DB: {}", err),
@@ -231,10 +206,10 @@ impl UdpChat {
         }
     }
     fn db_get_all(&mut self) -> Result<Vec<(Ipv4Addr, String)>> {
+        println!("TRY READ DB!");
         if let Some(db) = &self.db {
-            let mut stmt = db.prepare("SELECT ip, message FROM chat_history")?;
+            let mut stmt = db.prepare("SELECT ip, message_text FROM chat_history")?;
             let mut rows = stmt.query([])?;
-
             let mut story = Vec::<(String, String)>::new();
             while let Some(row) = rows.next()? {
                 story.push((row.get(0)?, row.get(1)?));

@@ -1,5 +1,6 @@
 mod app;
 mod chat;
+mod message;
 use app::ChatApp;
 use eframe::egui::Vec2;
 
