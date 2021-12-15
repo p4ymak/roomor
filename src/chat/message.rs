@@ -1,6 +1,8 @@
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
+use std::fmt;
 use std::time::SystemTime;
+
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
 #[derive(Debug, PartialEq, Copy, Clone, N)]
@@ -31,6 +33,20 @@ pub struct Message {
     pub command: Command,
     pub data: Vec<u8>,
 }
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "\nMessage #{}\nChecksum: {}\n{:?}\n'{}'\n",
+            self.id,
+            self.checksum,
+            self.command,
+            string_from_be_u8(&self.data)
+        )
+    }
+}
+
 impl Message {
     pub fn new(command: Command, data: Vec<u8>) -> Self {
         let id = SystemTime::now()
@@ -45,6 +61,24 @@ impl Message {
             data,
         }
     }
+
+    pub fn retry_text(id: u32, text: &str) -> Self {
+        let data = be_u8_from_str(
+            text.to_owned()
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .as_ref(),
+        );
+        let checksum = CRC.checksum(&data);
+        Message {
+            id,
+            checksum,
+            command: Command::Text,
+            data,
+        }
+    }
+
     pub fn empty() -> Self {
         Message {
             id: 0,
@@ -53,12 +87,15 @@ impl Message {
             data: [].to_vec(),
         }
     }
+
     pub fn enter(name: &str) -> Self {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
+
     pub fn exit() -> Self {
         Message::new(Command::Exit, [].to_vec())
     }
+
     pub fn text(text: &str) -> Self {
         Message::new(
             Command::Text,
@@ -71,6 +108,7 @@ impl Message {
             ),
         )
     }
+
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
         let id: u32 = u32::from_be_bytes([
             *bytes.get(0)?,
@@ -105,6 +143,7 @@ impl Message {
 
         bytes
     }
+
     pub fn read_text(&self) -> String {
         string_from_be_u8(&self.data)
     }

@@ -1,5 +1,5 @@
-use super::chat::{Recepients, UdpChat};
-use super::message::Message;
+use super::chat::chat::{Recepients, UdpChat};
+use super::chat::message::Message;
 use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
@@ -22,9 +22,6 @@ impl epi::App for ChatApp {
     fn persist_egui_memory(&self) -> bool {
         false
     }
-    // fn auto_save_interval(&self) -> Duration {
-    //     Duration::MAX
-    // }
     fn setup(
         &mut self,
         _ctx: &egui::CtxRef,
@@ -90,7 +87,7 @@ impl ChatApp {
                 ui.add(
                     egui::Label::new(format!("Online: {}", self.chat.peers.len()))
                         .wrap(false)
-                        .strong(), // .sense(Sense::click()),
+                        .strong(),
                 );
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
                 ui.label(&self.chat.db_status);
