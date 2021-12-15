@@ -1,5 +1,4 @@
-use super::chat::chat::{Recepients, UdpChat};
-use super::chat::message::Message;
+use super::chat::{message::Message, Recepients, UdpChat};
 use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
