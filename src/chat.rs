@@ -224,9 +224,11 @@ impl UdpChat {
     pub fn clear_history(&mut self) {
         if let Some(db) = &self.db {
             if let Some(db_path) = db.path() {
-                std::fs::remove_file(db_path).ok();
+                self.db_status = match std::fs::remove_file(db_path) {
+                    Ok(_) => "DB Cleared".to_string(),
+                    Err(err) => format!("DB! {}", err),
+                };
                 self.db_create();
-                self.db_status = "DB: cleared!".to_string();
             }
         }
         self.history = Vec::<(Ipv4Addr, String)>::new();
