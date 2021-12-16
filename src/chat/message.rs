@@ -130,7 +130,12 @@ impl Message {
                 data,
             })
         } else {
-            Some(Message::empty())
+            Some(Message {
+                id,
+                checksum,
+                command: Command::Damaged,
+                data,
+            })
         }
     }
 
