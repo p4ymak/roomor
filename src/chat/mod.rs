@@ -172,10 +172,11 @@ impl UdpChat {
                 }
                 Command::Retry => {
                     if message.0 != self.ip {
+                        let id: u32 = u32::from_be_bytes(&message.1.data):
                         self.message = Message::retry_text(
-                            message.1.data,
+                            id,
                             &self
-                                .db_get_by_id(message.1.data)
+                                .db_get_by_id(id)
                                 .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
                         );
                         self.send(Recepients::One(message.0));
