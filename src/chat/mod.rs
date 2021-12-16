@@ -1,6 +1,6 @@
 pub mod message;
 
-use log::info;
+use log::{info, warn};
 use message::{Command, Message};
 use rusqlite::Connection;
 use std::collections::HashSet;
@@ -36,7 +36,7 @@ impl UdpChat {
             Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
             None => (None, "DB! offline".to_string()),
         };
-        info!("{}", db_status);
+        warn!("{}", db_status);
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -94,7 +94,7 @@ impl UdpChat {
                         if let Some(message) =
                             Message::from_be_bytes(&buf[..number_of_bytes.min(2048)])
                         {
-                            println!("{}: {}", ip, message);
+                            info!("{}: {}", ip, message);
                             receiver.send((ip, message)).ok();
                         }
                     }
@@ -203,6 +203,7 @@ impl UdpChat {
                 Ok(_) => "DB is ready.".to_string(),
                 Err(err) => format!("DB Err: {}", err),
             };
+            warn!("{}", self.db_status);
         }
     }
     fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
