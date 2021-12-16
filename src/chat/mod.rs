@@ -91,7 +91,9 @@ impl UdpChat {
                         reader.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-                        if let Some(message) = Message::from_be_bytes(&buf[..number_of_bytes]) {
+                        if let Some(message) =
+                            Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                        {
                             info!("{}: {}", ip, message);
                             receiver.send((ip, message)).ok();
                         }
