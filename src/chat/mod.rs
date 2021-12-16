@@ -166,16 +166,16 @@ impl UdpChat {
                 }
                 Command::Damaged => {
                     if message.0 != self.ip {
-                        self.message = Message::new(Command::Retry, message.1.data);
+                        self.message = Message::new(Command::Retry, message.1.id);
                         self.send(Recepients::One(message.0));
                     }
                 }
                 Command::Retry => {
                     if message.0 != self.ip {
                         self.message = Message::retry_text(
-                            message.1.id,
+                            message.1.data,
                             &self
-                                .db_get_by_id(message.1.id)
+                                .db_get_by_id(message.1.data)
                                 .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
                         );
                         self.send(Recepients::One(message.0));
