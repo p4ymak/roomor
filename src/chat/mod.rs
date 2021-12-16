@@ -172,14 +172,11 @@ impl UdpChat {
                     }
                 }
                 Command::Damaged => {
-                    // if message.0 != self.ip {
                     self.message =
                         Message::new(Command::AskToRepeat, message.1.id.to_be_bytes().to_vec());
                     self.send(Recepients::One(message.0));
-                    // }
                 }
                 Command::AskToRepeat => {
-                    // if message.0 != self.ip {
                     let id: u32 = u32::from_be_bytes(
                         (0..4)
                             .map(|i| *message.1.data.get(i).unwrap_or(&0))
@@ -194,7 +191,6 @@ impl UdpChat {
                             .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
                     );
                     self.send(Recepients::One(message.0));
-                    // }
                 }
                 Command::Exit => {
                     info!("{} left chat.", message.0);

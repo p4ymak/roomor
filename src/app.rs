@@ -133,12 +133,17 @@ impl ChatApp {
                                     )
                                     .clicked();
                                 }
-                                line.add(
-                                    egui::Button::new(&m.1)
-                                        .wrap(true)
-                                        .text_style(egui::TextStyle::Heading)
-                                        .fill(fill_color),
-                                );
+                                if line
+                                    .add(
+                                        egui::Button::new(&m.1)
+                                            .wrap(true)
+                                            .text_style(egui::TextStyle::Heading)
+                                            .fill(fill_color),
+                                    )
+                                    .clicked()
+                                {
+                                    self.text.push_str(&m.1);
+                                }
                             },
                         );
                     });
