@@ -92,7 +92,7 @@ impl UdpChat {
                     {
                         let ip = *src_addr_v4.ip();
                         if let Some(message) =
-                            Message::from_be_bytes(&buf[..number_of_bytes.min(2048)])
+                            Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
                             info!("{}: {}", ip, message);
                             receiver.send((ip, message)).ok();
@@ -165,27 +165,29 @@ impl UdpChat {
                     }
                 }
                 Command::Damaged => {
-                    if message.0 != self.ip {
-                        self.message = Message::new(Command::Retry, message.1.id.to_be_bytes());
-                        self.send(Recepients::One(message.0));
-                    }
+                    // if message.0 != self.ip {
+                    self.message =
+                        Message::new(Command::AskToRepeat, message.1.id.to_be_bytes().to_vec());
+                    self.send(Recepients::One(message.0));
+                    // }
                 }
-                Command::Retry => {
-                    if message.0 != self.ip {
-                        let id: u32 = u32::from_be_bytes([
-                            *message.1.data.get(0).unwrap_or(0),
-                            *message.1.data.get(1).unwrap_or(0),
-                            *message.1.data.get(2).unwrap_or(0),
-                            *message.1.data.get(3).unwrap_or(0),
-                        ]);
-                        self.message = Message::retry_text(
-                            id,
-                            &self
-                                .db_get_by_id(id)
-                                .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
-                        );
-                        self.send(Recepients::One(message.0));
-                    }
+                Command::AskToRepeat => {
+                    // if message.0 != self.ip {
+                    let id: u32 = u32::from_be_bytes(
+                        (0..4)
+                            .map(|i| *message.1.data.get(i).unwrap_or(&0))
+                            .collect::<Vec<u8>>()
+                            .try_into()
+                            .unwrap(),
+                    );
+                    self.message = Message::retry_text(
+                        id,
+                        &self
+                            .db_get_by_id(id)
+                            .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
+                    );
+                    self.send(Recepients::One(message.0));
+                    // }
                 }
                 Command::Exit => {
                     info!("{} left chat.", message.0);

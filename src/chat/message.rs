@@ -12,7 +12,8 @@ pub enum Command {
     Enter,
     Text,
     Damaged,
-    Retry,
+    AskToRepeat,
+    Repeat,
     Exit,
     Error,
 }
@@ -42,7 +43,18 @@ impl fmt::Display for Message {
             self.id,
             self.checksum,
             self.command,
-            string_from_be_u8(&self.data)
+            match self.command {
+                Command::Text | Command::Damaged => string_from_be_u8(&self.data),
+                Command::AskToRepeat => u32::from_be_bytes(
+                    (0..4)
+                        .map(|i| *self.data.get(i).unwrap_or(&0))
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap(),
+                )
+                .to_string(),
+                _ => format!("{:?}", &self.data),
+            }
         )
     }
 }
@@ -61,7 +73,6 @@ impl Message {
             data,
         }
     }
-
     pub fn retry_text(id: u32, text: &str) -> Self {
         let data = be_u8_from_str(
             text.to_owned()
@@ -74,7 +85,7 @@ impl Message {
         Message {
             id,
             checksum,
-            command: Command::Text,
+            command: Command::Repeat,
             data,
         }
     }
@@ -122,6 +133,15 @@ impl Message {
             0..=7 => [].to_vec(),
             _ => bytes[7..].to_owned(),
         };
+        if command == Command::Repeat {
+            return Some(Message {
+                id,
+                checksum,
+                command: Command::Text,
+                data,
+            });
+        }
+
         if checksum == CRC.checksum(&data) {
             Some(Message {
                 id,
