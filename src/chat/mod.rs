@@ -104,9 +104,14 @@ impl UdpChat {
     }
 
     pub fn send(&mut self, mut addrs: Recepients) {
-        if let Command::Empty = self.message.command {
-            return;
+        match self.message.command {
+            Command::Empty => return,
+            Command::Text => {
+                self.db_save(self.ip, &self.message.clone());
+            }
+            _ => (),
         }
+
         let bytes = self.message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.len() == 1 {
@@ -152,9 +157,11 @@ impl UdpChat {
                         }
                     }
                 }
-                Command::Text => {
+                Command::Text | Command::Repeat => {
+                    if message.0 != self.ip {
+                        self.db_save(message.0, &message.1);
+                    }
                     let text = message.1.read_text();
-                    self.db_save(message.0, &message.1);
                     self.history.push((message.0, text));
                     if !self.peers.contains(&message.0) {
                         self.peers.insert(message.0);

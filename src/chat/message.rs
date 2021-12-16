@@ -27,7 +27,7 @@ impl Command {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Message {
     pub id: u32,
     checksum: u16,
@@ -44,7 +44,7 @@ impl fmt::Display for Message {
             self.checksum,
             self.command,
             match self.command {
-                Command::Text | Command::Damaged => string_from_be_u8(&self.data),
+                Command::Text | Command::Damaged | Command::Repeat => string_from_be_u8(&self.data),
                 Command::AskToRepeat => u32::from_be_bytes(
                     (0..4)
                         .map(|i| *self.data.get(i).unwrap_or(&0))
@@ -133,16 +133,7 @@ impl Message {
             0..=7 => [].to_vec(),
             _ => bytes[7..].to_owned(),
         };
-        if command == Command::Repeat {
-            return Some(Message {
-                id,
-                checksum,
-                command: Command::Text,
-                data,
-            });
-        }
-
-        if checksum == CRC.checksum(&data) {
+        if checksum == CRC.checksum(&data) || command == Command::Repeat {
             Some(Message {
                 id,
                 checksum,
@@ -174,7 +165,7 @@ impl Message {
     }
 }
 
-fn string_from_be_u8(bytes: &[u8]) -> String {
+pub fn string_from_be_u8(bytes: &[u8]) -> String {
     std::str::from_utf8(bytes).unwrap_or("UNKNOWN").to_string()
 }
 
