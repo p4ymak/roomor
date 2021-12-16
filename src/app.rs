@@ -3,6 +3,7 @@ use directories::ProjectDirs;
 use eframe::{egui, epi};
 use egui::*;
 use epi::Storage;
+
 pub struct ChatApp {
     chat: UdpChat,
     text: String,
@@ -24,10 +25,10 @@ impl epi::App for ChatApp {
     fn setup(
         &mut self,
         _ctx: &egui::CtxRef,
-        _frame: &mut epi::Frame<'_>,
+        frame: &mut epi::Frame<'_>,
         _storage: Option<&dyn Storage>,
     ) {
-        self.chat.prelude();
+        self.chat.prelude(frame.repaint_signal());
     }
     fn on_exit(&mut self) {
         self.chat.message = Message::exit();
@@ -38,7 +39,7 @@ impl epi::App for ChatApp {
         self.chat.receive();
         self.draw(ctx);
         self.handle_keys(ctx);
-        ctx.request_repaint();
+        // ctx.request_repaint();
     }
 }
 

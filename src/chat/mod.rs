@@ -1,5 +1,6 @@
 pub mod message;
 
+use eframe::epi::RepaintSignal;
 use log::{info, warn};
 use message::{Command, Message};
 use rusqlite::Connection;
@@ -52,12 +53,15 @@ impl UdpChat {
         }
     }
 
-    pub fn prelude(&mut self) {
+    pub fn prelude(&mut self, repaint_signal: Arc<dyn RepaintSignal>) {
         self.db_create();
         if let Ok(history) = self.db_get_all() {
             self.history = history;
         };
         self.connect();
+        self.listen(repaint_signal);
+        self.message = Message::enter(&self.name);
+        self.send(Recepients::All);
     }
 
     fn connect(&mut self) {
@@ -74,18 +78,16 @@ impl UdpChat {
                 };
             }
         }
-
-        self.listen();
-        self.message = Message::enter(&self.name);
-        self.send(Recepients::All);
     }
 
-    fn listen(&self) {
+    fn listen(&self, repaint_signal: Arc<dyn RepaintSignal>) {
         if let Some(socket) = &self.socket {
             let reader = Arc::clone(socket);
             let receiver = self.sync_sender.clone();
+            let repaint_signal = Arc::clone(&repaint_signal);
             thread::spawn(move || {
                 let mut buf = [0; 2048];
+                let repaint_signal = Arc::clone(&repaint_signal);
                 loop {
                     if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
                         reader.recv_from(&mut buf)
@@ -97,6 +99,8 @@ impl UdpChat {
                             info!("{}: {}", ip, message);
                             receiver.send((ip, message)).ok();
                         }
+                        let repaint_signal = Arc::clone(&repaint_signal);
+                        repaint_signal.request_repaint();
                     }
                 }
             });
