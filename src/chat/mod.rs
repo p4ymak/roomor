@@ -166,7 +166,7 @@ impl UdpChat {
                 }
                 Command::Damaged => {
                     if message.0 != self.ip {
-                        self.message = Message::new(Command::Retry, message.1.id);
+                        self.message = Message::new(Command::Retry, message.1.id.to_be_bytes());
                         self.send(Recepients::One(message.0));
                     }
                 }
