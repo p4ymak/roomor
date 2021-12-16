@@ -173,10 +173,10 @@ impl UdpChat {
                 Command::Retry => {
                     if message.0 != self.ip {
                         let id: u32 = u32::from_be_bytes([
-                            *message.1.data.get(0).unwrap(),
-                            *message.1.data.get(1).unwrap(),
-                            *message.1.data.get(2).unwrap(),
-                            *message.1.data.get(3).unwrap(),
+                            *message.1.data.get(0).unwrap_or(0),
+                            *message.1.data.get(1).unwrap_or(0),
+                            *message.1.data.get(2).unwrap_or(0),
+                            *message.1.data.get(3).unwrap_or(0),
                         ]);
                         self.message = Message::retry_text(
                             id,
