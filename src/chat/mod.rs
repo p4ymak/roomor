@@ -97,10 +97,9 @@ impl UdpChat {
                             Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
                             info!("{}: {}", ip, message);
+                            repaint_signal.request_repaint();
                             receiver.send((ip, message)).ok();
                         }
-                        let repaint_signal = Arc::clone(&repaint_signal);
-                        repaint_signal.request_repaint();
                     }
                 }
             });

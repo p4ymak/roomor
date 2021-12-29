@@ -39,7 +39,7 @@ impl epi::App for ChatApp {
         self.chat.receive();
         self.draw(ctx);
         self.handle_keys(ctx);
-        ctx.request_repaint();
+        // ctx.request_repaint();
     }
 }
 
