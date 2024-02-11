@@ -1,7 +1,6 @@
 use crate::chat::Repaintable;
 
 use super::chat::{message::Message, Recepients, UdpChat};
-use directories::ProjectDirs;
 use eframe::{egui, CreationContext};
 use egui::*;
 
@@ -47,13 +46,13 @@ impl eframe::App for ChatApp {
 
 impl Default for ChatApp {
     fn default() -> Self {
-        let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
-            std::fs::create_dir_all(p.data_dir()).ok();
-            p.data_dir().join("history.db")
-        });
+        // let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
+        //     std::fs::create_dir_all(p.data_dir()).ok();
+        //     p.data_dir().join("history.db")
+        // });
         ChatApp {
             init: false,
-            chat: UdpChat::new("XXX".to_string(), 4444, db_path),
+            chat: UdpChat::new("XXX".to_string(), 4444),
             text: String::new(),
         }
     }
@@ -99,9 +98,14 @@ impl ChatApp {
     fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
             ui.with_layout(egui::Layout::left_to_right(Align::LEFT), |ui| {
-                ui.add(egui::Label::new(format!("Online: {}", self.chat.peers.len())).wrap(false));
+                ui.add(egui::Label::new(format!("Online: {}", self.chat.peers.len())).wrap(false))
+                    .on_hover_ui(|h| {
+                        for (ip, name) in self.chat.peers.iter() {
+                            h.label(format!("{ip} - {name}"));
+                        }
+                    });
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
-                ui.label(&self.chat.db_status);
+                // ui.label(&self.chat.db_status);
             });
         });
         egui::TopBottomPanel::bottom("text intput")
@@ -142,15 +146,15 @@ impl ChatApp {
                             |line| {
                                 if m.0 != self.chat.ip {
                                     line.add(
-                                        egui::Label::new(&m.1).wrap(false).sense(Sense::click()),
+                                        egui::Label::new(&m.1 .1).wrap(false).sense(Sense::click()),
                                     )
                                     .clicked();
                                 }
                                 if line
-                                    .add(egui::Button::new(&m.1).wrap(true).fill(fill_color))
+                                    .add(egui::Button::new(&m.1 .1).wrap(true).fill(fill_color))
                                     .clicked()
                                 {
-                                    self.text.push_str(&m.1);
+                                    self.text.push_str(&m.1 .1);
                                 }
                             },
                         );

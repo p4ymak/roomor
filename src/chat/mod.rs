@@ -1,20 +1,29 @@
 pub mod message;
 
-use log::{info, warn};
+use log::info;
 use message::{Command, Message};
-use rusqlite::Connection;
-use std::collections::HashSet;
+use std::collections::btree_map::Entry;
+// use rusqlite::Connection;
+use std::collections::BTreeMap;
+use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
-use std::path::PathBuf;
+// use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+
+use self::message::Id;
 
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
     All,
 }
+
+// pub struct User {
+//     name: String,
+//     ip: Ipv4Addr,
+// }
 
 pub trait Repaintable
 where
@@ -36,19 +45,21 @@ pub struct UdpChat {
     sync_sender: mpsc::SyncSender<(Ipv4Addr, Message)>,
     sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
     pub message: Message,
-    pub history: Vec<(Ipv4Addr, String)>,
-    pub peers: HashSet<Ipv4Addr>,
-    db: Option<Connection>,
-    pub db_status: String,
+    pub history: Vec<(Ipv4Addr, (Id, String))>,
+    pub peers: BTreeMap<Ipv4Addr, String>,
+    all_recepients: Vec<String>,
+    // db: Option<Connection>,
+    // pub db_status: String,
 }
+
 impl UdpChat {
-    pub fn new(name: String, port: usize, db_path: Option<PathBuf>) -> Self {
+    pub fn new(name: String, port: usize) -> Self {
         let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Message)>(0);
-        let (db, db_status) = match db_path {
-            Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
-            None => (None, "DB! offline".to_string()),
-        };
-        warn!("{}", db_status);
+        // let (db, db_status) = match db_path {
+        //     Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
+        //     None => (None, "DB! offline".to_string()),
+        // };
+        // warn!("{}", db_status);
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -57,38 +68,52 @@ impl UdpChat {
             sync_sender: tx,
             sync_receiver: rx,
             message: Message::empty(),
-            history: Vec::<(Ipv4Addr, String)>::new(),
-            peers: HashSet::<Ipv4Addr>::new(),
-            db,
-            db_status,
+            history: Vec::<(Ipv4Addr, (Id, String))>::new(),
+            peers: BTreeMap::<Ipv4Addr, String>::new(),
+            all_recepients: vec![],
+            // db,
+            // db_status,
         }
     }
 
     pub fn prelude(&mut self, ctx: &impl Repaintable) {
-        self.db_create();
-        if let Ok(history) = self.db_get_all() {
-            self.history = history;
-        };
-        self.connect();
+        // self.db_create();
+        // if let Ok(history) = self.db_get_all() {
+        //     self.history = history;
+        // };
+        self.connect().ok();
         self.listen(ctx);
         self.message = Message::enter(&self.name);
         self.send(Recepients::All);
     }
 
-    fn connect(&mut self) {
-        if let Some(local_ip) = local_ipaddress::get() {
-            if let Ok(my_ip) = local_ip.parse::<Ipv4Addr>() {
-                self.ip = my_ip;
-                self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
-                    Ok(socket) => {
-                        socket.set_broadcast(true).unwrap();
-                        socket.set_multicast_loop_v4(false).unwrap();
-                        Some(Arc::new(socket))
-                    }
-                    _ => None,
-                };
+    fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
+        let my_ip = local_ipaddress::get()
+            .ok_or("no local")?
+            .parse::<Ipv4Addr>()?;
+        self.ip = my_ip;
+        self.all_recepients = (0..=254)
+            .map(|i| {
+                format!(
+                    "{}.{}.{}.{}:{}",
+                    self.ip.octets()[0],
+                    self.ip.octets()[1],
+                    self.ip.octets()[2],
+                    i,
+                    self.port
+                )
+            })
+            .collect();
+        self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
+            Ok(socket) => {
+                socket.set_broadcast(true).unwrap();
+                socket.set_multicast_loop_v4(false).unwrap();
+                Some(Arc::new(socket))
             }
-        }
+            _ => None,
+        };
+
+        Ok(())
     }
 
     fn listen(&self, ctx: &impl Repaintable) {
@@ -117,12 +142,8 @@ impl UdpChat {
     }
 
     pub fn send(&mut self, mut addrs: Recepients) {
-        match self.message.command {
-            Command::Empty => return,
-            Command::Text => {
-                self.db_save(self.ip, &self.message.clone());
-            }
-            _ => (),
+        if self.message.command == Command::Empty {
+            return;
         }
 
         let bytes = self.message.to_be_bytes();
@@ -130,160 +151,166 @@ impl UdpChat {
             if self.peers.len() == 1 {
                 addrs = Recepients::All;
             }
-            let recepients: Vec<String> = match addrs {
-                Recepients::All => (0..=254)
-                    .map(|i| {
-                        format!(
-                            "{}.{}.{}.{}:{}",
-                            self.ip.octets()[0],
-                            self.ip.octets()[1],
-                            self.ip.octets()[2],
-                            i,
-                            self.port
-                        )
-                    })
-                    .collect(),
+            match addrs {
+                Recepients::All => self
+                    .all_recepients
+                    .iter()
+                    .map(|r| socket.send_to(&bytes, r).is_ok())
+                    .all(|r| r),
                 Recepients::Peers => self
                     .peers
-                    .iter()
-                    .map(|ip| format!("{}:{}", ip, self.port))
-                    .collect(),
-                Recepients::One(ip) => vec![format!("{}:{}", ip, self.port)],
+                    .keys()
+                    .map(|ip| {
+                        socket
+                            .send_to(&bytes, format!("{}:{}", ip, self.port))
+                            .is_ok()
+                    })
+                    .all(|r| r),
+                Recepients::One(ip) => socket
+                    .send_to(&bytes, format!("{}:{}", ip, self.port))
+                    .is_ok(),
             };
-            for recepient in recepients {
-                socket.send_to(&bytes, recepient).ok();
-            }
         }
         // self.message = Message::empty();
     }
 
     pub fn receive(&mut self) {
         if let Ok(message) = self.sync_receiver.try_recv() {
-            match message.1.command {
+            let r_ip = message.0;
+            let r_msg = message.1;
+            match r_msg.command {
                 Command::Enter => {
-                    info!("{} entered chat.", message.0);
-                    if !self.peers.contains(&message.0) {
-                        self.peers.insert(message.0);
-                        if message.0 != self.ip {
+                    let name = String::from_utf8_lossy(&r_msg.data);
+                    info!("{} entered chat.", r_ip);
+                    if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
+                        ip.insert(name.to_string());
+                        if r_ip != self.ip {
                             self.message = Message::enter(&self.name);
-                            self.send(Recepients::One(message.0));
+                            self.send(Recepients::One(r_ip));
                         }
                     }
                 }
                 Command::Text | Command::Repeat => {
-                    if message.0 != self.ip {
-                        self.db_save(message.0, &message.1);
-                    }
-                    let text = message.1.read_text();
-                    self.history.push((message.0, text));
-                    if !self.peers.contains(&message.0) {
-                        self.peers.insert(message.0);
-                        if message.0 != self.ip {
+                    // if message.0 != self.ip {
+                    //     self.db_save(message.0, &message.1);
+                    // }
+                    let text = r_msg.read_text();
+                    self.history.push((r_ip, (r_msg.id, text)));
+                    if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
+                        // if !self.peers.contains_key(&message.0) {
+                        ip.insert(r_ip.to_string());
+                        if r_ip != self.ip {
                             self.message = Message::enter(&self.name);
-                            self.send(Recepients::One(message.0));
+                            self.send(Recepients::One(r_ip));
                         }
                     }
                 }
                 Command::Damaged => {
                     self.message =
-                        Message::new(Command::AskToRepeat, message.1.id.to_be_bytes().to_vec());
-                    self.send(Recepients::One(message.0));
+                        Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
+                    self.send(Recepients::One(r_ip));
                 }
                 Command::AskToRepeat => {
                     let id: u32 = u32::from_be_bytes(
                         (0..4)
-                            .map(|i| *message.1.data.get(i).unwrap_or(&0))
+                            .map(|i| *r_msg.data.get(i).unwrap_or(&0))
                             .collect::<Vec<u8>>()
                             .try_into()
                             .unwrap(),
                     );
                     self.message = Message::retry_text(
                         id,
-                        &self
-                            .db_get_by_id(id)
-                            .unwrap_or_else(|| String::from("NO SUCH MESSAGE! = (")),
+                        self.history
+                            .iter()
+                            .find(|m| m.1 .0 == id)
+                            .unwrap_or(&(r_ip, (id, String::from("NO SUCH MESSAGE! = ("))))
+                            .1
+                             .1
+                            .as_str(),
                     );
-                    self.send(Recepients::One(message.0));
+                    self.send(Recepients::One(r_ip));
                 }
                 Command::Exit => {
-                    info!("{} left chat.", message.0);
-                    self.peers.remove(&message.0);
+                    info!("{} left chat.", r_ip);
+                    self.peers.remove(&r_ip);
                 }
                 _ => (),
             }
         }
     }
 
-    fn db_create(&mut self) {
-        if let Some(db) = &self.db {
-            self.db_status = match db.execute(
-                "create table if not exists chat_history (
-                id integer primary key,
-                ip text not null,
-                message_text text not null
-                )",
-                [],
-            ) {
-                Ok(_) => "DB is ready.".to_string(),
-                Err(err) => format!("DB Err: {}", err),
-            };
-            warn!("{}", self.db_status);
-        }
-    }
-    fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
-        if let Some(db) = &self.db {
-            self.db_status = match db.execute(
-                "INSERT INTO chat_history (id, ip, message_text) values (?1, ?2, ?3)",
-                [message.id.to_string(), ip.to_string(), message.read_text()],
-            ) {
-                Ok(_) => "DB: appended.".to_string(),
-                Err(err) => format!("DB! {}", err),
-            };
-            info!("{}", self.db_status);
-        }
-    }
-    fn db_get_all(&mut self) -> rusqlite::Result<Vec<(Ipv4Addr, String)>> {
-        if let Some(db) = &self.db {
-            let mut stmt = db.prepare("SELECT ip, message_text FROM chat_history")?;
-            let mut rows = stmt.query([])?;
-            let mut story = Vec::<(String, String)>::new();
-            while let Some(row) = rows.next()? {
-                story.push((row.get(0)?, row.get(1)?));
-            }
+    // fn db_create(&mut self) {
+    //     if let Some(db) = &self.db {
+    //         self.db_status = match db.execute(
+    //             "create table if not exists chat_history (
+    //             id integer primary key,
+    //             ip text not null,
+    //             message_text text not null
+    //             )",
+    //             [],
+    //         ) {
+    //             Ok(_) => "DB is ready.".to_string(),
+    //             Err(err) => format!("DB Err: {}", err),
+    //         };
+    //         warn!("{}", self.db_status);
+    //     }
+    // }
+    // fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
+    //     if let Some(db) = &self.db {
+    //         self.db_status = match db.execute(
+    //             "INSERT INTO chat_history (id, ip, message_text) values (?1, ?2, ?3)",
+    //             [message.id.to_string(), ip.to_string(), message.read_text()],
+    //         ) {
+    //             Ok(_) => "DB: appended.".to_string(),
+    //             Err(err) => format!("DB! {}", err),
+    //         };
+    //         info!("{}", self.db_status);
+    //     }
+    // }
+    // fn db_get_all(&mut self) -> rusqlite::Result<Vec<(Ipv4Addr, String)>> {
+    //     if let Some(db) = &self.db {
+    //         let mut stmt = db.prepare("SELECT ip, message_text FROM chat_history")?;
+    //         let mut rows = stmt.query([])?;
+    //         let mut story = Vec::<(String, String)>::new();
+    //         while let Some(row) = rows.next()? {
+    //             story.push((row.get(0)?, row.get(1)?));
+    //         }
 
-            Ok(story
-                .iter()
-                .map(|row| (row.0.parse::<Ipv4Addr>().unwrap(), row.1.to_owned()))
-                .collect())
-        } else {
-            Ok(Vec::<(Ipv4Addr, String)>::new())
-        }
-    }
-    fn db_get_by_id(&mut self, id: u32) -> Option<String> {
-        if let Some(db) = &self.db {
-            match db.query_row(
-                "SELECT message_text FROM chat_history WHERE id = ?",
-                [id],
-                |row| row.get(0),
-            ) {
-                Ok(message_text) => message_text,
-                Err(_) => None,
-            }
-        } else {
-            None
-        }
-    }
+    //         Ok(story
+    //             .iter()
+    //             .map(|row| (row.0.parse::<Ipv4Addr>().unwrap(), row.1.to_owned()))
+    //             .collect())
+    //     } else {
+    //         Ok(Vec::<(Ipv4Addr, String)>::new())
+    //     }
+    // }
+    // fn db_get_by_id(&mut self, id: u32) -> Option<String> {
+    //     if let Some(db) = &self.db {
+    //         match db.query_row(
+    //             "SELECT message_text FROM chat_history WHERE id = ?",
+    //             [id],
+    //             |row| row.get(0),
+    //         ) {
+    //             Ok(message_text) => message_text,
+    //             Err(_) => None,
+    //         }
+    //     } else {
+    //         None
+    //     }
+    // }
     pub fn clear_history(&mut self) {
-        if let Some(db) = &self.db {
-            if let Some(db_path) = db.path() {
-                self.db_status = match std::fs::remove_file(db_path) {
-                    Ok(_) => "DB: Cleared".to_string(),
-                    Err(err) => format!("DB! {}", err),
-                };
-                info!("{}", self.db_status);
-                self.db_create();
-            }
-        }
-        self.history = Vec::<(Ipv4Addr, String)>::new();
+        self.history.clear();
     }
+    //     if let Some(db) = &self.db {
+    //         if let Some(db_path) = db.path() {
+    //             self.db_status = match std::fs::remove_file(db_path) {
+    //                 Ok(_) => "DB: Cleared".to_string(),
+    //                 Err(err) => format!("DB! {}", err),
+    //             };
+    //             info!("{}", self.db_status);
+    //             self.db_create();
+    //         }
+    //     }
+    //     self.history = Vec::<(Ipv4Addr, String)>::new();
+    // }
 }

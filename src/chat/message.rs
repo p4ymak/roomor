@@ -27,9 +27,11 @@ impl Command {
     }
 }
 
+pub type Id = u32;
+
 #[derive(Debug, Clone)]
 pub struct Message {
-    pub id: u32,
+    pub id: Id,
     checksum: u16,
     pub command: Command,
     pub data: Vec<u8>,
@@ -121,7 +123,7 @@ impl Message {
     }
 
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
-        let id: u32 = u32::from_be_bytes([
+        let id = u32::from_be_bytes([
             *bytes.first()?,
             *bytes.get(1)?,
             *bytes.get(2)?,
