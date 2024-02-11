@@ -10,8 +10,6 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-pub const ONLINE_DOT: char = '⏺';
-
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,

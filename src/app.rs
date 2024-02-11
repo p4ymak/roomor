@@ -1,4 +1,4 @@
-use crate::chat::{Peer, Repaintable, TextMessage, ONLINE_DOT};
+use crate::chat::{Peer, Repaintable, TextMessage};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
@@ -21,8 +21,8 @@ impl eframe::App for ChatApp {
         } else {
             self.chat.receive();
             self.draw(ctx);
-            self.handle_keys(ctx);
         }
+        self.handle_keys(ctx);
     }
 
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
@@ -67,15 +67,14 @@ impl ChatApp {
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
-                ui.heading("Port");
-                ui.add(egui::DragValue::new(&mut self.chat.port));
-                ui.heading("Name");
-                ui.text_edit_singleline(&mut self.chat.name);
-                if ui.button("Connect").clicked() {
-                    self.chat.prelude(ctx);
-                    self.init = true;
-                }
-            })
+                ui.heading("ROOMOR");
+                ui.group(|ui| {
+                    ui.heading("Port");
+                    ui.add(egui::DragValue::new(&mut self.chat.port));
+                    ui.heading("Display Name");
+                    ui.text_edit_singleline(&mut self.chat.name).request_focus();
+                });
+            });
         });
     }
 
@@ -86,7 +85,14 @@ impl ChatApp {
                     key: egui::Key::Enter,
                     pressed: true,
                     ..
-                } => self.send(),
+                } => {
+                    if self.init {
+                        self.send()
+                    } else {
+                        self.chat.prelude(ctx);
+                        self.init = true;
+                    }
+                }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
@@ -108,8 +114,24 @@ impl ChatApp {
 
     fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(Align::LEFT), |ui| {
-                ui.add(
+            ui.horizontal(|h| {
+                if h.button("-").clicked() {
+                    let ppp = h.ctx().pixels_per_point().max(1.0);
+                    h.ctx().set_pixels_per_point(ppp - 0.25);
+                    h.ctx().request_repaint();
+                }
+                if h.button("=").clicked() {
+                    h.ctx().set_pixels_per_point(1.0);
+                    h.ctx().request_repaint();
+                }
+                if h.button("+").clicked() {
+                    let ppp = h.ctx().pixels_per_point();
+                    h.ctx().set_pixels_per_point(ppp + 0.25);
+                    h.ctx().request_repaint();
+                }
+                egui::widgets::global_dark_light_mode_switch(h);
+
+                h.add(
                     egui::Label::new(format!(
                         "Online: {}",
                         self.chat.peers.values().filter(|p| p.is_online()).count()
@@ -125,9 +147,10 @@ impl ChatApp {
                         h.label(label);
                     }
                 });
-                ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                h.label(format!("{}:{}", self.chat.ip, self.chat.port));
             });
         });
+
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
@@ -177,12 +200,7 @@ impl TextMessage {
                 }
                 egui::Frame::group(line.style())
                     .rounding(rounding)
-                    .stroke(Stroke::new(
-                        1.0,
-                        Color32::from_additive_luminance(
-                            self.ip().octets().last().cloned().unwrap_or(0),
-                        ),
-                    ))
+                    .stroke(line.style().visuals.widgets.inactive.fg_stroke)
                     .show(line, |g| {
                         if let Some(peer) = incoming {
                             g.vertical(|g| {
