@@ -121,7 +121,11 @@ impl ChatApp {
                         if peer.is_online() {
                             h.label(ONLINE_DOT.to_string());
                         }
-                        h.label(format!("{ip} - {}", peer.name()));
+                        let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
+                        if peer.is_online() {
+                            label = label.strong();
+                        }
+                        h.label(label);
                     }
                 });
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
@@ -168,7 +172,7 @@ impl TextMessage {
             egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
                 .with_main_wrap(true),
             |line| {
-                let mut rounding = Rounding::same(12.0);
+                let mut rounding = Rounding::same(line.style().visuals.window_rounding.nw * 2.0);
                 if incoming.is_some() {
                     rounding.sw = 0.0;
                 } else {
@@ -186,13 +190,18 @@ impl TextMessage {
                         if let Some(peer) = incoming {
                             g.vertical(|g| {
                                 g.horizontal(|h| {
-                                    if peer.is_online() {
-                                        h.label(ONLINE_DOT.to_string());
-                                    }
                                     if peer.name().is_empty() {
-                                        h.label(self.ip().to_string());
+                                        let mut label = egui::RichText::new(self.ip().to_string());
+                                        if peer.is_online() {
+                                            label = label.strong();
+                                        }
+                                        h.label(label);
                                     } else {
-                                        h.label(peer.name())
+                                        let mut label = egui::RichText::new(peer.name());
+                                        if peer.is_online() {
+                                            label = label.strong();
+                                        }
+                                        h.label(label)
                                             .on_hover_text_at_pointer(self.ip().to_string());
                                     }
                                 });
