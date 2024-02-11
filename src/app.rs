@@ -1,79 +1,102 @@
+use crate::chat::{MessageContent, Peer, Repaintable, TextMessage};
+
 use super::chat::{message::Message, Recepients, UdpChat};
-use directories::ProjectDirs;
-use eframe::{egui, epi};
+use eframe::{egui, CreationContext};
 use egui::*;
-use epi::Storage;
 
 pub struct ChatApp {
+    init: bool,
     chat: UdpChat,
     text: String,
 }
 
-impl epi::App for ChatApp {
-    fn name(&self) -> &str {
-        "UDP Chat"
-    }
-    fn warm_up_enabled(&self) -> bool {
-        true
-    }
-    fn persist_native_window(&self) -> bool {
-        false
-    }
-    fn persist_egui_memory(&self) -> bool {
-        false
-    }
-    fn setup(
-        &mut self,
-        _ctx: &egui::CtxRef,
-        frame: &mut epi::Frame<'_>,
-        _storage: Option<&dyn Storage>,
-    ) {
-        self.chat.prelude(frame.repaint_signal());
-    }
-    fn on_exit(&mut self) {
+impl eframe::App for ChatApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.chat.message = Message::exit();
         self.chat.send(Recepients::All);
     }
-
-    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
-        self.chat.receive();
-        self.draw(ctx);
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.init {
+            self.setup(ctx);
+        } else {
+            self.chat.receive();
+            self.draw(ctx);
+        }
         self.handle_keys(ctx);
-        // ctx.request_repaint();
+    }
+
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
+
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(30)
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        false
     }
 }
 
 impl Default for ChatApp {
     fn default() -> Self {
-        let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
-            std::fs::create_dir_all(&p.data_dir()).ok();
-            p.data_dir().join("history.db")
-        });
         ChatApp {
-            chat: UdpChat::new("XXX".to_string(), 4444, db_path),
+            init: false,
+            chat: UdpChat::new(String::new(), 4444),
             text: String::new(),
         }
     }
 }
+impl Repaintable for egui::Context {
+    fn request_repaint(&self) {
+        self.request_repaint()
+    }
+}
 impl ChatApp {
-    fn handle_keys(&mut self, ctx: &egui::CtxRef) {
-        for event in &ctx.input().raw.events {
-            match event {
+    pub fn new(_cc: &CreationContext) -> Self {
+        ChatApp::default()
+    }
+
+    fn setup(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered_justified(|ui| {
+                let rmr = egui::RichText::new("RMЯ")
+                    .monospace()
+                    .size(ui.available_width() * 0.4);
+                ui.heading(rmr);
+                ui.group(|ui| {
+                    ui.heading("Port");
+                    ui.add(egui::DragValue::new(&mut self.chat.port));
+                    ui.heading("Display Name");
+                    ui.text_edit_singleline(&mut self.chat.name).request_focus();
+                });
+            });
+        });
+    }
+
+    fn handle_keys(&mut self, ctx: &egui::Context) {
+        ctx.input(|i| {
+            i.raw.events.iter().for_each(|event| match event {
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
                     ..
-                } => self.send(),
+                } => {
+                    if self.init {
+                        self.send()
+                    } else {
+                        self.chat.prelude(ctx);
+                        self.init = true;
+                    }
+                }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
                     ..
                 } => self.chat.clear_history(),
-
                 _ => (),
-            }
-        }
+            })
+        })
     }
+
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
             self.chat.message = Message::text(&self.text);
@@ -81,74 +104,132 @@ impl ChatApp {
         }
         self.text = String::new();
     }
-    fn draw(&mut self, ctx: &egui::CtxRef) {
-        egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(), |ui| {
-                ui.add(
-                    egui::Label::new(format!("Online: {}", self.chat.peers.len()))
-                        .wrap(false)
-                        .strong(),
-                );
-                ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
-                ui.label(&self.chat.db_status);
+
+    fn draw(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.horizontal(|h| {
+                if h.button(egui::RichText::new("-").monospace()).clicked() {
+                    let ppp = h.ctx().pixels_per_point().max(0.75);
+                    h.ctx().set_pixels_per_point(ppp - 0.25);
+                    h.ctx().request_repaint();
+                }
+                if h.button(egui::RichText::new("=").monospace()).clicked() {
+                    h.ctx().set_pixels_per_point(1.0);
+                    h.ctx().request_repaint();
+                }
+                if h.button(egui::RichText::new("+").monospace()).clicked() {
+                    let ppp = h.ctx().pixels_per_point();
+                    h.ctx().set_pixels_per_point(ppp + 0.25);
+                    h.ctx().request_repaint();
+                }
+                egui::widgets::global_dark_light_mode_switch(h);
+
+                h.add(
+                    egui::Label::new(format!(
+                        "Online: {}",
+                        self.chat.peers.values().filter(|p| p.is_online()).count()
+                    ))
+                    .wrap(false),
+                )
+                .on_hover_ui(|h| {
+                    for (ip, peer) in self.chat.peers.iter() {
+                        let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
+                        if !peer.is_online() {
+                            label = label.weak();
+                        }
+                        h.label(label);
+                    }
+                });
+                h.label(format!("{}:{}", self.chat.ip, self.chat.port));
             });
         });
-        egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
-            let message_box = ui.add(
-                egui::TextEdit::multiline(&mut self.text)
-                    .desired_width(f32::INFINITY)
-                    .text_style(egui::TextStyle::Heading)
-                    .id(egui::Id::new("text_input")),
-            );
-            message_box.request_focus();
-        });
+
+        egui::TopBottomPanel::bottom("text intput")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|h| {
+                    h.add(
+                        egui::TextEdit::multiline(&mut self.text)
+                            .frame(false)
+                            .desired_width(h.available_rect_before_wrap().width()),
+                    )
+                    .request_focus();
+                });
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
-                .max_width(f32::INFINITY)
-                .stick_to_bottom()
+                .stick_to_bottom(true)
                 .show(ui, |ui| {
                     self.chat.history.iter().for_each(|m| {
-                        let (direction, fill_color) = match &m.0 {
-                            x if x == &self.chat.ip => (
-                                egui::Direction::RightToLeft,
-                                egui::Color32::from_rgb(70, 70, 70),
-                            ),
-                            _ => (
-                                egui::Direction::LeftToRight,
-                                egui::Color32::from_rgb(42, 42, 42),
-                            ),
-                        };
-                        ui.with_layout(
-                            egui::Layout::from_main_dir_and_cross_align(
-                                direction,
-                                egui::Align::Min,
-                            ),
-                            |line| {
-                                if m.0 != self.chat.ip {
-                                    line.add(
-                                        egui::Label::new(&m.0)
-                                            .wrap(false)
-                                            .strong()
-                                            .sense(Sense::click()),
-                                    )
-                                    .clicked();
-                                }
-                                if line
-                                    .add(
-                                        egui::Button::new(&m.1)
-                                            .wrap(true)
-                                            .text_style(egui::TextStyle::Heading)
-                                            .fill(fill_color),
-                                    )
-                                    .clicked()
-                                {
-                                    self.text.push_str(&m.1);
-                                }
-                            },
-                        );
+                        m.draw(ui, self.chat.peers.get(&m.ip()));
                     });
                 });
         });
+    }
+}
+
+impl TextMessage {
+    fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>) {
+        let (direction, _fill_color) = if incoming.is_some() {
+            (
+                egui::Direction::LeftToRight,
+                egui::Color32::from_rgb(42, 42, 42),
+            )
+        } else {
+            (
+                egui::Direction::RightToLeft,
+                egui::Color32::from_rgb(70, 70, 70),
+            )
+        };
+        ui.with_layout(
+            egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+                .with_main_wrap(true),
+            |line| {
+                let mut rounding = Rounding::same(line.style().visuals.window_rounding.nw * 2.0);
+                if incoming.is_some() {
+                    rounding.sw = 0.0;
+                } else {
+                    rounding.se = 0.0;
+                }
+                egui::Frame::group(line.style())
+                    .rounding(rounding)
+                    .stroke(line.style().visuals.widgets.inactive.fg_stroke)
+                    .show(line, |g| {
+                        if let Some(peer) = incoming {
+                            g.vertical(|g| {
+                                g.horizontal(|h| {
+                                    if peer.name().is_empty() {
+                                        let mut label = egui::RichText::new(self.ip().to_string());
+                                        if !peer.is_online() {
+                                            label = label.weak();
+                                        }
+                                        h.label(label);
+                                    } else {
+                                        let mut label = egui::RichText::new(peer.name());
+                                        if peer.is_online() {
+                                            label = label.strong();
+                                        }
+                                        h.label(label)
+                                            .on_hover_text_at_pointer(self.ip().to_string());
+                                    }
+                                    match self.content() {
+                                        MessageContent::Joined => {
+                                            h.label("joined..");
+                                        }
+                                        MessageContent::Left => {
+                                            h.label("left..");
+                                        }
+                                        _ => (),
+                                    }
+                                });
+                                self.draw_text(g);
+                            });
+                        } else {
+                            self.draw_text(g);
+                        }
+                    });
+            },
+        );
     }
 }
