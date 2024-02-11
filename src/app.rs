@@ -118,12 +118,9 @@ impl ChatApp {
                 )
                 .on_hover_ui(|h| {
                     for (ip, peer) in self.chat.peers.iter() {
-                        if peer.is_online() {
-                            h.label(ONLINE_DOT.to_string());
-                        }
                         let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
-                        if peer.is_online() {
-                            label = label.strong();
+                        if !peer.is_online() {
+                            label = label.weak();
                         }
                         h.label(label);
                     }
@@ -192,8 +189,8 @@ impl TextMessage {
                                 g.horizontal(|h| {
                                     if peer.name().is_empty() {
                                         let mut label = egui::RichText::new(self.ip().to_string());
-                                        if peer.is_online() {
-                                            label = label.strong();
+                                        if !peer.is_online() {
+                                            label = label.weak();
                                         }
                                         h.label(label);
                                     } else {
