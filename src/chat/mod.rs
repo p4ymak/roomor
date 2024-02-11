@@ -1,6 +1,5 @@
 pub mod message;
 
-use eframe::epi::RepaintSignal;
 use log::{info, warn};
 use message::{Command, Message};
 use rusqlite::Connection;
@@ -15,6 +14,18 @@ pub enum Recepients {
     One(Ipv4Addr),
     Peers,
     All,
+}
+
+pub trait Repaintable
+where
+    Self: Clone + Sync + Send + 'static,
+{
+    fn request_repaint(&self);
+}
+#[derive(Clone)]
+pub struct RepaintDummy;
+impl Repaintable for RepaintDummy {
+    fn request_repaint(&self) {}
 }
 
 pub struct UdpChat {
@@ -53,13 +64,13 @@ impl UdpChat {
         }
     }
 
-    pub fn prelude(&mut self, repaint_signal: Arc<dyn RepaintSignal>) {
+    pub fn prelude(&mut self, ctx: &impl Repaintable) {
         self.db_create();
         if let Ok(history) = self.db_get_all() {
             self.history = history;
         };
         self.connect();
-        self.listen(repaint_signal);
+        self.listen(ctx);
         self.message = Message::enter(&self.name);
         self.send(Recepients::All);
     }
@@ -80,14 +91,13 @@ impl UdpChat {
         }
     }
 
-    fn listen(&self, repaint_signal: Arc<dyn RepaintSignal>) {
+    fn listen(&self, ctx: &impl Repaintable) {
         if let Some(socket) = &self.socket {
             let reader = Arc::clone(socket);
             let receiver = self.sync_sender.clone();
-            let repaint_signal = Arc::clone(&repaint_signal);
+            let ctx = ctx.clone();
             thread::spawn(move || {
                 let mut buf = [0; 2048];
-                let repaint_signal = Arc::clone(&repaint_signal);
                 loop {
                     if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
                         reader.recv_from(&mut buf)
@@ -97,7 +107,7 @@ impl UdpChat {
                             Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
                             info!("{}: {}", ip, message);
-                            repaint_signal.request_repaint();
+                            ctx.request_repaint();
                             receiver.send((ip, message)).ok();
                         }
                     }

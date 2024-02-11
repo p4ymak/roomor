@@ -1,64 +1,79 @@
+use crate::chat::Repaintable;
+
 use super::chat::{message::Message, Recepients, UdpChat};
 use directories::ProjectDirs;
-use eframe::{egui, epi};
+use eframe::{egui, CreationContext};
 use egui::*;
-use epi::Storage;
 
 pub struct ChatApp {
+    init: bool,
     chat: UdpChat,
     text: String,
 }
 
-impl epi::App for ChatApp {
-    fn name(&self) -> &str {
-        "UDP Chat"
-    }
-    fn warm_up_enabled(&self) -> bool {
-        true
-    }
-    fn persist_native_window(&self) -> bool {
-        false
-    }
-    fn persist_egui_memory(&self) -> bool {
-        false
-    }
-    fn setup(
-        &mut self,
-        _ctx: &egui::CtxRef,
-        frame: &mut epi::Frame<'_>,
-        _storage: Option<&dyn Storage>,
-    ) {
-        self.chat.prelude(frame.repaint_signal());
-    }
-    fn on_exit(&mut self) {
+impl eframe::App for ChatApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.chat.message = Message::exit();
         self.chat.send(Recepients::All);
     }
-
-    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.init {
+            self.setup(ctx);
+        }
         self.chat.receive();
         self.draw(ctx);
         self.handle_keys(ctx);
-        // ctx.request_repaint();
+    }
+
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
+
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(30)
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // NOTE: a bright gray makes the shadows of the windows look weird.
+        // We use a bit of transparency so that if the user switches on the
+        // `transparent()` option they get immediate results.
+        egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+
+        // _visuals.window_fill() would also be a natural choice
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        true
     }
 }
 
 impl Default for ChatApp {
     fn default() -> Self {
         let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
-            std::fs::create_dir_all(&p.data_dir()).ok();
+            std::fs::create_dir_all(p.data_dir()).ok();
             p.data_dir().join("history.db")
         });
         ChatApp {
+            init: false,
             chat: UdpChat::new("XXX".to_string(), 4444, db_path),
             text: String::new(),
         }
     }
 }
+impl Repaintable for egui::Context {
+    fn request_repaint(&self) {
+        self.request_repaint()
+    }
+}
 impl ChatApp {
-    fn handle_keys(&mut self, ctx: &egui::CtxRef) {
-        for event in &ctx.input().raw.events {
-            match event {
+    pub fn new(_cc: &CreationContext) -> Self {
+        ChatApp::default()
+    }
+    fn setup(&mut self, ctx: &egui::Context) {
+        self.chat.prelude(ctx);
+        self.init = true;
+    }
+    fn handle_keys(&mut self, ctx: &egui::Context) {
+        ctx.input(|i| {
+            i.raw.events.iter().for_each(|event| match event {
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
@@ -71,8 +86,8 @@ impl ChatApp {
                 } => self.chat.clear_history(),
 
                 _ => (),
-            }
-        }
+            })
+        })
     }
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
@@ -81,32 +96,32 @@ impl ChatApp {
         }
         self.text = String::new();
     }
-    fn draw(&mut self, ctx: &egui::CtxRef) {
+    fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(), |ui| {
-                ui.add(
-                    egui::Label::new(format!("Online: {}", self.chat.peers.len()))
-                        .wrap(false)
-                        .strong(),
-                );
+            ui.with_layout(egui::Layout::left_to_right(Align::LEFT), |ui| {
+                ui.add(egui::Label::new(format!("Online: {}", self.chat.peers.len())).wrap(false));
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
                 ui.label(&self.chat.db_status);
             });
         });
-        egui::TopBottomPanel::bottom("my_panel").show(ctx, |ui| {
-            let message_box = ui.add(
-                egui::TextEdit::multiline(&mut self.text)
-                    .desired_width(f32::INFINITY)
-                    .text_style(egui::TextStyle::Heading)
-                    .id(egui::Id::new("text_input")),
-            );
-            message_box.request_focus();
-        });
+        egui::TopBottomPanel::bottom("text intput")
+            .resizable(true)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([true; 2])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.text)
+                                .desired_width(ui.available_width()),
+                        )
+                        .request_focus();
+                    });
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .max_width(f32::INFINITY)
-                .stick_to_bottom()
+                .stick_to_bottom(true)
                 .show(ui, |ui| {
                     self.chat.history.iter().for_each(|m| {
                         let (direction, fill_color) = match &m.0 {
@@ -127,20 +142,12 @@ impl ChatApp {
                             |line| {
                                 if m.0 != self.chat.ip {
                                     line.add(
-                                        egui::Label::new(&m.0)
-                                            .wrap(false)
-                                            .strong()
-                                            .sense(Sense::click()),
+                                        egui::Label::new(&m.1).wrap(false).sense(Sense::click()),
                                     )
                                     .clicked();
                                 }
                                 if line
-                                    .add(
-                                        egui::Button::new(&m.1)
-                                            .wrap(true)
-                                            .text_style(egui::TextStyle::Heading)
-                                            .fill(fill_color),
-                                    )
+                                    .add(egui::Button::new(&m.1).wrap(true).fill(fill_color))
                                     .clicked()
                                 {
                                     self.text.push_str(&m.1);

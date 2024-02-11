@@ -1,21 +1,28 @@
 mod app;
 mod chat;
 use app::ChatApp;
-use eframe::egui::Vec2;
+use eframe::egui;
 
-fn main() {
-    let start_state = ChatApp::default();
+fn main() -> Result<(), eframe::Error> {
+    #[cfg(debug_assertions)]
+    {
+        std::env::set_var("RUST_BACKTRACE", "1");
+        std::env::set_var("RUST_LOG", "guidon");
+    }
+    env_logger::init();
+
     let options = eframe::NativeOptions {
-        always_on_top: false,
-        decorated: true,
-        resizable: true,
-        maximized: false,
-        drag_and_drop_support: true,
-        transparent: true,
-        // icon_data: Some(icon),
-        initial_window_size: Some(Vec2 { x: 350.0, y: 550.0 }),
+        viewport: egui::ViewportBuilder::default()
+            .with_decorations(true)
+            .with_transparent(false)
+            .with_resizable(true)
+            .with_maximized(false)
+            .with_drag_and_drop(true)
+            .with_inner_size([300.0, 600.0])
+            .with_min_inner_size([280.0, 280.0])
+            .with_always_on_top(),
         ..Default::default()
     };
-    env_logger::init();
-    eframe::run_native(Box::new(start_state), options);
+
+    eframe::run_native("4AT", options, Box::new(|cc| Box::new(ChatApp::new(cc))))
 }
