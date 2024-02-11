@@ -116,7 +116,7 @@ impl ChatApp {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
             ui.horizontal(|h| {
                 if h.button("-").clicked() {
-                    let ppp = h.ctx().pixels_per_point().max(1.0);
+                    let ppp = h.ctx().pixels_per_point().max(0.75);
                     h.ctx().set_pixels_per_point(ppp - 0.25);
                     h.ctx().request_repaint();
                 }

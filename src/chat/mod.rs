@@ -221,7 +221,7 @@ impl UdpChat {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
                         self.history
-                            .push(TextMessage::new(r_ip, r_msg.id, "entered room.."));
+                            .push(TextMessage::new(r_ip, r_msg.id, "joined Roomor.."));
                         self.message = Message::enter(&self.name);
                         self.send(Recepients::One(r_ip));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
@@ -268,7 +268,7 @@ impl UdpChat {
                 }
                 Command::Exit => {
                     self.history
-                        .push(TextMessage::new(r_ip, r_msg.id, "left room.."));
+                        .push(TextMessage::new(r_ip, r_msg.id, "left Roomor.."));
                     self.peers.entry(r_ip).and_modify(|p| p.online = false);
                 }
                 _ => (),
