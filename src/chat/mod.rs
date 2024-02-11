@@ -58,38 +58,73 @@ pub struct UdpChat {
     pub history: Vec<TextMessage>,
     pub peers: BTreeMap<Ipv4Addr, Peer>,
     all_recepients: Vec<String>,
-    // db: Option<Connection>,
-    // pub db_status: String,
 }
 
+pub enum MessageContent {
+    Joined,
+    Left,
+    Text(String),
+}
 pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,
-    text: String,
+    content: MessageContent,
 }
 impl TextMessage {
-    pub fn new(ip: Ipv4Addr, id: Id, text: impl Into<String>) -> Self {
-        TextMessage {
-            ip,
-            id,
-            text: text.into(),
-        }
-    }
-    pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
+    pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
         TextMessage {
             ip,
             id: msg.id,
-            text: msg.read_text(),
+            content: MessageContent::Text(msg.read_text()),
         }
     }
+    pub fn enter(ip: Ipv4Addr, id: Id) -> Self {
+        TextMessage {
+            ip,
+            id,
+            content: MessageContent::Joined,
+        }
+    }
+    pub fn exit(ip: Ipv4Addr, id: Id) -> Self {
+        TextMessage {
+            ip,
+            id,
+            content: MessageContent::Left,
+        }
+    }
+
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
     pub fn id(&self) -> Id {
         self.id
     }
+    pub fn content(&self) -> &MessageContent {
+        &self.content
+    }
     pub fn text(&self) -> &str {
-        &self.text
+        if let MessageContent::Text(text) = &self.content {
+            text
+        } else {
+            ""
+        }
+    }
+    pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
+        if let MessageContent::Text(content) = &self.content {
+            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                font_id.size *= 1.5;
+            }
+            if content.starts_with("http") {
+                if let Some((link, text)) = content.split_once(' ') {
+                    ui.hyperlink(link);
+                    ui.label(text);
+                } else {
+                    ui.hyperlink(content);
+                }
+            } else {
+                ui.label(content);
+            }
+        }
     }
 }
 
@@ -203,7 +238,7 @@ impl UdpChat {
         }
         if self.message.command == Command::Text {
             self.history
-                .push(TextMessage::from_message(self.ip, &self.message));
+                .push(TextMessage::from_text_message(self.ip, &self.message));
         }
         self.message = Message::empty();
     }
@@ -213,20 +248,21 @@ impl UdpChat {
             if r_ip == self.ip {
                 return;
             }
-            let txt_msg = TextMessage::from_message(r_ip, &r_msg);
+            let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
             match r_msg.command {
                 Command::Enter => {
                     let name = String::from_utf8_lossy(&r_msg.data);
 
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
-                        self.history
-                            .push(TextMessage::new(r_ip, r_msg.id, "joined Roomor.."));
+                        self.history.push(TextMessage::enter(r_ip, r_msg.id));
                         self.message = Message::enter(&self.name);
                         self.send(Recepients::One(r_ip));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
                         if !peer.online {
                             peer.online = true;
+                            peer.name = txt_msg.text().to_string();
+                            self.history.push(TextMessage::enter(r_ip, r_msg.id));
                             self.message = Message::enter(&self.name);
                             self.send(Recepients::One(r_ip));
                         }
@@ -247,28 +283,27 @@ impl UdpChat {
                         Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
                     self.send(Recepients::One(r_ip));
                 }
-                Command::AskToRepeat => {
-                    let id: u32 = u32::from_be_bytes(
-                        (0..4)
-                            .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                            .collect::<Vec<u8>>()
-                            .try_into()
-                            .unwrap(),
-                    );
-                    self.message = Message::retry_text(
-                        id,
-                        self.history
-                            .iter()
-                            .find(|m| m.id() == id)
-                            .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
-                            .text
-                            .as_str(),
-                    );
-                    self.send(Recepients::One(r_ip));
-                }
+                // Command::AskToRepeat => {
+                //     let id: u32 = u32::from_be_bytes(
+                //         (0..4)
+                //             .map(|i| *r_msg.data.get(i).unwrap_or(&0))
+                //             .collect::<Vec<u8>>()
+                //             .try_into()
+                //             .unwrap(),
+                //     );
+                //     self.message = Message::retry_text(
+                //         id,
+                //         self.history
+                //             .iter()
+                //             .find(|m| m.id() == id)
+                //             .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
+                //             .content
+                //             .as_str(),
+                //     );
+                //     self.send(Recepients::One(r_ip));
+                // }
                 Command::Exit => {
-                    self.history
-                        .push(TextMessage::new(r_ip, r_msg.id, "left Roomor.."));
+                    self.history.push(TextMessage::exit(r_ip, r_msg.id));
                     self.peers.entry(r_ip).and_modify(|p| p.online = false);
                 }
                 _ => (),
@@ -276,78 +311,7 @@ impl UdpChat {
         }
     }
 
-    // fn db_create(&mut self) {
-    //     if let Some(db) = &self.db {
-    //         self.db_status = match db.execute(
-    //             "create table if not exists chat_history (
-    //             id integer primary key,
-    //             ip text not null,
-    //             message_text text not null
-    //             )",
-    //             [],
-    //         ) {
-    //             Ok(_) => "DB is ready.".to_string(),
-    //             Err(err) => format!("DB Err: {}", err),
-    //         };
-    //         warn!("{}", self.db_status);
-    //     }
-    // }
-    // fn db_save(&mut self, ip: Ipv4Addr, message: &Message) {
-    //     if let Some(db) = &self.db {
-    //         self.db_status = match db.execute(
-    //             "INSERT INTO chat_history (id, ip, message_text) values (?1, ?2, ?3)",
-    //             [message.id.to_string(), ip.to_string(), message.read_text()],
-    //         ) {
-    //             Ok(_) => "DB: appended.".to_string(),
-    //             Err(err) => format!("DB! {}", err),
-    //         };
-    //         info!("{}", self.db_status);
-    //     }
-    // }
-    // fn db_get_all(&mut self) -> rusqlite::Result<Vec<(Ipv4Addr, String)>> {
-    //     if let Some(db) = &self.db {
-    //         let mut stmt = db.prepare("SELECT ip, message_text FROM chat_history")?;
-    //         let mut rows = stmt.query([])?;
-    //         let mut story = Vec::<(String, String)>::new();
-    //         while let Some(row) = rows.next()? {
-    //             story.push((row.get(0)?, row.get(1)?));
-    //         }
-
-    //         Ok(story
-    //             .iter()
-    //             .map(|row| (row.0.parse::<Ipv4Addr>().unwrap(), row.1.to_owned()))
-    //             .collect())
-    //     } else {
-    //         Ok(Vec::<(Ipv4Addr, String)>::new())
-    //     }
-    // }
-    // fn db_get_by_id(&mut self, id: u32) -> Option<String> {
-    //     if let Some(db) = &self.db {
-    //         match db.query_row(
-    //             "SELECT message_text FROM chat_history WHERE id = ?",
-    //             [id],
-    //             |row| row.get(0),
-    //         ) {
-    //             Ok(message_text) => message_text,
-    //             Err(_) => None,
-    //         }
-    //     } else {
-    //         None
-    //     }
-    // }
     pub fn clear_history(&mut self) {
         self.history.clear();
     }
-    //     if let Some(db) = &self.db {
-    //         if let Some(db_path) = db.path() {
-    //             self.db_status = match std::fs::remove_file(db_path) {
-    //                 Ok(_) => "DB: Cleared".to_string(),
-    //                 Err(err) => format!("DB! {}", err),
-    //             };
-    //             info!("{}", self.db_status);
-    //             self.db_create();
-    //         }
-    //     }
-    //     self.history = Vec::<(Ipv4Addr, String)>::new();
-    // }
 }

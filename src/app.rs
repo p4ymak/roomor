@@ -1,4 +1,4 @@
-use crate::chat::{Peer, Repaintable, TextMessage};
+use crate::chat::{MessageContent, Peer, Repaintable, TextMessage};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
@@ -31,17 +31,8 @@ impl eframe::App for ChatApp {
         std::time::Duration::from_secs(30)
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        // NOTE: a bright gray makes the shadows of the windows look weird.
-        // We use a bit of transparency so that if the user switches on the
-        // `transparent()` option they get immediate results.
-        egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
-
-        // _visuals.window_fill() would also be a natural choice
-    }
-
     fn persist_egui_memory(&self) -> bool {
-        true
+        false
     }
 }
 
@@ -67,7 +58,10 @@ impl ChatApp {
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
-                ui.heading("ROOMOR");
+                let rmr = egui::RichText::new("RMЯ")
+                    .monospace()
+                    .size(ui.available_width() * 0.4);
+                ui.heading(rmr);
                 ui.group(|ui| {
                     ui.heading("Port");
                     ui.add(egui::DragValue::new(&mut self.chat.port));
@@ -98,7 +92,6 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => self.chat.clear_history(),
-
                 _ => (),
             })
         })
@@ -113,18 +106,18 @@ impl ChatApp {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("socket").show(ctx, |ui| {
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
-                if h.button("-").clicked() {
+                if h.button(egui::RichText::new("-").monospace()).clicked() {
                     let ppp = h.ctx().pixels_per_point().max(0.75);
                     h.ctx().set_pixels_per_point(ppp - 0.25);
                     h.ctx().request_repaint();
                 }
-                if h.button("=").clicked() {
+                if h.button(egui::RichText::new("=").monospace()).clicked() {
                     h.ctx().set_pixels_per_point(1.0);
                     h.ctx().request_repaint();
                 }
-                if h.button("+").clicked() {
+                if h.button(egui::RichText::new("+").monospace()).clicked() {
                     let ppp = h.ctx().pixels_per_point();
                     h.ctx().set_pixels_per_point(ppp + 0.25);
                     h.ctx().request_repaint();
@@ -154,17 +147,18 @@ impl ChatApp {
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.text)
-                        .frame(false)
-                        .desired_width(ctx.available_rect().width()),
-                )
-                .request_focus();
+                ui.horizontal(|h| {
+                    h.add(
+                        egui::TextEdit::multiline(&mut self.text)
+                            .frame(false)
+                            .desired_width(h.available_rect_before_wrap().width()),
+                    )
+                    .request_focus();
+                });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
-                // .max_width(f32::INFINITY)
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     self.chat.history.iter().for_each(|m| {
@@ -219,11 +213,20 @@ impl TextMessage {
                                         h.label(label)
                                             .on_hover_text_at_pointer(self.ip().to_string());
                                     }
+                                    match self.content() {
+                                        MessageContent::Joined => {
+                                            h.label("joined..");
+                                        }
+                                        MessageContent::Left => {
+                                            h.label("left..");
+                                        }
+                                        _ => (),
+                                    }
                                 });
-                                g.heading(self.text());
+                                self.draw_text(g);
                             });
                         } else {
-                            g.heading(self.text());
+                            self.draw_text(g);
                         }
                     });
             },
