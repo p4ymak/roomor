@@ -1,4 +1,4 @@
-use crate::chat::Repaintable;
+use crate::chat::{Repaintable, TextMessage};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
@@ -18,10 +18,11 @@ impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.init {
             self.setup(ctx);
+        } else {
+            self.chat.receive();
+            self.draw(ctx);
+            self.handle_keys(ctx);
         }
-        self.chat.receive();
-        self.draw(ctx);
-        self.handle_keys(ctx);
     }
 
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
@@ -67,8 +68,18 @@ impl ChatApp {
         ChatApp::default()
     }
     fn setup(&mut self, ctx: &egui::Context) {
-        self.chat.prelude(ctx);
-        self.init = true;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered_justified(|ui| {
+                ui.heading("Port");
+                ui.add(egui::DragValue::new(&mut self.chat.port));
+                ui.heading("Name");
+                ui.text_edit_singleline(&mut self.chat.name);
+                if ui.button("Connect").clicked() {
+                    self.chat.prelude(ctx);
+                    self.init = true;
+                }
+            })
+        });
     }
     fn handle_keys(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
@@ -109,57 +120,75 @@ impl ChatApp {
             });
         });
         egui::TopBottomPanel::bottom("text intput")
-            .resizable(true)
+            .resizable(false)
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([true; 2])
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut self.text)
-                                .desired_width(ui.available_width()),
-                        )
-                        .request_focus();
-                    });
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.text)
+                        .frame(false)
+                        .desired_width(ctx.available_rect().width()),
+                )
+                .request_focus();
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
-                .max_width(f32::INFINITY)
+                // .max_width(f32::INFINITY)
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     self.chat.history.iter().for_each(|m| {
-                        let (direction, fill_color) = match &m.0 {
-                            x if x == &self.chat.ip => (
-                                egui::Direction::RightToLeft,
-                                egui::Color32::from_rgb(70, 70, 70),
-                            ),
-                            _ => (
-                                egui::Direction::LeftToRight,
-                                egui::Color32::from_rgb(42, 42, 42),
-                            ),
-                        };
-                        ui.with_layout(
-                            egui::Layout::from_main_dir_and_cross_align(
-                                direction,
-                                egui::Align::Min,
-                            ),
-                            |line| {
-                                if m.0 != self.chat.ip {
-                                    line.add(
-                                        egui::Label::new(&m.1 .1).wrap(false).sense(Sense::click()),
-                                    )
-                                    .clicked();
-                                }
-                                if line
-                                    .add(egui::Button::new(&m.1 .1).wrap(true).fill(fill_color))
-                                    .clicked()
-                                {
-                                    self.text.push_str(&m.1 .1);
-                                }
-                            },
-                        );
+                        let ip_str = &m.ip().to_string();
+                        let incoming = (m.ip() != self.chat.ip)
+                            .then_some(self.chat.peers.get(&m.ip()).unwrap_or(ip_str));
+                        m.draw(ui, incoming);
                     });
                 });
         });
+    }
+}
+
+impl TextMessage {
+    fn draw(&self, ui: &mut egui::Ui, incoming: Option<&String>) {
+        let (direction, _fill_color) = if incoming.is_some() {
+            (
+                egui::Direction::LeftToRight,
+                egui::Color32::from_rgb(42, 42, 42),
+            )
+        } else {
+            (
+                egui::Direction::RightToLeft,
+                egui::Color32::from_rgb(70, 70, 70),
+            )
+        };
+        ui.with_layout(
+            egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+                .with_main_wrap(true),
+            |line| {
+                let mut rounding = Rounding::same(12.0);
+                if incoming.is_some() {
+                    rounding.sw = 0.0;
+                } else {
+                    rounding.se = 0.0;
+                }
+                egui::Frame::group(line.style())
+                    .rounding(rounding)
+                    .stroke(Stroke::new(
+                        1.0,
+                        Color32::from_additive_luminance(
+                            self.ip().octets().last().cloned().unwrap_or(0),
+                        ),
+                    ))
+                    .show(line, |g| {
+                        if let Some(name) = incoming {
+                            g.vertical(|g| {
+                                g.label(name)
+                                    .on_hover_text_at_pointer(self.ip().to_string());
+                                g.heading(self.text());
+                            });
+                        } else {
+                            g.heading(self.text());
+                        }
+                    });
+            },
+        );
     }
 }

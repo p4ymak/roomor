@@ -1,13 +1,10 @@
 pub mod message;
 
-use log::info;
 use message::{Command, Message};
 use std::collections::btree_map::Entry;
-// use rusqlite::Connection;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
-// use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -19,11 +16,6 @@ pub enum Recepients {
     Peers,
     All,
 }
-
-// pub struct User {
-//     name: String,
-//     ip: Ipv4Addr,
-// }
 
 pub trait Repaintable
 where
@@ -37,6 +29,8 @@ impl Repaintable for RepaintDummy {
     fn request_repaint(&self) {}
 }
 
+pub type UserName = String;
+
 pub struct UdpChat {
     socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
@@ -45,21 +39,48 @@ pub struct UdpChat {
     sync_sender: mpsc::SyncSender<(Ipv4Addr, Message)>,
     sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
     pub message: Message,
-    pub history: Vec<(Ipv4Addr, (Id, String))>,
-    pub peers: BTreeMap<Ipv4Addr, String>,
+    pub history: Vec<TextMessage>,
+    pub peers: BTreeMap<Ipv4Addr, UserName>,
     all_recepients: Vec<String>,
     // db: Option<Connection>,
     // pub db_status: String,
 }
 
+pub struct TextMessage {
+    ip: Ipv4Addr,
+    id: Id,
+    text: String,
+}
+impl TextMessage {
+    pub fn new(ip: Ipv4Addr, id: Id, text: impl Into<String>) -> Self {
+        TextMessage {
+            ip,
+            id,
+            text: text.into(),
+        }
+    }
+    pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
+        TextMessage {
+            ip,
+            id: msg.id,
+            text: msg.read_text(),
+        }
+    }
+    pub fn ip(&self) -> Ipv4Addr {
+        self.ip
+    }
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
 impl UdpChat {
     pub fn new(name: String, port: usize) -> Self {
         let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Message)>(0);
-        // let (db, db_status) = match db_path {
-        //     Some(path) => (Connection::open(path).ok(), "DB: ready.".to_string()),
-        //     None => (None, "DB! offline".to_string()),
-        // };
-        // warn!("{}", db_status);
+
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -68,19 +89,13 @@ impl UdpChat {
             sync_sender: tx,
             sync_receiver: rx,
             message: Message::empty(),
-            history: Vec::<(Ipv4Addr, (Id, String))>::new(),
+            history: Vec::<TextMessage>::new(),
             peers: BTreeMap::<Ipv4Addr, String>::new(),
             all_recepients: vec![],
-            // db,
-            // db_status,
         }
     }
 
     pub fn prelude(&mut self, ctx: &impl Repaintable) {
-        // self.db_create();
-        // if let Ok(history) = self.db_get_all() {
-        //     self.history = history;
-        // };
         self.connect().ok();
         self.listen(ctx);
         self.message = Message::enter(&self.name);
@@ -131,7 +146,6 @@ impl UdpChat {
                         if let Some(message) =
                             Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
-                            info!("{}: {}", ip, message);
                             ctx.request_repaint();
                             receiver.send((ip, message)).ok();
                         }
@@ -171,17 +185,24 @@ impl UdpChat {
                     .is_ok(),
             };
         }
-        // self.message = Message::empty();
+        if self.message.command == Command::Text {
+            self.history
+                .push(TextMessage::from_message(self.ip, &self.message));
+        }
+        self.message = Message::empty();
     }
 
     pub fn receive(&mut self) {
-        if let Ok(message) = self.sync_receiver.try_recv() {
-            let r_ip = message.0;
-            let r_msg = message.1;
+        if let Ok((r_ip, r_msg)) = self.sync_receiver.try_recv() {
+            if r_ip == self.ip {
+                return;
+            }
+            let txt_msg = TextMessage::from_message(r_ip, &r_msg);
             match r_msg.command {
                 Command::Enter => {
                     let name = String::from_utf8_lossy(&r_msg.data);
-                    info!("{} entered chat.", r_ip);
+                    self.history
+                        .push(TextMessage::new(r_ip, r_msg.id, "entered room.."));
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(name.to_string());
                         if r_ip != self.ip {
@@ -191,13 +212,8 @@ impl UdpChat {
                     }
                 }
                 Command::Text | Command::Repeat => {
-                    // if message.0 != self.ip {
-                    //     self.db_save(message.0, &message.1);
-                    // }
-                    let text = r_msg.read_text();
-                    self.history.push((r_ip, (r_msg.id, text)));
+                    self.history.push(txt_msg);
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        // if !self.peers.contains_key(&message.0) {
                         ip.insert(r_ip.to_string());
                         if r_ip != self.ip {
                             self.message = Message::enter(&self.name);
@@ -222,16 +238,16 @@ impl UdpChat {
                         id,
                         self.history
                             .iter()
-                            .find(|m| m.1 .0 == id)
-                            .unwrap_or(&(r_ip, (id, String::from("NO SUCH MESSAGE! = ("))))
-                            .1
-                             .1
+                            .find(|m| m.id() == id)
+                            .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
+                            .text
                             .as_str(),
                     );
                     self.send(Recepients::One(r_ip));
                 }
                 Command::Exit => {
-                    info!("{} left chat.", r_ip);
+                    self.history
+                        .push(TextMessage::new(r_ip, r_msg.id, "left room.."));
                     self.peers.remove(&r_ip);
                 }
                 _ => (),

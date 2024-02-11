@@ -4,13 +4,6 @@ use app::ChatApp;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
-    #[cfg(debug_assertions)]
-    {
-        std::env::set_var("RUST_BACKTRACE", "1");
-        std::env::set_var("RUST_LOG", "guidon");
-    }
-    env_logger::init();
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_decorations(true)
@@ -24,5 +17,5 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    eframe::run_native("4AT", options, Box::new(|cc| Box::new(ChatApp::new(cc))))
+    eframe::run_native("Roomor", options, Box::new(|cc| Box::new(ChatApp::new(cc))))
 }
