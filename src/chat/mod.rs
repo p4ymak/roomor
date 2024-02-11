@@ -219,11 +219,16 @@ impl UdpChat {
             match r_msg.command {
                 Command::Enter => {
                     let name = String::from_utf8_lossy(&r_msg.data);
-                    self.history
-                        .push(TextMessage::new(r_ip, r_msg.id, "entered room.."));
+
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
-                        if r_ip != self.ip {
+                        self.history
+                            .push(TextMessage::new(r_ip, r_msg.id, "entered room.."));
+                        self.message = Message::enter(&self.name);
+                        self.send(Recepients::One(r_ip));
+                    } else if let Some(peer) = self.peers.get_mut(&r_ip) {
+                        if !peer.online {
+                            peer.online = true;
                             self.message = Message::enter(&self.name);
                             self.send(Recepients::One(r_ip));
                         }
