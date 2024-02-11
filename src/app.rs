@@ -1,4 +1,4 @@
-use crate::chat::{Repaintable, TextMessage};
+use crate::chat::{Peer, Repaintable, TextMessage, ONLINE_DOT};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
@@ -47,13 +47,9 @@ impl eframe::App for ChatApp {
 
 impl Default for ChatApp {
     fn default() -> Self {
-        // let db_path = ProjectDirs::from("com", "p4ymak", env!("CARGO_PKG_NAME")).map(|p| {
-        //     std::fs::create_dir_all(p.data_dir()).ok();
-        //     p.data_dir().join("history.db")
-        // });
         ChatApp {
             init: false,
-            chat: UdpChat::new("XXX".to_string(), 4444),
+            chat: UdpChat::new(String::new(), 4444),
             text: String::new(),
         }
     }
@@ -67,6 +63,7 @@ impl ChatApp {
     pub fn new(_cc: &CreationContext) -> Self {
         ChatApp::default()
     }
+
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
@@ -81,6 +78,7 @@ impl ChatApp {
             })
         });
     }
+
     fn handle_keys(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
             i.raw.events.iter().for_each(|event| match event {
@@ -99,6 +97,7 @@ impl ChatApp {
             })
         })
     }
+
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
             self.chat.message = Message::text(&self.text);
@@ -106,17 +105,26 @@ impl ChatApp {
         }
         self.text = String::new();
     }
+
     fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("socket").show(ctx, |ui| {
             ui.with_layout(egui::Layout::left_to_right(Align::LEFT), |ui| {
-                ui.add(egui::Label::new(format!("Online: {}", self.chat.peers.len())).wrap(false))
-                    .on_hover_ui(|h| {
-                        for (ip, name) in self.chat.peers.iter() {
-                            h.label(format!("{ip} - {name}"));
+                ui.add(
+                    egui::Label::new(format!(
+                        "Online: {}",
+                        self.chat.peers.values().filter(|p| p.is_online()).count()
+                    ))
+                    .wrap(false),
+                )
+                .on_hover_ui(|h| {
+                    for (ip, peer) in self.chat.peers.iter() {
+                        if peer.is_online() {
+                            h.label(ONLINE_DOT.to_string());
                         }
-                    });
+                        h.label(format!("{ip} - {}", peer.name()));
+                    }
+                });
                 ui.label(format!("{}:{}", self.chat.ip, self.chat.port));
-                // ui.label(&self.chat.db_status);
             });
         });
         egui::TopBottomPanel::bottom("text intput")
@@ -136,10 +144,7 @@ impl ChatApp {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     self.chat.history.iter().for_each(|m| {
-                        let ip_str = &m.ip().to_string();
-                        let incoming = (m.ip() != self.chat.ip)
-                            .then_some(self.chat.peers.get(&m.ip()).unwrap_or(ip_str));
-                        m.draw(ui, incoming);
+                        m.draw(ui, self.chat.peers.get(&m.ip()));
                     });
                 });
         });
@@ -147,7 +152,7 @@ impl ChatApp {
 }
 
 impl TextMessage {
-    fn draw(&self, ui: &mut egui::Ui, incoming: Option<&String>) {
+    fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>) {
         let (direction, _fill_color) = if incoming.is_some() {
             (
                 egui::Direction::LeftToRight,
@@ -178,10 +183,19 @@ impl TextMessage {
                         ),
                     ))
                     .show(line, |g| {
-                        if let Some(name) = incoming {
+                        if let Some(peer) = incoming {
                             g.vertical(|g| {
-                                g.label(name)
-                                    .on_hover_text_at_pointer(self.ip().to_string());
+                                g.horizontal(|h| {
+                                    if peer.is_online() {
+                                        h.label(ONLINE_DOT.to_string());
+                                    }
+                                    if peer.name().is_empty() {
+                                        h.label(self.ip().to_string());
+                                    } else {
+                                        h.label(peer.name())
+                                            .on_hover_text_at_pointer(self.ip().to_string());
+                                    }
+                                });
                                 g.heading(self.text());
                             });
                         } else {

@@ -1,5 +1,6 @@
 pub mod message;
 
+use self::message::Id;
 use message::{Command, Message};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
@@ -9,7 +10,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-use self::message::Id;
+pub const ONLINE_DOT: char = '⏺';
 
 pub enum Recepients {
     One(Ipv4Addr),
@@ -29,7 +30,24 @@ impl Repaintable for RepaintDummy {
     fn request_repaint(&self) {}
 }
 
-pub type UserName = String;
+pub struct Peer {
+    name: String,
+    online: bool,
+}
+impl Peer {
+    pub fn new(name: impl Into<String>) -> Self {
+        Peer {
+            name: name.into(),
+            online: true,
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn is_online(&self) -> bool {
+        self.online
+    }
+}
 
 pub struct UdpChat {
     socket: Option<Arc<UdpSocket>>,
@@ -40,7 +58,7 @@ pub struct UdpChat {
     sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
     pub message: Message,
     pub history: Vec<TextMessage>,
-    pub peers: BTreeMap<Ipv4Addr, UserName>,
+    pub peers: BTreeMap<Ipv4Addr, Peer>,
     all_recepients: Vec<String>,
     // db: Option<Connection>,
     // pub db_status: String,
@@ -90,7 +108,7 @@ impl UdpChat {
             sync_receiver: rx,
             message: Message::empty(),
             history: Vec::<TextMessage>::new(),
-            peers: BTreeMap::<Ipv4Addr, String>::new(),
+            peers: BTreeMap::<Ipv4Addr, Peer>::new(),
             all_recepients: vec![],
         }
     }
@@ -162,7 +180,7 @@ impl UdpChat {
 
         let bytes = self.message.to_be_bytes();
         if let Some(socket) = &self.socket {
-            if self.peers.len() == 1 {
+            if !self.peers.values().any(|p| p.is_online()) {
                 addrs = Recepients::All;
             }
             match addrs {
@@ -204,7 +222,7 @@ impl UdpChat {
                     self.history
                         .push(TextMessage::new(r_ip, r_msg.id, "entered room.."));
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(name.to_string());
+                        ip.insert(Peer::new(name));
                         if r_ip != self.ip {
                             self.message = Message::enter(&self.name);
                             self.send(Recepients::One(r_ip));
@@ -214,7 +232,7 @@ impl UdpChat {
                 Command::Text | Command::Repeat => {
                     self.history.push(txt_msg);
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(r_ip.to_string());
+                        ip.insert(Peer::new(r_ip.to_string()));
                         if r_ip != self.ip {
                             self.message = Message::enter(&self.name);
                             self.send(Recepients::One(r_ip));
@@ -248,7 +266,7 @@ impl UdpChat {
                 Command::Exit => {
                     self.history
                         .push(TextMessage::new(r_ip, r_msg.id, "left room.."));
-                    self.peers.remove(&r_ip);
+                    self.peers.entry(r_ip).and_modify(|p| p.online = false);
                 }
                 _ => (),
             }
