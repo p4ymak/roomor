@@ -127,8 +127,11 @@ impl ChatApp {
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
                         if !peer.online {
                             peer.online = true;
-                            peer.name = name;
                             self.history.push(TextMessage::enter(r_ip));
+                        }
+                        if peer.name != name {
+                            // FIXME
+                            peer.name = name;
                         }
                     }
                 }

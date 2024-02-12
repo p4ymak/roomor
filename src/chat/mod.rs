@@ -197,10 +197,8 @@ impl UdpChat {
     pub fn prelude(&mut self, name: &str, port: u16) {
         self.name = name.to_string();
         self.port = port;
-        self.message = Message::enter(&self.name);
         self.connect().ok(); // FIXME Handle Error
         self.listen();
-        self.send(Recepients::All);
     }
 
     fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
@@ -224,6 +222,8 @@ impl UdpChat {
     }
 
     pub fn run(&mut self, ctx: &impl Repaintable) {
+        self.message = Message::enter(&self.name);
+        self.send(Recepients::All);
         loop {
             self.read_front_events();
             self.receive(ctx);
@@ -346,6 +346,7 @@ impl UdpChat {
                 continue;
             }
             let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
+            // FIXME
             if !self.peers.contains(&r_ip) {
                 self.front_tx
                     .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
