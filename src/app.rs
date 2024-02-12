@@ -82,9 +82,7 @@ impl ChatApp {
                     ..
                 } => {
                     if self.init {
-                        if !self.chat.peers.is_empty() {
-                            self.send()
-                        }
+                        self.send()
                     } else {
                         self.chat.prelude(ctx);
                         self.init = true;
@@ -132,6 +130,7 @@ impl ChatApp {
                 }
                 egui::widgets::global_dark_light_mode_switch(h);
                 if self.init {
+                    h.separator();
                     h.add(
                         egui::Label::new(format!(
                             "Online: {}",
@@ -148,7 +147,10 @@ impl ChatApp {
                             h.label(label);
                         }
                     });
-                    h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                    h.separator();
+                    h.label(&self.chat.name).on_hover_ui_at_pointer(|h| {
+                        h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                    });
                 }
             });
         });
