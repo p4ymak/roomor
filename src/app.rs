@@ -67,7 +67,7 @@ impl Default for ChatApp {
 
         ChatApp {
             name: String::default(),
-            ip: Ipv4Addr::new(0, 0, 0, 0),
+            ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(UdpChat::new(
                 String::new(),
@@ -161,7 +161,7 @@ impl ChatApp {
     fn init_chat(&mut self, ctx: &egui::Context) {
         if let Some(mut init) = self.chat_init.take() {
             let ctx = Notifier::new(ctx, self.audio_handler.clone());
-            init.prelude();
+            init.prelude(&self.name, self.port);
             thread::spawn(move || init.run(&ctx));
         }
         self.back_tx

@@ -103,6 +103,7 @@ pub enum MessageContent {
     Left,
     Text(String),
 }
+
 #[allow(dead_code)]
 pub struct TextMessage {
     ip: Ipv4Addr,
@@ -193,10 +194,12 @@ impl UdpChat {
         }
     }
 
-    pub fn prelude(&mut self) {
+    pub fn prelude(&mut self, name: &str, port: u16) {
+        self.name = name.to_string();
+        self.port = port;
+        self.message = Message::enter(&self.name);
         self.connect().ok(); // FIXME Handle Error
         self.listen();
-        self.message = Message::enter(&self.name);
         self.send(Recepients::All);
     }
 
