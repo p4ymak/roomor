@@ -159,9 +159,13 @@ impl ChatApp {
                         }
                     });
                     h.separator();
-                    h.label(&self.chat.name).on_hover_ui_at_pointer(|h| {
+                    if self.chat.name.is_empty() {
                         h.label(format!("{}:{}", self.chat.ip, self.chat.port));
-                    });
+                    } else {
+                        h.label(&self.chat.name).on_hover_ui_at_pointer(|h| {
+                            h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                        });
+                    }
                 }
             });
         });
