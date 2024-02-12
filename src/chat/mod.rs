@@ -65,6 +65,7 @@ pub enum MessageContent {
     Left,
     Text(String),
 }
+#[allow(dead_code)]
 pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,
@@ -96,7 +97,7 @@ impl TextMessage {
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
-    pub fn id(&self) -> Id {
+    pub fn _id(&self) -> Id {
         self.id
     }
     pub fn content(&self) -> &MessageContent {

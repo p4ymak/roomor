@@ -1,4 +1,4 @@
-use crate::chat::{MessageContent, Peer, Repaintable, TextMessage};
+use crate::chat::{message::MAX_TEXT_SIZE, MessageContent, Peer, Repaintable, TextMessage};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
@@ -16,6 +16,7 @@ impl eframe::App for ChatApp {
         self.chat.send(Recepients::All);
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.top_panel(ctx);
         if !self.init {
             self.setup(ctx);
         } else {
@@ -41,7 +42,7 @@ impl Default for ChatApp {
         ChatApp {
             init: false,
             chat: UdpChat::new(String::new(), 4444),
-            text: String::new(),
+            text: String::with_capacity(MAX_TEXT_SIZE),
         }
     }
 }
@@ -81,7 +82,9 @@ impl ChatApp {
                     ..
                 } => {
                     if self.init {
-                        self.send()
+                        if !self.chat.peers.is_empty() {
+                            self.send()
+                        }
                     } else {
                         self.chat.prelude(ctx);
                         self.init = true;
@@ -97,6 +100,11 @@ impl ChatApp {
         })
     }
 
+    fn limit_text(&mut self) {
+        self.text = self.text.trim_end_matches('\n').to_string();
+        self.text.truncate(MAX_TEXT_SIZE);
+    }
+
     fn send(&mut self) {
         if !self.text.trim().is_empty() {
             self.chat.message = Message::text(&self.text);
@@ -105,7 +113,7 @@ impl ChatApp {
         self.text = String::new();
     }
 
-    fn draw(&mut self, ctx: &egui::Context) {
+    fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
                 if h.button(egui::RichText::new("-").monospace()).clicked() {
@@ -123,34 +131,49 @@ impl ChatApp {
                     h.ctx().request_repaint();
                 }
                 egui::widgets::global_dark_light_mode_switch(h);
-
-                h.add(
-                    egui::Label::new(format!(
-                        "Online: {}",
-                        self.chat.peers.values().filter(|p| p.is_online()).count()
-                    ))
-                    .wrap(false),
-                )
-                .on_hover_ui(|h| {
-                    for (ip, peer) in self.chat.peers.iter() {
-                        let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
-                        if !peer.is_online() {
-                            label = label.weak();
+                if self.init {
+                    h.add(
+                        egui::Label::new(format!(
+                            "Online: {}",
+                            self.chat.peers.values().filter(|p| p.is_online()).count()
+                        ))
+                        .wrap(false),
+                    )
+                    .on_hover_ui(|h| {
+                        for (ip, peer) in self.chat.peers.iter() {
+                            let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
+                            if !peer.is_online() {
+                                label = label.weak();
+                            }
+                            h.label(label);
                         }
-                        h.label(label);
-                    }
-                });
-                h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                    });
+                    h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                }
             });
         });
+    }
 
+    fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
+                let y = ui.max_rect().min.y;
+                let rect = ui.clip_rect();
+                let len = self.text.len();
+                if len > 0 {
+                    ui.painter().hline(
+                        rect.min.x..=(rect.max.x * (len as f32 / MAX_TEXT_SIZE as f32)),
+                        y,
+                        ui.style().visuals.widgets.inactive.fg_stroke,
+                    );
+                }
                 ui.horizontal(|h| {
+                    self.limit_text();
                     h.add(
                         egui::TextEdit::multiline(&mut self.text)
                             .frame(false)
+                            .desired_rows(3)
                             .desired_width(h.available_rect_before_wrap().width()),
                     )
                     .request_focus();

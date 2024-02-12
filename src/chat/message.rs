@@ -4,6 +4,7 @@ use std::fmt;
 use std::time::SystemTime;
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
+pub const MAX_TEXT_SIZE: usize = 116;
 
 #[derive(Debug, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
@@ -75,7 +76,7 @@ impl Message {
             data,
         }
     }
-    pub fn retry_text(id: u32, text: &str) -> Self {
+    pub fn _retry_text(id: u32, text: &str) -> Self {
         let data = be_u8_from_str(
             text.to_owned()
                 .chars()
