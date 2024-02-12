@@ -179,17 +179,17 @@ impl UdpChat {
 
     fn listen(&self, ctx: &impl Repaintable) {
         if let Some(socket) = &self.socket {
-            let reader = Arc::clone(socket);
+            let socket = Arc::clone(socket);
             let receiver = self.sync_sender.clone();
             let ctx = ctx.clone();
             let play_audio = Arc::clone(&self.play_audio);
-
+            let port = self.port;
             thread::spawn(move || {
                 let mut sound_stream = OutputStream::try_default().ok();
                 let mut buf = [0; 2048];
                 loop {
                     if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
-                        reader.recv_from(&mut buf)
+                        socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
                         if let Some(message) =
@@ -197,10 +197,16 @@ impl UdpChat {
                         {
                             if matches!(
                                 &message.command,
-                                Command::Enter | Command::Exit | Command::Text
+                                Command::Enter | Command::Exit | Command::Text | Command::Greating
                             ) && play_audio.load(std::sync::atomic::Ordering::Relaxed)
                             {
                                 play_sound(&mut sound_stream);
+                            }
+                            if message.command == Command::Enter {
+                                let greating = Message::greating();
+                                socket
+                                    .send_to(&greating.to_be_bytes(), SocketAddrV4::new(ip, port))
+                                    .ok();
                             }
                             receiver.send((ip, message)).ok();
                             ctx.request_repaint();
@@ -259,7 +265,7 @@ impl UdpChat {
             }
             let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
             match r_msg.command {
-                Command::Enter => {
+                Command::Enter | Command::Greating => {
                     new_message = true;
                     let name = String::from_utf8_lossy(&r_msg.data);
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {

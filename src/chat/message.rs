@@ -11,6 +11,7 @@ pub const MAX_TEXT_SIZE: usize = 116;
 pub enum Command {
     Empty,
     Enter,
+    Greating,
     Text,
     Damaged,
     AskToRepeat,
@@ -98,16 +99,18 @@ impl Message {
             id: 0,
             checksum: 0,
             command: Command::Empty,
-            data: [].to_vec(),
+            data: vec![],
         }
     }
 
     pub fn enter(name: &str) -> Self {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
-
+    pub fn greating() -> Self {
+        Message::new(Command::Greating, vec![])
+    }
     pub fn exit() -> Self {
-        Message::new(Command::Exit, [].to_vec())
+        Message::new(Command::Exit, vec![])
     }
 
     pub fn text(text: &str) -> Self {
