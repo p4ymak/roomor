@@ -336,14 +336,22 @@ impl UdpChat {
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
-        let mut recepients = None;
+        let mut replies = vec![];
 
         for (r_ip, r_msg) in self.listen_rx.try_iter() {
             if r_ip == self.ip {
                 continue;
             }
             let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
-
+            if !self.peers.contains(&r_ip) {
+                self.front_tx
+                    .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
+                    .ok();
+                self.peers.insert(r_ip);
+                if r_ip != self.ip {
+                    replies.push(Recepients::One(r_ip));
+                }
+            }
             match r_msg.command {
                 Command::Enter | Command::Greating => {
                     let name = String::from_utf8_lossy(&r_msg.data);
@@ -354,16 +362,6 @@ impl UdpChat {
                     ctx.request_repaint();
                 }
                 Command::Text | Command::Repeat => {
-                    if !self.peers.contains(&r_ip) {
-                        self.front_tx
-                            .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
-                            .ok();
-                        self.peers.insert(r_ip);
-                        if r_ip != self.ip {
-                            self.message = Message::enter(&self.name);
-                            recepients = Some(Recepients::One(r_ip));
-                        }
-                    }
                     self.front_tx.send(BackEvent::Message(txt_msg)).ok();
                     ctx.request_repaint()
                 }
@@ -399,8 +397,9 @@ impl UdpChat {
                 _ => (),
             }
         }
-        if let Some(recepients) = recepients {
-            self.send(recepients);
+        for recepient in replies {
+            self.message = Message::enter(&self.name);
+            self.send(recepient);
         }
     }
 }
