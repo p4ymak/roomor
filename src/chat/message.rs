@@ -106,9 +106,9 @@ impl Message {
     pub fn enter(name: &str) -> Self {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
-    pub fn greating(name: &str) -> Self {
-        Message::new(Command::Greating, be_u8_from_str(name))
-    }
+    // pub fn greating(name: &str) -> Self {
+    //     Message::new(Command::Greating, be_u8_from_str(name))
+    // }
     pub fn exit() -> Self {
         Message::new(Command::Exit, vec![])
     }

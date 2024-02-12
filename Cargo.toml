@@ -8,6 +8,7 @@ description = "Chat over local network."
 
 [dependencies]
 eframe = "0.26"
+flume = "0.11.0"
 chrono = "0.4.34"
 enumn = "0.1.13"
 crc = "3.0.1"

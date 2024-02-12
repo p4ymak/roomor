@@ -1,29 +1,44 @@
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    net::Ipv4Addr,
+    sync::{atomic::AtomicBool, Arc},
+    thread,
+};
+
 use super::chat::{
-    message::{Message, MAX_TEXT_SIZE},
-    MessageContent, Peer, Recepients, Repaintable, TextMessage, UdpChat,
+    message::MAX_TEXT_SIZE, BackEvent, FrontEvent, MessageContent, Notifier, Repaintable,
+    TextMessage, UdpChat,
 };
 use eframe::{egui, CreationContext};
 use egui::*;
+use flume::{Receiver, Sender};
+use rodio::{OutputStream, OutputStreamHandle};
 
 pub struct ChatApp {
-    init: bool,
-    chat: UdpChat,
+    name: String,
+    ip: Ipv4Addr,
+    port: u16,
+    chat_init: Option<UdpChat>,
+    history: Vec<TextMessage>,
+    peers: BTreeMap<Ipv4Addr, Peer>,
     text: String,
+    _audio: Option<OutputStream>,
+    audio_handler: Option<OutputStreamHandle>,
+    play_audio: Arc<AtomicBool>,
+    back_rx: Receiver<BackEvent>,
+    back_tx: Sender<FrontEvent>,
 }
 
 impl eframe::App for ChatApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.chat.message = Message::exit();
-        self.chat.send(Recepients::All);
+        self.back_tx.send(FrontEvent::Exit).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.top_panel(ctx);
-        if !self.init {
+        if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
-            if self.chat.receive() {
-                ctx.request_repaint();
-            }
+            self.read_events();
             self.draw(ctx);
         }
         self.handle_keys(ctx);
@@ -42,10 +57,33 @@ impl eframe::App for ChatApp {
 
 impl Default for ChatApp {
     fn default() -> Self {
+        let (_audio, audio_handler) = match OutputStream::try_default() {
+            Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
+            Err(_) => (None, None),
+        };
+        let (back_tx, front_rx) = flume::unbounded();
+        let (front_tx, back_rx) = flume::unbounded();
+        let play_audio = Arc::new(AtomicBool::new(true));
+
         ChatApp {
-            init: false,
-            chat: UdpChat::new(String::new(), 4444),
+            name: String::default(),
+            ip: Ipv4Addr::new(0, 0, 0, 0),
+            port: 4444,
+            chat_init: Some(UdpChat::new(
+                String::new(),
+                4444,
+                front_tx,
+                front_rx,
+                play_audio.clone(),
+            )),
+            history: vec![],
+            peers: BTreeMap::<Ipv4Addr, Peer>::new(),
             text: String::with_capacity(MAX_TEXT_SIZE),
+            _audio,
+            audio_handler,
+            play_audio,
+            back_rx,
+            back_tx,
         }
     }
 }
@@ -54,9 +92,54 @@ impl Repaintable for egui::Context {
         self.request_repaint()
     }
 }
+
+pub struct Peer {
+    name: String,
+    online: bool,
+}
+impl Peer {
+    pub fn new(name: impl Into<String>) -> Self {
+        Peer {
+            name: name.into(),
+            online: true,
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn is_online(&self) -> bool {
+        self.online
+    }
+}
+
 impl ChatApp {
     pub fn new(_cc: &CreationContext) -> Self {
         ChatApp::default()
+    }
+
+    fn read_events(&mut self) {
+        for event in self.back_rx.try_iter() {
+            match event {
+                BackEvent::PeerJoined((r_ip, name)) => {
+                    if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
+                        ip.insert(Peer::new(name));
+                        self.history.push(TextMessage::enter(r_ip));
+                    } else if let Some(peer) = self.peers.get_mut(&r_ip) {
+                        if !peer.online {
+                            peer.online = true;
+                            peer.name = name;
+                            self.history.push(TextMessage::enter(r_ip));
+                        }
+                    }
+                }
+                BackEvent::PeerLeft(ip) => {
+                    self.history.push(TextMessage::exit(ip));
+                    self.peers.entry(ip).and_modify(|p| p.online = false);
+                }
+                BackEvent::Message(msg) => self.history.push(msg),
+                BackEvent::MyIp(ip) => self.ip = ip,
+            }
+        }
     }
 
     fn setup(&mut self, ctx: &egui::Context) {
@@ -68,14 +151,23 @@ impl ChatApp {
                 ui.heading(rmr);
                 ui.group(|ui| {
                     ui.heading("Port");
-                    ui.add(egui::DragValue::new(&mut self.chat.port));
+                    ui.add(egui::DragValue::new(&mut self.port));
                     ui.heading("Display Name");
-                    ui.text_edit_singleline(&mut self.chat.name).request_focus();
+                    ui.text_edit_singleline(&mut self.name).request_focus();
                 });
             });
         });
     }
-
+    fn init_chat(&mut self, ctx: &egui::Context) {
+        if let Some(mut init) = self.chat_init.take() {
+            let ctx = Notifier::new(ctx, self.audio_handler.clone());
+            init.prelude();
+            thread::spawn(move || init.run(&ctx));
+        }
+        self.back_tx
+            .send(FrontEvent::Enter(self.name.to_string()))
+            .ok();
+    }
     fn handle_keys(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
             i.raw.events.iter().for_each(|event| match event {
@@ -84,18 +176,17 @@ impl ChatApp {
                     pressed: true,
                     ..
                 } => {
-                    if self.init {
-                        self.send()
+                    if self.chat_init.is_some() {
+                        self.init_chat(ctx);
                     } else {
-                        self.chat.prelude(ctx);
-                        self.init = true;
+                        self.send();
                     }
                 }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
                     ..
-                } => self.chat.clear_history(),
+                } => self.history.clear(),
                 _ => (),
             })
         })
@@ -107,11 +198,11 @@ impl ChatApp {
     }
 
     fn send(&mut self) {
-        if !self.text.trim().is_empty() {
-            self.chat.message = Message::text(&self.text);
-            self.chat.send(Recepients::Peers);
+        if !self.text.trim().is_empty() && self.peers.values().any(|p| p.is_online()) {
+            self.back_tx
+                .send(FrontEvent::Send(std::mem::take(&mut self.text)))
+                .ok();
         }
-        self.text = String::new();
     }
 
     fn top_panel(&mut self, ctx: &egui::Context) {
@@ -134,17 +225,17 @@ impl ChatApp {
                 egui::widgets::global_dark_light_mode_switch(h);
                 h.separator();
                 self.sound_mute_button(h);
-                if self.init {
+                if self.chat_init.is_none() {
                     h.separator();
                     h.add(
                         egui::Label::new(format!(
                             "Online: {}",
-                            self.chat.peers.values().filter(|p| p.is_online()).count()
+                            self.peers.values().filter(|p| p.is_online()).count()
                         ))
                         .wrap(false),
                     )
                     .on_hover_ui(|h| {
-                        for (ip, peer) in self.chat.peers.iter() {
+                        for (ip, peer) in self.peers.iter() {
                             let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
                             if !peer.is_online() {
                                 label = label.weak();
@@ -153,11 +244,11 @@ impl ChatApp {
                         }
                     });
                     h.separator();
-                    if self.chat.name.is_empty() {
-                        h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                    if self.name.is_empty() {
+                        h.label(format!("{}:{}", self.ip, self.port));
                     } else {
-                        h.label(&self.chat.name).on_hover_ui_at_pointer(|h| {
-                            h.label(format!("{}:{}", self.chat.ip, self.chat.port));
+                        h.label(&self.name).on_hover_ui_at_pointer(|h| {
+                            h.label(format!("{}:{}", self.ip, self.port));
                         });
                     }
                 }
@@ -195,25 +286,21 @@ impl ChatApp {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    self.chat.history.iter().for_each(|m| {
-                        m.draw(ui, self.chat.peers.get(&m.ip()));
+                    self.history.iter().for_each(|m| {
+                        m.draw(ui, self.peers.get(&m.ip()));
                     });
                 });
         });
     }
     fn sound_mute_button(&mut self, ui: &mut egui::Ui) {
-        let play_audio = self
-            .chat
-            .play_audio
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let play_audio = self.play_audio.load(std::sync::atomic::Ordering::Relaxed);
         let icon = if play_audio {
             egui::RichText::new("🔉").monospace()
         } else {
             egui::RichText::new("🔇").monospace()
         };
         if ui.button(icon).clicked() {
-            self.chat
-                .play_audio
+            self.play_audio
                 .store(!play_audio, std::sync::atomic::Ordering::Relaxed);
         }
     }
