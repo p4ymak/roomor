@@ -1,12 +1,16 @@
 pub mod message;
 
 use message::{Command, Id, Message};
+use rodio::source::SineWave;
+use rodio::{OutputStream, OutputStreamHandle, Source};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc};
 use std::thread;
+use std::time::Duration;
 
 pub enum Recepients {
     One(Ipv4Addr),
@@ -52,6 +56,7 @@ pub struct UdpChat {
     pub name: String,
     sync_sender: mpsc::SyncSender<(Ipv4Addr, Message)>,
     sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
+    pub play_audio: Arc<AtomicBool>,
     pub message: Message,
     pub history: Vec<TextMessage>,
     pub peers: BTreeMap<Ipv4Addr, Peer>,
@@ -138,6 +143,7 @@ impl UdpChat {
             name,
             sync_sender: tx,
             sync_receiver: rx,
+            play_audio: Arc::new(AtomicBool::new(true)),
             message: Message::empty(),
             history: Vec::<TextMessage>::new(),
             peers: BTreeMap::<Ipv4Addr, Peer>::new(),
@@ -176,7 +182,10 @@ impl UdpChat {
             let reader = Arc::clone(socket);
             let receiver = self.sync_sender.clone();
             let ctx = ctx.clone();
+            let play_audio = Arc::clone(&self.play_audio);
+
             thread::spawn(move || {
+                let mut sound_stream = OutputStream::try_default().ok();
                 let mut buf = [0; 2048];
                 loop {
                     if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
@@ -186,8 +195,15 @@ impl UdpChat {
                         if let Some(message) =
                             Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
-                            ctx.request_repaint();
+                            if matches!(
+                                &message.command,
+                                Command::Enter | Command::Exit | Command::Text
+                            ) && play_audio.load(std::sync::atomic::Ordering::Relaxed)
+                            {
+                                play_sound(&mut sound_stream);
+                            }
                             receiver.send((ip, message)).ok();
+                            ctx.request_repaint();
                         }
                     }
                 }
@@ -327,4 +343,22 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
+}
+fn play_sound(stream: &mut Option<(OutputStream, OutputStreamHandle)>) {
+    if let Some((_stream, handle)) = stream {
+        let mix = SineWave::new(432.0)
+            .take_duration(Duration::from_secs_f32(0.2))
+            .amplify(0.20)
+            .fade_in(Duration::from_secs_f32(0.2))
+            .buffered()
+            .reverb(Duration::from_secs_f32(0.5), 0.2);
+        let mix = SineWave::new(564.0)
+            .take_duration(Duration::from_secs_f32(0.2))
+            .amplify(0.10)
+            .fade_in(Duration::from_secs_f32(0.2))
+            .buffered()
+            .reverb(Duration::from_secs_f32(0.3), 0.2)
+            .mix(mix);
+        handle.play_raw(mix).ok();
+    }
 }
