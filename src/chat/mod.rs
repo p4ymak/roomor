@@ -184,6 +184,7 @@ impl UdpChat {
             let ctx = ctx.clone();
             let play_audio = Arc::clone(&self.play_audio);
             let port = self.port;
+            let name = self.name.clone();
             thread::spawn(move || {
                 let mut sound_stream = OutputStream::try_default().ok();
                 let mut buf = [0; 2048];
@@ -203,7 +204,7 @@ impl UdpChat {
                                 play_sound(&mut sound_stream);
                             }
                             if message.command == Command::Enter {
-                                let greating = Message::greating();
+                                let greating = Message::greating(&name);
                                 socket
                                     .send_to(&greating.to_be_bytes(), SocketAddrV4::new(ip, port))
                                     .ok();
@@ -271,15 +272,15 @@ impl UdpChat {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
                         self.history.push(TextMessage::enter(r_ip, r_msg.id));
-                        self.message = Message::enter(&self.name);
-                        self.send(Recepients::One(r_ip));
+                        // self.message = Message::greating(&self.name);
+                        // self.send(Recepients::One(r_ip));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
                         if !peer.online {
                             peer.online = true;
                             peer.name = txt_msg.text().to_string();
                             self.history.push(TextMessage::enter(r_ip, r_msg.id));
-                            self.message = Message::enter(&self.name);
-                            self.send(Recepients::One(r_ip));
+                            // self.message = Message::greting(&self.name);
+                            // self.send(Recepients::One(r_ip));
                         }
                     }
                 }
