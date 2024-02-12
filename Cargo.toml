@@ -11,6 +11,7 @@ eframe = "0.26"
 chrono = "0.4.34"
 enumn = "0.1.13"
 crc = "3.0.1"
+rodio = "0.17.3"
 
 [profile.release]
 opt-level = 3

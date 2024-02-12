@@ -235,16 +235,17 @@ impl UdpChat {
         self.message = Message::empty();
     }
 
-    pub fn receive(&mut self) {
+    pub fn receive(&mut self) -> bool {
+        let mut new_message = false;
         if let Ok((r_ip, r_msg)) = self.sync_receiver.try_recv() {
             if r_ip == self.ip {
-                return;
+                return new_message;
             }
             let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
             match r_msg.command {
                 Command::Enter => {
+                    new_message = true;
                     let name = String::from_utf8_lossy(&r_msg.data);
-
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
                         self.history.push(TextMessage::enter(r_ip, r_msg.id));
@@ -261,6 +262,7 @@ impl UdpChat {
                     }
                 }
                 Command::Text | Command::Repeat => {
+                    new_message = true;
                     self.history.push(txt_msg);
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(r_ip.to_string()));
@@ -295,12 +297,14 @@ impl UdpChat {
                 //     self.send(Recepients::One(r_ip));
                 // }
                 Command::Exit => {
+                    new_message = true;
                     self.history.push(TextMessage::exit(r_ip, r_msg.id));
                     self.peers.entry(r_ip).and_modify(|p| p.online = false);
                 }
                 _ => (),
             }
         }
+        new_message
     }
 
     pub fn clear_history(&mut self) {

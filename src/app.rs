@@ -1,13 +1,18 @@
+use std::time::Duration;
+
 use crate::chat::{message::MAX_TEXT_SIZE, MessageContent, Peer, Repaintable, TextMessage};
 
 use super::chat::{message::Message, Recepients, UdpChat};
 use eframe::{egui, CreationContext};
 use egui::*;
+use rodio::{source::SineWave, OutputStream, OutputStreamHandle, Source};
 
 pub struct ChatApp {
     init: bool,
     chat: UdpChat,
     text: String,
+    audio_handle: Option<(OutputStream, OutputStreamHandle)>,
+    audio_enabled: bool,
 }
 
 impl eframe::App for ChatApp {
@@ -20,7 +25,9 @@ impl eframe::App for ChatApp {
         if !self.init {
             self.setup(ctx);
         } else {
-            self.chat.receive();
+            if self.chat.receive() {
+                self.play_sound();
+            }
             self.draw(ctx);
         }
         self.handle_keys(ctx);
@@ -43,6 +50,8 @@ impl Default for ChatApp {
             init: false,
             chat: UdpChat::new(String::new(), 4444),
             text: String::with_capacity(MAX_TEXT_SIZE),
+            audio_handle: OutputStream::try_default().ok(),
+            audio_enabled: true,
         }
     }
 }
@@ -129,6 +138,8 @@ impl ChatApp {
                     h.ctx().request_repaint();
                 }
                 egui::widgets::global_dark_light_mode_switch(h);
+                h.separator();
+                self.sound_mute_button(h);
                 if self.init {
                     h.separator();
                     h.add(
@@ -191,6 +202,37 @@ impl ChatApp {
                     });
                 });
         });
+    }
+    fn sound_mute_button(&mut self, ui: &mut egui::Ui) {
+        let icon = if self.audio_enabled {
+            egui::RichText::new("🔉").monospace()
+        } else {
+            egui::RichText::new("🔇").monospace()
+        };
+        if ui.button(icon).clicked() {
+            self.audio_enabled = !self.audio_enabled;
+        }
+    }
+    fn play_sound(&mut self) {
+        if !self.audio_enabled {
+            return;
+        }
+        if let Some((_stream, handle)) = &mut self.audio_handle {
+            let mix = SineWave::new(432.0)
+                .take_duration(Duration::from_secs_f32(0.2))
+                .amplify(0.20)
+                .fade_in(Duration::from_secs_f32(0.2))
+                .buffered()
+                .reverb(Duration::from_secs_f32(0.5), 0.2);
+            let mix = SineWave::new(564.0)
+                .take_duration(Duration::from_secs_f32(0.2))
+                .amplify(0.10)
+                .fade_in(Duration::from_secs_f32(0.2))
+                .buffered()
+                .reverb(Duration::from_secs_f32(0.3), 0.2)
+                .mix(mix);
+            handle.play_raw(mix).ok();
+        }
     }
 }
 
