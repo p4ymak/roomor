@@ -7,8 +7,7 @@ resolver = "2"
 description = "Chat over local network."
 
 [dependencies]
-local_ipaddress = "0.1.3"
-eframe = "0.26.0"
+eframe = "0.26.1"
 chrono = "0.4.34"
 enumn = "0.1.13"
 crc = "3.0.1"

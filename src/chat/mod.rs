@@ -1,13 +1,11 @@
 pub mod message;
 
-use self::message::Id;
-use message::{Command, Message};
+use message::{Command, Id, Message};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
-use std::sync::mpsc;
-use std::sync::Arc;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use std::sync::{mpsc, Arc};
 use std::thread;
 
 pub enum Recepients {
@@ -50,14 +48,14 @@ impl Peer {
 pub struct UdpChat {
     socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
-    pub port: usize,
+    pub port: u16,
     pub name: String,
     sync_sender: mpsc::SyncSender<(Ipv4Addr, Message)>,
     sync_receiver: mpsc::Receiver<(Ipv4Addr, Message)>,
     pub message: Message,
     pub history: Vec<TextMessage>,
     pub peers: BTreeMap<Ipv4Addr, Peer>,
-    all_recepients: Vec<String>,
+    all_recepients: Vec<Ipv4Addr>,
 }
 
 pub enum MessageContent {
@@ -130,7 +128,7 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(name: String, port: usize) -> Self {
+    pub fn new(name: String, port: u16) -> Self {
         let (tx, rx) = mpsc::sync_channel::<(Ipv4Addr, Message)>(0);
 
         UdpChat {
@@ -148,28 +146,18 @@ impl UdpChat {
     }
 
     pub fn prelude(&mut self, ctx: &impl Repaintable) {
-        self.connect().ok();
+        self.connect().ok(); // FIXME Handle Error
         self.listen(ctx);
         self.message = Message::enter(&self.name);
         self.send(Recepients::All);
     }
 
     fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
-        let my_ip = local_ipaddress::get()
-            .ok_or("no local")?
-            .parse::<Ipv4Addr>()?;
-        self.ip = my_ip;
+        self.ip = get_my_ipv4().ok_or("No local IpV4")?;
+        let octets = self.ip.octets();
+
         self.all_recepients = (0..=254)
-            .map(|i| {
-                format!(
-                    "{}.{}.{}.{}:{}",
-                    self.ip.octets()[0],
-                    self.ip.octets()[1],
-                    self.ip.octets()[2],
-                    i,
-                    self.port
-                )
-            })
+            .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
             .collect();
         self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
             Ok(socket) => {
@@ -211,7 +199,6 @@ impl UdpChat {
         if self.message.command == Command::Empty {
             return;
         }
-
         let bytes = self.message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if !self.peers.values().any(|p| p.is_online()) {
@@ -221,7 +208,11 @@ impl UdpChat {
                 Recepients::All => self
                     .all_recepients
                     .iter()
-                    .map(|r| socket.send_to(&bytes, r).is_ok())
+                    .map(|r| {
+                        socket
+                            .send_to(&bytes, SocketAddrV4::new(*r, self.port))
+                            .is_ok()
+                    })
                     .all(|r| r),
                 Recepients::Peers => self
                     .peers
@@ -315,4 +306,21 @@ impl UdpChat {
     pub fn clear_history(&mut self) {
         self.history.clear();
     }
+}
+
+pub fn get_my_ipv4() -> Option<Ipv4Addr> {
+    let socket = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+
+    match socket.connect("8.8.8.8:80") {
+        Ok(()) => (),
+        Err(_) => return None,
+    };
+
+    if let Ok(SocketAddr::V4(addr)) = socket.local_addr() {
+        return Some(addr.ip().to_owned());
+    }
+    None
 }
