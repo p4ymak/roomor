@@ -14,6 +14,7 @@ fn main() -> Result<(), eframe::Error> {
             .with_inner_size([300.0, 600.0])
             .with_min_inner_size([280.0, 280.0])
             .with_always_on_top(),
+
         ..Default::default()
     };
 

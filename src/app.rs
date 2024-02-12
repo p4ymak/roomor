@@ -21,7 +21,9 @@ impl eframe::App for ChatApp {
         if !self.init {
             self.setup(ctx);
         } else {
-            self.chat.receive();
+            if self.chat.receive() {
+                ctx.request_repaint();
+            }
             self.draw(ctx);
         }
         self.handle_keys(ctx);

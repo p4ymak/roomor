@@ -272,6 +272,7 @@ impl UdpChat {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name));
                         self.history.push(TextMessage::enter(r_ip, r_msg.id));
+
                         // self.message = Message::greating(&self.name);
                         // self.send(Recepients::One(r_ip));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
