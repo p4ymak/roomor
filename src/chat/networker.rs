@@ -1,7 +1,4 @@
-use super::{
-    message::{Command, Message},
-    BackEvent, Recepients,
-};
+use super::{message::Message, BackEvent, Recepients};
 use flume::Sender;
 use std::{
     collections::BTreeSet,
@@ -51,9 +48,6 @@ impl NetWorker {
     }
 
     pub fn send(&mut self, message: Message, mut addrs: Recepients) {
-        if message.command == Command::Empty {
-            return;
-        }
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.is_empty() {

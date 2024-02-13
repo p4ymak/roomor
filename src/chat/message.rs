@@ -9,7 +9,6 @@ pub const MAX_EMOJI_SIZE: usize = 8;
 #[derive(Debug, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
 pub enum Command {
-    Empty,
     Enter,
     Text,
     Icon,
@@ -47,7 +46,8 @@ impl fmt::Display for Message {
             self.checksum,
             self.command,
             match self.command {
-                Command::Text | Command::Damaged | Command::Repeat => string_from_be_u8(&self.data),
+                Command::Text | Command::Icon | Command::Damaged | Command::Repeat =>
+                    string_from_be_u8(&self.data),
                 Command::AskToRepeat => u32::from_be_bytes(
                     (0..4)
                         .map(|i| *self.data.get(i).unwrap_or(&0))
