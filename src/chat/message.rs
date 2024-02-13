@@ -11,7 +11,6 @@ pub const MAX_EMOJI_SIZE: usize = 8;
 pub enum Command {
     Empty,
     Enter,
-    Greating,
     Text,
     Icon,
     Damaged,
@@ -98,7 +97,7 @@ impl Message {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
     pub fn greating(name: &str) -> Self {
-        Message::new(Command::Greating, be_u8_from_str(name))
+        Message::new(Command::Enter, be_u8_from_str(name))
     }
     pub fn exit() -> Self {
         Message::new(Command::Exit, vec![])

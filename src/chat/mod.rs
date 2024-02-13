@@ -225,7 +225,7 @@ impl UdpChat {
                         }
                     }
                     match r_msg.command {
-                        Command::Enter | Command::Greating => {
+                        Command::Enter => {
                             let name = String::from_utf8_lossy(&r_msg.data);
                             self.sender
                                 .front_tx
