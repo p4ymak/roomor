@@ -4,6 +4,7 @@ use std::{fmt, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_TEXT_SIZE: usize = 116;
+pub const MAX_EMOJI_SIZE: usize = 8;
 
 #[derive(Debug, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
@@ -12,6 +13,7 @@ pub enum Command {
     Enter,
     Greating,
     Text,
+    Icon,
     Damaged,
     AskToRepeat,
     Repeat,
@@ -113,7 +115,18 @@ impl Message {
             ),
         )
     }
-
+    pub fn icon(text: &str) -> Self {
+        Message::new(
+            Command::Icon,
+            be_u8_from_str(
+                text.to_owned()
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect::<String>()
+                    .as_ref(),
+            ),
+        )
+    }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
         let id = u32::from_be_bytes([
             *bytes.first()?,

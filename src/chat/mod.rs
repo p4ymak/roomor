@@ -21,8 +21,10 @@ pub enum Recepients {
 #[derive(Debug)]
 pub enum FrontEvent {
     Enter(String),
-    Send(String),
+    Text(String),
+    Icon(String),
     Exit,
+    Empty,
 }
 #[derive(Debug)]
 pub enum BackEvent {
@@ -47,40 +49,47 @@ pub struct UdpChat {
     history: BTreeMap<Id, Message>,
 }
 
-#[derive(Debug)]
-pub enum MessageContent {
-    Joined,
-    Left,
-    Text(String),
-}
-
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,
-    content: MessageContent,
+    content: FrontEvent,
 }
 impl TextMessage {
-    pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
+    pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
         TextMessage {
             ip,
             id: msg.id,
-            content: MessageContent::Text(msg.read_text()),
+            content: match msg.command {
+                Command::Enter => FrontEvent::Enter(msg.read_text()),
+                Command::Text => FrontEvent::Text(msg.read_text()),
+                Command::Icon => FrontEvent::Icon(msg.read_text()),
+                Command::Exit => FrontEvent::Exit,
+                _ => FrontEvent::Empty,
+            },
         }
     }
-    pub fn enter(ip: Ipv4Addr) -> Self {
+    pub fn enter(ip: Ipv4Addr, name: String) -> Self {
         TextMessage {
             ip,
             id: 0,
-            content: MessageContent::Joined,
+            content: FrontEvent::Enter(name),
         }
     }
     pub fn exit(ip: Ipv4Addr) -> Self {
         TextMessage {
             ip,
             id: 0,
-            content: MessageContent::Left,
+            content: FrontEvent::Exit,
+        }
+    }
+
+    pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
+        TextMessage {
+            ip,
+            id: msg.id,
+            content: FrontEvent::Text(msg.read_text()),
         }
     }
 
@@ -90,7 +99,7 @@ impl TextMessage {
     pub fn _id(&self) -> Id {
         self.id
     }
-    pub fn content(&self) -> &MessageContent {
+    pub fn content(&self) -> &FrontEvent {
         &self.content
     }
     // pub fn text(&self) -> &str {
@@ -167,21 +176,35 @@ impl UdpChat {
                     FrontEvent::Enter(name) => {
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
-                    FrontEvent::Send(text) => {
+                    FrontEvent::Text(text) => {
                         let message = Message::text(&text);
                         self.history.insert(message.id, message.clone());
                         self.sender
                             .front_tx
-                            .send(BackEvent::Message(TextMessage::from_text_message(
+                            .send(BackEvent::Message(TextMessage::from_message(
                                 self.sender.ip,
                                 &message,
                             )))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
                     }
+                    FrontEvent::Icon(text) => {
+                        let message = Message::icon(&text);
+                        self.history.insert(message.id, message.clone());
+                        self.sender
+                            .front_tx
+                            .send(BackEvent::Message(TextMessage::from_message(
+                                self.sender.ip,
+                                &message,
+                            )))
+                            .ok();
+                        self.sender.send(message, Recepients::Peers);
+                    }
+
                     FrontEvent::Exit => {
                         self.sender.send(Message::exit(), Recepients::Peers);
                     }
+                    FrontEvent::Empty => (),
                 },
 
                 ChatEvent::Incoming((r_ip, r_msg)) => {
@@ -202,7 +225,7 @@ impl UdpChat {
                         }
                     }
                     match r_msg.command {
-                        Command::Enter => {
+                        Command::Enter | Command::Greating => {
                             let name = String::from_utf8_lossy(&r_msg.data);
                             self.sender
                                 .front_tx

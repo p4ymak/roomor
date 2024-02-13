@@ -1,6 +1,5 @@
 mod app;
 mod chat;
-mod emoji;
 use app::Roomor;
 use eframe::egui;
 
@@ -19,5 +18,38 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    eframe::run_native("Roomor", options, Box::new(|cc| Box::new(Roomor::new(cc))))
+    eframe::run_native(
+        "Roomor",
+        options,
+        Box::new(|cc| {
+            // cc.egui_ctx.set_fonts(font());
+            Box::new(Roomor::new(cc))
+        }),
+    )
 }
+
+// pub fn font() -> egui::FontDefinitions {
+//     let mut fonts = egui::FontDefinitions::default();
+//     fonts.font_data.insert(
+//         "ComicCode".to_owned(),
+//         egui::FontData::from_static(include_bytes!("../Font.otf")),
+//     );
+
+//     fonts.families.insert(
+//         egui::FontFamily::Name("ComicCode".into()),
+//         vec!["ComicCode".to_owned()],
+//     );
+
+//     fonts
+//         .families
+//         .get_mut(&egui::FontFamily::Proportional)
+//         .unwrap()
+//         .insert(0, "ComicCode".to_owned());
+
+//     fonts
+//         .families
+//         .get_mut(&egui::FontFamily::Monospace)
+//         .unwrap()
+//         .insert(0, "ComicCode".to_owned());
+//     fonts
+// }

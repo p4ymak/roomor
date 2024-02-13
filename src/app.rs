@@ -1,11 +1,8 @@
-use crate::emoji::Emojis;
-
 use super::chat::{
-    message::MAX_TEXT_SIZE,
+    message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
     notifier::{Notifier, Repaintable},
-    utf8_truncate, BackEvent, ChatEvent, FrontEvent, MessageContent, TextMessage, UdpChat,
+    utf8_truncate, BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
-use super::emoji::EMOJIS;
 use eframe::{egui, CreationContext};
 use egui::*;
 use flume::{Receiver, Sender};
@@ -18,11 +15,13 @@ use std::{
 };
 
 pub const FONT_SCALE: f32 = 1.5;
+pub const EMOJI_SCALE: f32 = 4.0;
 
 pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
     port: u16,
+    emoji_mode: bool,
     chat_init: Option<UdpChat>,
     history: Vec<TextMessage>,
     peers: BTreeMap<Ipv4Addr, Peer>,
@@ -32,7 +31,6 @@ pub struct Roomor {
     play_audio: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
-    emojis: Emojis,
 }
 
 impl eframe::App for Roomor {
@@ -79,12 +77,12 @@ impl Default for Roomor {
             history: vec![],
             peers: BTreeMap::<Ipv4Addr, Peer>::new(),
             text: String::with_capacity(MAX_TEXT_SIZE),
+            emoji_mode: false,
             _audio,
             audio_handler,
             play_audio,
             back_tx,
             back_rx,
-            emojis: EMOJIS,
         }
     }
 }
@@ -99,12 +97,12 @@ impl Roomor {
             match event {
                 BackEvent::PeerJoined((r_ip, name)) => {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(Peer::new(name));
-                        self.history.push(TextMessage::enter(r_ip));
+                        ip.insert(Peer::new(name.clone()));
+                        self.history.push(TextMessage::enter(r_ip, name.clone()));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
                         if !peer.online {
                             peer.online = true;
-                            self.history.push(TextMessage::enter(r_ip));
+                            self.history.push(TextMessage::enter(r_ip, name.clone()));
                         }
                         if peer.name != name {
                             // FIXME
@@ -172,18 +170,20 @@ impl Roomor {
         })
     }
 
-    fn limit_text(&mut self) {
+    fn limit_text(&mut self, limit: usize) {
         self.text = self.text.trim_end_matches('\n').to_string();
-        utf8_truncate(&mut self.text, MAX_TEXT_SIZE);
+        utf8_truncate(&mut self.text, limit);
     }
 
     fn send(&mut self) {
-        if !self.text.trim().is_empty() && self.peers.values().any(|p| p.is_online()) {
-            self.back_tx
-                .send(ChatEvent::Front(FrontEvent::Send(
-                    self.text.trim().to_string(),
-                )))
-                .ok();
+        if !self.text.trim().is_empty() {
+            // && self.peers.values().any(|p| p.is_online()) {
+            let txt = self.text.trim().to_string();
+            let msg_ty = match self.emoji_mode {
+                true => FrontEvent::Icon(txt),
+                false => FrontEvent::Text(txt),
+            };
+            self.back_tx.send(ChatEvent::Front(msg_ty)).ok();
             self.text.clear();
         }
     }
@@ -243,8 +243,16 @@ impl Roomor {
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
+                self.emoji_mode = self.text.starts_with(' ');
+                let limit = match self.emoji_mode {
+                    true => MAX_EMOJI_SIZE,
+                    false => MAX_TEXT_SIZE,
+                };
+                self.limit_text(limit);
+
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                    font_id.size *= FONT_SCALE;
+                    let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
+                    font_id.size *= FONT_SCALE * emoji_scale;
                 }
 
                 let y = ui.max_rect().min.y;
@@ -252,37 +260,20 @@ impl Roomor {
                 let len = self.text.len();
                 if len > 0 {
                     ui.painter().hline(
-                        rect.min.x..=(rect.max.x * (len as f32 / MAX_TEXT_SIZE as f32)),
+                        rect.min.x..=(rect.max.x * (len as f32 / limit as f32)),
                         y,
                         ui.style().visuals.widgets.inactive.fg_stroke,
                     );
                 }
 
-                self.limit_text();
-                let emoji_mode = self.text.starts_with(' ');
                 ui.add(
                     egui::TextEdit::multiline(&mut self.text)
                         .frame(false)
                         .cursor_at_end(true)
-                        .desired_rows(if emoji_mode { 2 } else { 3 })
+                        .desired_rows(if self.emoji_mode { 1 } else { 4 })
                         .desired_width(ui.available_rect_before_wrap().width()),
                 )
                 .request_focus();
-                if emoji_mode {
-                    egui::ScrollArea::horizontal()
-                        .id_source("emoji")
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                for emoji in self.emojis.emojis(self.text.trim()) {
-                                    let label = egui::RichText::new(emoji).monospace();
-                                    if ui.small_button(label).clicked() {
-                                        self.text = emoji.to_string();
-                                        self.send()
-                                    }
-                                }
-                            });
-                        });
-                }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -380,10 +371,10 @@ impl TextMessage {
                                             .on_hover_text_at_pointer(self.ip().to_string());
                                     }
                                     match self.content() {
-                                        MessageContent::Joined => {
+                                        FrontEvent::Enter(_) => {
                                             h.label("joined..");
                                         }
-                                        MessageContent::Left => {
+                                        FrontEvent::Exit => {
                                             h.label("left..");
                                         }
                                         _ => (),
@@ -399,20 +390,29 @@ impl TextMessage {
         );
     }
     pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
-        if let MessageContent::Text(content) = self.content() {
-            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                font_id.size *= FONT_SCALE;
-            }
-            if content.starts_with("http") {
-                if let Some((link, text)) = content.split_once(' ') {
-                    ui.hyperlink(link);
-                    ui.label(text);
-                } else {
-                    ui.hyperlink(content);
+        match self.content() {
+            FrontEvent::Text(content) => {
+                for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                    font_id.size *= FONT_SCALE;
                 }
-            } else {
+                if content.starts_with("http") {
+                    if let Some((link, text)) = content.split_once(' ') {
+                        ui.hyperlink(link);
+                        ui.label(text);
+                    } else {
+                        ui.hyperlink(content);
+                    }
+                } else {
+                    ui.label(content);
+                }
+            }
+            FrontEvent::Icon(content) => {
+                for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                    font_id.size *= FONT_SCALE * EMOJI_SCALE;
+                }
                 ui.label(content);
             }
+            _ => (),
         }
     }
 }
