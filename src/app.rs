@@ -1,8 +1,11 @@
+use crate::emoji::Emojis;
+
 use super::chat::{
     message::MAX_TEXT_SIZE,
     notifier::{Notifier, Repaintable},
     utf8_truncate, BackEvent, ChatEvent, FrontEvent, MessageContent, TextMessage, UdpChat,
 };
+use super::emoji::EMOJIS;
 use eframe::{egui, CreationContext};
 use egui::*;
 use flume::{Receiver, Sender};
@@ -29,6 +32,7 @@ pub struct Roomor {
     play_audio: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
+    emojis: Emojis,
 }
 
 impl eframe::App for Roomor {
@@ -80,6 +84,7 @@ impl Default for Roomor {
             play_audio,
             back_tx,
             back_rx,
+            emojis: EMOJIS,
         }
     }
 }
@@ -241,6 +246,7 @@ impl Roomor {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE;
                 }
+
                 let y = ui.max_rect().min.y;
                 let rect = ui.clip_rect();
                 let len = self.text.len();
@@ -251,21 +257,38 @@ impl Roomor {
                         ui.style().visuals.widgets.inactive.fg_stroke,
                     );
                 }
-                ui.horizontal(|h| {
-                    self.limit_text();
-                    h.add(
-                        egui::TextEdit::multiline(&mut self.text)
-                            .frame(false)
-                            .desired_rows(3)
-                            .desired_width(h.available_rect_before_wrap().width()),
-                    )
-                    .request_focus();
-                });
+
+                self.limit_text();
+                let emoji_mode = self.text.starts_with(' ');
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.text)
+                        .frame(false)
+                        .cursor_at_end(true)
+                        .desired_rows(if emoji_mode { 2 } else { 3 })
+                        .desired_width(ui.available_rect_before_wrap().width()),
+                )
+                .request_focus();
+                if emoji_mode {
+                    egui::ScrollArea::horizontal()
+                        .id_source("emoji")
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                for emoji in self.emojis.emojis(self.text.trim()) {
+                                    let label = egui::RichText::new(emoji).monospace();
+                                    if ui.small_button(label).clicked() {
+                                        self.text = emoji.to_string();
+                                        self.send()
+                                    }
+                                }
+                            });
+                        });
+                }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
+                .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     self.history.iter().for_each(|m| {
                         m.draw(ui, self.peers.get(&m.ip()));

@@ -162,7 +162,6 @@ impl UdpChat {
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
-            println!("{:?}", event);
             match event {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Enter(name) => {
@@ -203,7 +202,7 @@ impl UdpChat {
                         }
                     }
                     match r_msg.command {
-                        Command::Enter | Command::Greating => {
+                        Command::Enter => {
                             let name = String::from_utf8_lossy(&r_msg.data);
                             self.sender
                                 .front_tx

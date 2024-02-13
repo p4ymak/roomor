@@ -1,5 +1,6 @@
 mod app;
 mod chat;
+mod emoji;
 use app::Roomor;
 use eframe::egui;
 
