@@ -5,6 +5,8 @@ use std::{
     thread,
 };
 
+use crate::chat::ChatEvent;
+
 use super::chat::{
     message::MAX_TEXT_SIZE, BackEvent, FrontEvent, MessageContent, Notifier, Repaintable,
     TextMessage, UdpChat,
@@ -26,12 +28,12 @@ pub struct ChatApp {
     audio_handler: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
-    back_tx: Sender<FrontEvent>,
+    back_tx: Sender<ChatEvent>,
 }
 
 impl eframe::App for ChatApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.back_tx.send(FrontEvent::Exit).ok();
+        self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.top_panel(ctx);
@@ -61,29 +63,24 @@ impl Default for ChatApp {
             Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
             Err(_) => (None, None),
         };
-        let (back_tx, front_rx) = flume::unbounded();
+        // let (back_tx, front_rx) = flume::unbounded();
         let (front_tx, back_rx) = flume::unbounded();
         let play_audio = Arc::new(AtomicBool::new(true));
-
+        let chat = UdpChat::new(String::new(), 4444, front_tx, play_audio.clone());
+        let back_tx = chat.tx();
         ChatApp {
             name: String::default(),
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
-            chat_init: Some(UdpChat::new(
-                String::new(),
-                4444,
-                front_tx,
-                front_rx,
-                play_audio.clone(),
-            )),
+            chat_init: Some(chat),
             history: vec![],
             peers: BTreeMap::<Ipv4Addr, Peer>::new(),
             text: String::with_capacity(MAX_TEXT_SIZE),
             _audio,
             audio_handler,
             play_audio,
-            back_rx,
             back_tx,
+            back_rx,
         }
     }
 }
@@ -168,7 +165,7 @@ impl ChatApp {
             thread::spawn(move || init.run(&ctx));
         }
         self.back_tx
-            .send(FrontEvent::Enter(self.name.to_string()))
+            .send(ChatEvent::Front(FrontEvent::Enter(self.name.to_string())))
             .ok();
     }
     fn handle_keys(&mut self, ctx: &egui::Context) {
@@ -203,7 +200,9 @@ impl ChatApp {
     fn send(&mut self) {
         if !self.text.trim().is_empty() && self.peers.values().any(|p| p.is_online()) {
             self.back_tx
-                .send(FrontEvent::Send(std::mem::take(&mut self.text)))
+                .send(ChatEvent::Front(FrontEvent::Send(std::mem::take(
+                    &mut self.text,
+                ))))
                 .ok();
         }
     }

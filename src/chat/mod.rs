@@ -82,15 +82,20 @@ pub enum BackEvent {
     MyIp(Ipv4Addr),
 }
 
+pub enum ChatEvent {
+    Front(FrontEvent),
+    Incoming((Ipv4Addr, Message)),
+}
+
 pub struct UdpChat {
     socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
     pub port: u16,
     pub name: String,
-    front_rx: Receiver<FrontEvent>,
+    // front_rx: Receiver<FrontEvent>,
     front_tx: Sender<BackEvent>,
-    listen_tx: Sender<(Ipv4Addr, Message)>,
-    listen_rx: Receiver<(Ipv4Addr, Message)>,
+    tx: Sender<ChatEvent>,
+    rx: Receiver<ChatEvent>,
     pub play_audio: Arc<AtomicBool>,
     pub message: Message,
     // pub history: Vec<TextMessage>,
@@ -173,19 +178,19 @@ impl UdpChat {
         name: String,
         port: u16,
         front_tx: Sender<BackEvent>,
-        front_rx: Receiver<FrontEvent>,
+        // front_rx: Receiver<Event>,
         play_audio: Arc<AtomicBool>,
     ) -> Self {
-        let (listen_tx, listen_rx) = flume::unbounded::<(Ipv4Addr, Message)>();
+        let (tx, rx) = flume::unbounded::<ChatEvent>();
         UdpChat {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
             port,
             name,
             front_tx,
-            front_rx,
-            listen_tx,
-            listen_rx,
+            // front_rx,
+            tx,
+            rx,
             play_audio,
             message: Message::empty(),
             // history: Vec::<TextMessage>::new(),
@@ -193,7 +198,9 @@ impl UdpChat {
             all_recepients: vec![],
         }
     }
-
+    pub fn tx(&self) -> Sender<ChatEvent> {
+        self.tx.clone()
+    }
     pub fn prelude(&mut self, name: &str, port: u16) {
         self.name = name.to_string();
         self.port = port;
@@ -211,8 +218,9 @@ impl UdpChat {
             .collect();
         self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
             Ok(socket) => {
-                socket.set_broadcast(true).unwrap();
-                socket.set_multicast_loop_v4(false).unwrap();
+                socket.set_broadcast(true).ok();
+                socket.set_multicast_loop_v4(false).ok();
+                socket.set_nonblocking(false).ok();
                 Some(Arc::new(socket))
             }
             _ => None,
@@ -225,38 +233,15 @@ impl UdpChat {
         self.message = Message::enter(&self.name);
         self.send(Recepients::All);
         loop {
-            self.read_front_events();
+            // self.read_front_events();
             self.receive(ctx);
-        }
-    }
-
-    fn read_front_events(&mut self) {
-        let mut recepients = None;
-        for event in self.front_rx.try_iter() {
-            match event {
-                FrontEvent::Enter(name) => {
-                    self.message = Message::enter(&name);
-                    recepients = Some(Recepients::All);
-                }
-                FrontEvent::Send(text) => {
-                    self.message = Message::text(&text);
-                    recepients = Some(Recepients::Peers);
-                }
-                FrontEvent::Exit => {
-                    self.message = Message::exit();
-                    recepients = Some(Recepients::Peers);
-                }
-            }
-        }
-        if let Some(recepients) = recepients {
-            self.send(recepients);
         }
     }
 
     fn listen(&self) {
         if let Some(socket) = &self.socket {
             let socket = Arc::clone(socket);
-            let receiver = self.listen_tx.clone();
+            let receiver = self.tx.clone();
             // let ctx = ctx.clone();
             // let play_audio = Arc::clone(&self.play_audio);
             // let port = self.port;
@@ -285,7 +270,7 @@ impl UdpChat {
                             //         .ok();
                             // }
                             // println!("messsage: {message}");
-                            receiver.send((ip, message)).ok();
+                            receiver.send(ChatEvent::Incoming((ip, message))).ok();
                             // ctx.request_repaint();
                         }
                     }
@@ -339,71 +324,87 @@ impl UdpChat {
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
-        let mut replies = vec![];
+        let mut to_be_sent = vec![];
 
-        for (r_ip, r_msg) in self.listen_rx.try_iter() {
-            if r_ip == self.ip {
-                continue;
-            }
-            let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
-            // FIXME
-            if !self.peers.contains(&r_ip) {
-                self.front_tx
-                    .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
-                    .ok();
-                self.peers.insert(r_ip);
-                if r_ip != self.ip {
-                    replies.push(Recepients::One(r_ip));
-                }
-            }
-            match r_msg.command {
-                Command::Enter | Command::Greating => {
-                    let name = String::from_utf8_lossy(&r_msg.data);
-                    self.front_tx
-                        .send(BackEvent::PeerJoined((r_ip, name.to_string())))
-                        .ok();
+        for event in self.rx.iter() {
+            match event {
+                ChatEvent::Front(front) => match front {
+                    FrontEvent::Enter(name) => {
+                        to_be_sent.push((Message::enter(&name), Recepients::All));
+                    }
+                    FrontEvent::Send(text) => {
+                        to_be_sent.push((Message::text(&text), Recepients::Peers));
+                    }
+                    FrontEvent::Exit => {
+                        to_be_sent.push((Message::exit(), Recepients::Peers));
+                    }
+                },
 
-                    ctx.request_repaint();
+                ChatEvent::Incoming((r_ip, r_msg)) => {
+                    if r_ip == self.ip {
+                        continue;
+                    }
+                    let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
+                    // FIXME
+                    if !self.peers.contains(&r_ip) {
+                        self.front_tx
+                            .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
+                            .ok();
+                        self.peers.insert(r_ip);
+                        if r_ip != self.ip {
+                            to_be_sent.push((Message::enter(&self.name), Recepients::One(r_ip)));
+                        }
+                    }
+                    match r_msg.command {
+                        Command::Enter | Command::Greating => {
+                            let name = String::from_utf8_lossy(&r_msg.data);
+                            self.front_tx
+                                .send(BackEvent::PeerJoined((r_ip, name.to_string())))
+                                .ok();
+
+                            ctx.request_repaint();
+                        }
+                        Command::Text | Command::Repeat => {
+                            self.front_tx.send(BackEvent::Message(txt_msg)).ok();
+                            ctx.request_repaint()
+                        }
+                        // Command::Damaged => {
+                        //     self.message =
+                        //         Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
+                        //     recepients = Some(Recepients::One(r_ip));
+                        // }
+                        // Command::AskToRepeat => {
+                        //     let id: u32 = u32::from_be_bytes(
+                        //         (0..4)
+                        //             .map(|i| *r_msg.data.get(i).unwrap_or(&0))
+                        //             .collect::<Vec<u8>>()
+                        //             .try_into()
+                        //             .unwrap(),
+                        //     );
+                        //     self.message = Message::retry_text(
+                        //         id,
+                        //         self.history
+                        //             .iter()
+                        //             .find(|m| m.id() == id)
+                        //             .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
+                        //             .content
+                        //             .as_str(),
+                        //     );
+                        //     self.send(Recepients::One(r_ip));
+                        // }
+                        Command::Exit => {
+                            self.peers.remove(&r_ip);
+                            self.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
+                            ctx.request_repaint();
+                        }
+                        _ => (),
+                    }
                 }
-                Command::Text | Command::Repeat => {
-                    self.front_tx.send(BackEvent::Message(txt_msg)).ok();
-                    ctx.request_repaint()
-                }
-                // Command::Damaged => {
-                //     self.message =
-                //         Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
-                //     recepients = Some(Recepients::One(r_ip));
-                // }
-                // Command::AskToRepeat => {
-                //     let id: u32 = u32::from_be_bytes(
-                //         (0..4)
-                //             .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                //             .collect::<Vec<u8>>()
-                //             .try_into()
-                //             .unwrap(),
-                //     );
-                //     self.message = Message::retry_text(
-                //         id,
-                //         self.history
-                //             .iter()
-                //             .find(|m| m.id() == id)
-                //             .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
-                //             .content
-                //             .as_str(),
-                //     );
-                //     self.send(Recepients::One(r_ip));
-                // }
-                Command::Exit => {
-                    self.peers.remove(&r_ip);
-                    self.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
-                    ctx.request_repaint();
-                }
-                _ => (),
             }
         }
-        for recepient in replies {
-            self.message = Message::enter(&self.name);
-            self.send(recepient);
+        for (msg, addrs) in to_be_sent {
+            self.message = msg;
+            self.send(addrs);
         }
     }
 }
