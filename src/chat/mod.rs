@@ -5,7 +5,7 @@ use flume::{Receiver, Sender};
 use message::{Command, Id, Message};
 use rodio::source::SineWave;
 use rodio::{OutputStreamHandle, Source};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::AtomicBool;
@@ -89,20 +89,98 @@ pub enum ChatEvent {
     Incoming((Ipv4Addr, Message)),
 }
 
-pub struct UdpChat {
+struct MessageSender {
     socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
     pub port: u16,
-    pub name: String,
-    // front_rx: Receiver<FrontEvent>,
+    pub message: Message,
+    pub peers: BTreeSet<Ipv4Addr>,
+    all_recepients: Vec<Ipv4Addr>,
     front_tx: Sender<BackEvent>,
+}
+impl MessageSender {
+    pub fn new(port: u16, front_tx: Sender<BackEvent>) -> Self {
+        MessageSender {
+            socket: None,
+            ip: Ipv4Addr::UNSPECIFIED,
+            port,
+            message: Message::empty(),
+            peers: BTreeSet::<Ipv4Addr>::new(),
+            all_recepients: vec![],
+            front_tx,
+        }
+    }
+    fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
+        self.ip = get_my_ipv4().ok_or("No local IpV4")?;
+        let octets = self.ip.octets();
+        self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
+
+        self.all_recepients = (0..=254)
+            .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
+            .collect();
+        self.socket = match UdpSocket::bind(SocketAddrV4::new(self.ip, self.port)) {
+            Ok(socket) => {
+                socket.set_broadcast(true).ok();
+                socket.set_multicast_loop_v4(false).ok();
+                socket.set_nonblocking(false).ok();
+                Some(Arc::new(socket))
+            }
+            _ => None,
+        };
+
+        Ok(())
+    }
+
+    pub fn send(&mut self, message: Message, mut addrs: Recepients) {
+        if message.command == Command::Empty {
+            return;
+        }
+        let bytes = self.message.to_be_bytes();
+        if let Some(socket) = &self.socket {
+            if self.peers.is_empty() {
+                addrs = Recepients::All;
+            }
+            match addrs {
+                Recepients::All => self
+                    .all_recepients
+                    .iter()
+                    .map(|r| {
+                        socket
+                            .send_to(&bytes, SocketAddrV4::new(*r, self.port))
+                            .is_ok()
+                    })
+                    .all(|r| r),
+                Recepients::Peers => self
+                    .peers
+                    .iter()
+                    .map(|ip| {
+                        socket
+                            .send_to(&bytes, format!("{}:{}", ip, self.port))
+                            .is_ok()
+                    })
+                    .all(|r| r),
+                Recepients::One(ip) => socket
+                    .send_to(&bytes, format!("{}:{}", ip, self.port))
+                    .is_ok(),
+            };
+        }
+        if message.command == Command::Text {
+            self.front_tx
+                .send(BackEvent::Message(TextMessage::from_text_message(
+                    self.ip,
+                    &self.message,
+                )))
+                .ok();
+        }
+    }
+}
+pub struct UdpChat {
+    pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
     pub play_audio: Arc<AtomicBool>,
-    pub message: Message,
-    // pub history: Vec<TextMessage>,
-    pub peers: BTreeSet<Ipv4Addr>,
-    all_recepients: Vec<Ipv4Addr>,
+    sender: MessageSender, // pub history: Vec<TextMessage>,
+    history: BTreeMap<Id, Message>,
 }
 
 #[derive(Debug)]
@@ -187,19 +265,12 @@ impl UdpChat {
     ) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         UdpChat {
-            socket: None,
-            ip: Ipv4Addr::UNSPECIFIED,
-            port,
+            sender: MessageSender::new(port, front_tx),
             name,
-            front_tx,
-            // front_rx,
             tx,
             rx,
             play_audio,
-            message: Message::empty(),
-            // history: Vec::<TextMessage>::new(),
-            peers: BTreeSet::<Ipv4Addr>::new(),
-            all_recepients: vec![],
+            history: BTreeMap::<Id, Message>::new(),
         }
     }
     pub fn tx(&self) -> Sender<ChatEvent> {
@@ -207,41 +278,20 @@ impl UdpChat {
     }
     pub fn prelude(&mut self, name: &str, port: u16) {
         self.name = name.to_string();
-        self.port = port;
-        self.connect().ok(); // FIXME Handle Error
+        self.sender.port = port;
+        self.sender.connect().ok(); // FIXME Handle Error
         self.listen();
     }
 
-    fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
-        self.ip = get_my_ipv4().ok_or("No local IpV4")?;
-        let octets = self.ip.octets();
-        self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
-
-        self.all_recepients = (0..=254)
-            .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
-            .collect();
-        self.socket = match UdpSocket::bind(format!("{}:{}", self.ip, self.port)) {
-            Ok(socket) => {
-                socket.set_broadcast(true).ok();
-                socket.set_multicast_loop_v4(false).ok();
-                socket.set_nonblocking(false).ok();
-                Some(Arc::new(socket))
-            }
-            _ => None,
-        };
-
-        Ok(())
-    }
-
     pub fn run(&mut self, ctx: &impl Repaintable) {
-        self.message = Message::enter(&self.name);
-        self.send(Recepients::All);
+        self.sender
+            .send(Message::enter(&self.name), Recepients::All);
         // self.read_front_events();
         self.receive(ctx);
     }
 
     fn listen(&self) {
-        if let Some(socket) = &self.socket {
+        if let Some(socket) = &self.sender.socket {
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
             // let ctx = ctx.clone();
@@ -281,144 +331,84 @@ impl UdpChat {
         }
     }
 
-    pub fn send(&mut self, mut addrs: Recepients) {
-        if self.message.command == Command::Empty {
-            return;
-        }
-        let bytes = self.message.to_be_bytes();
-        if let Some(socket) = &self.socket {
-            if self.peers.is_empty() {
-                addrs = Recepients::All;
-            }
-            match addrs {
-                Recepients::All => self
-                    .all_recepients
-                    .iter()
-                    .map(|r| {
-                        socket
-                            .send_to(&bytes, SocketAddrV4::new(*r, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
-                Recepients::Peers => self
-                    .peers
-                    .iter()
-                    .map(|ip| {
-                        socket
-                            .send_to(&bytes, format!("{}:{}", ip, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
-                Recepients::One(ip) => socket
-                    .send_to(&bytes, format!("{}:{}", ip, self.port))
-                    .is_ok(),
-            };
-        }
-        if self.message.command == Command::Text {
-            self.front_tx
-                .send(BackEvent::Message(TextMessage::from_text_message(
-                    self.ip,
-                    &self.message,
-                )))
-                .ok();
-        }
-        self.message = Message::empty();
-    }
-
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         println!("READ");
-        let mut to_be_sent = vec![];
 
         for event in self.rx.iter() {
             println!("{:?}", event);
             match event {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Enter(name) => {
-                        to_be_sent.push((Message::enter(&name), Recepients::All));
-                        send(
-                            Message::enter(&name),
-                            self.ip,
-                            self.port,
-                            &self.socket,
-                            &self.peers,
-                            Recepients::All,
-                            &self.all_recepients,
-                            &self.front_tx,
-                        );
+                        self.sender.send(Message::enter(&name), Recepients::All);
                     }
                     FrontEvent::Send(text) => {
-                        to_be_sent.push((Message::text(&text), Recepients::Peers));
+                        self.sender.send(Message::text(&text), Recepients::Peers);
                     }
                     FrontEvent::Exit => {
-                        to_be_sent.push((Message::exit(), Recepients::Peers));
+                        self.sender.send(Message::exit(), Recepients::Peers);
                     }
                 },
 
                 ChatEvent::Incoming((r_ip, r_msg)) => {
-                    if r_ip == self.ip {
+                    if r_ip == self.sender.ip {
                         continue;
                     }
                     let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
                     // FIXME
-                    if !self.peers.contains(&r_ip) {
-                        self.front_tx
+                    if !self.sender.peers.contains(&r_ip) {
+                        self.sender
+                            .front_tx
                             .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
                             .ok();
-                        self.peers.insert(r_ip);
-                        if r_ip != self.ip {
-                            to_be_sent.push((Message::enter(&self.name), Recepients::One(r_ip)));
+                        self.sender.peers.insert(r_ip);
+                        if r_ip != self.sender.ip {
+                            self.sender
+                                .send(Message::enter(&self.name), Recepients::One(r_ip));
                         }
                     }
                     match r_msg.command {
                         Command::Enter | Command::Greating => {
                             let name = String::from_utf8_lossy(&r_msg.data);
-                            self.front_tx
+                            self.sender
+                                .front_tx
                                 .send(BackEvent::PeerJoined((r_ip, name.to_string())))
                                 .ok();
 
                             ctx.request_repaint();
                         }
                         Command::Text | Command::Repeat => {
-                            self.front_tx.send(BackEvent::Message(txt_msg)).ok();
+                            self.sender.front_tx.send(BackEvent::Message(txt_msg)).ok();
                             ctx.request_repaint()
                         }
-                        // Command::Damaged => {
-                        //     self.message =
-                        //         Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
-                        //     recepients = Some(Recepients::One(r_ip));
-                        // }
-                        // Command::AskToRepeat => {
-                        //     let id: u32 = u32::from_be_bytes(
-                        //         (0..4)
-                        //             .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                        //             .collect::<Vec<u8>>()
-                        //             .try_into()
-                        //             .unwrap(),
-                        //     );
-                        //     self.message = Message::retry_text(
-                        //         id,
-                        //         self.history
-                        //             .iter()
-                        //             .find(|m| m.id() == id)
-                        //             .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
-                        //             .content
-                        //             .as_str(),
-                        //     );
-                        //     self.send(Recepients::One(r_ip));
-                        // }
+                        Command::Damaged => {
+                            self.sender.send(
+                                Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec()),
+                                Recepients::One(r_ip),
+                            );
+                        }
+                        Command::AskToRepeat => {
+                            let id: u32 = u32::from_be_bytes(
+                                (0..4)
+                                    .map(|i| *r_msg.data.get(i).unwrap_or(&0))
+                                    .collect::<Vec<u8>>()
+                                    .try_into()
+                                    .unwrap(),
+                            );
+                            if let Some(message) = self.history.get(&id) {
+                                let mut message = message.clone();
+                                message.command = Command::Repeat;
+                                self.sender.send(message, Recepients::One(r_ip));
+                            }
+                        }
                         Command::Exit => {
-                            self.peers.remove(&r_ip);
-                            self.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
+                            self.sender.peers.remove(&r_ip);
+                            self.sender.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
                             ctx.request_repaint();
                         }
                         _ => (),
                     }
                 }
             }
-        }
-        for (msg, addrs) in to_be_sent {
-            self.message = msg;
-            self.send(addrs);
         }
     }
 }
@@ -438,52 +428,4 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
-}
-pub fn send(
-    message: Message,
-    local_ip: Ipv4Addr,
-    local_port: u16,
-    socket: &Option<Arc<UdpSocket>>,
-    peers: &BTreeSet<Ipv4Addr>,
-    addrs: Recepients,
-    all: &[Ipv4Addr],
-    tx: &Sender<BackEvent>,
-) {
-    if message.command == Command::Empty {
-        return;
-    }
-    let bytes = message.to_be_bytes();
-    if let Some(socket) = &socket {
-        let mut addrs = addrs;
-        if peers.is_empty() {
-            addrs = Recepients::All;
-        }
-        match addrs {
-            Recepients::All => all
-                .iter()
-                .map(|r| {
-                    socket
-                        .send_to(&bytes, SocketAddrV4::new(*r, local_port))
-                        .is_ok()
-                })
-                .all(|r| r),
-            Recepients::Peers => peers
-                .iter()
-                .map(|ip| {
-                    socket
-                        .send_to(&bytes, format!("{}:{}", ip, local_port))
-                        .is_ok()
-                })
-                .all(|r| r),
-            Recepients::One(ip) => socket
-                .send_to(&bytes, format!("{}:{}", ip, local_port))
-                .is_ok(),
-        };
-        // if message.command == Command::Text {
-        //     tx.send(BackEvent::Message(TextMessage::from_text_message(
-        //         local_ip, message,
-        //     )))
-        //     .ok();
-        // }
-    }
 }
