@@ -77,20 +77,13 @@ impl Message {
             data,
         }
     }
-    pub fn _retry_text(id: u32, text: &str) -> Self {
-        let data = be_u8_from_str(
-            text.to_owned()
-                .chars()
-                .filter(|c| !c.is_control())
-                .collect::<String>()
-                .as_ref(),
-        );
-        let checksum = CRC.checksum(&data);
+    pub fn retry_text(id: u32, data: &[u8]) -> Self {
+        let checksum = CRC.checksum(data);
         Message {
             id,
             checksum,
             command: Command::Repeat,
-            data,
+            data: data.to_vec(),
         }
     }
 

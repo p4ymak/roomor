@@ -5,7 +5,7 @@ use flume::{Receiver, Sender};
 use message::{Command, Id, Message};
 use rodio::source::SineWave;
 use rodio::{OutputStreamHandle, Source};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::AtomicBool;
@@ -90,6 +90,7 @@ pub struct UdpChat {
     front_tx: Sender<BackEvent>,
     pub play_audio: Arc<AtomicBool>,
     pub message: Message,
+    history_sent: BTreeMap<Id, Message>,
     pub peers: BTreeSet<Ipv4Addr>,
     all_recepients: Vec<Ipv4Addr>,
 }
@@ -103,28 +104,28 @@ pub enum MessageContent {
 #[allow(dead_code)]
 pub struct TextMessage {
     ip: Ipv4Addr,
-    id: Id,
+    // id: Id,
     content: MessageContent,
 }
 impl TextMessage {
     pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
         TextMessage {
             ip,
-            id: msg.id,
+            // id: msg.id,
             content: MessageContent::Text(msg.read_text()),
         }
     }
     pub fn enter(ip: Ipv4Addr) -> Self {
         TextMessage {
             ip,
-            id: 0,
+            // id: 0,
             content: MessageContent::Joined,
         }
     }
     pub fn exit(ip: Ipv4Addr) -> Self {
         TextMessage {
             ip,
-            id: 0,
+            // id: 0,
             content: MessageContent::Left,
         }
     }
@@ -171,6 +172,7 @@ impl UdpChat {
             front_rx,
             play_audio,
             message: Message::empty(),
+            history_sent: BTreeMap::<Id, Message>::new(),
             peers: BTreeSet::<Ipv4Addr>::new(),
             all_recepients: vec![],
         }
@@ -312,30 +314,24 @@ impl UdpChat {
                             self.front_tx.send(BackEvent::Message(txt_msg)).ok();
                             ctx.request_repaint()
                         }
-                        // Command::Damaged => {
-                        //     self.message =
-                        //         Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
-                        //     recepients = Some(Recepients::One(r_ip));
-                        // }
-                        // Command::AskToRepeat => {
-                        //     let id: u32 = u32::from_be_bytes(
-                        //         (0..4)
-                        //             .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                        //             .collect::<Vec<u8>>()
-                        //             .try_into()
-                        //             .unwrap(),
-                        //     );
-                        //     self.message = Message::retry_text(
-                        //         id,
-                        //         self.history
-                        //             .iter()
-                        //             .find(|m| m.id() == id)
-                        //             .unwrap_or(&TextMessage::new(r_ip, id, "NO SUCH MESSAGE! = ("))
-                        //             .content
-                        //             .as_str(),
-                        //     );
-                        //     self.send(Recepients::One(r_ip));
-                        // }
+                        Command::Damaged => {
+                            self.message =
+                                Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec());
+                            self.send(Recepients::One(r_ip));
+                        }
+                        Command::AskToRepeat => {
+                            let id: u32 = u32::from_be_bytes(
+                                (0..4)
+                                    .map(|i| *r_msg.data.get(i).unwrap_or(&0))
+                                    .collect::<Vec<u8>>()
+                                    .try_into()
+                                    .unwrap_or_default(),
+                            );
+                            if let Some(message) = self.history_sent.get(&id) {
+                                self.message = Message::retry_text(id, &message.data);
+                                self.send(Recepients::One(r_ip));
+                            }
+                        }
                         Command::Exit => {
                             self.peers.remove(&r_ip);
                             self.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
