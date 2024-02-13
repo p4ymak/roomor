@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use crate::chat::ChatEvent;
+use crate::chat::{utf8_truncate, ChatEvent};
 
 use super::chat::{
     message::MAX_TEXT_SIZE, BackEvent, FrontEvent, MessageContent, Notifier, Repaintable,
@@ -194,7 +194,7 @@ impl ChatApp {
 
     fn limit_text(&mut self) {
         self.text = self.text.trim_end_matches('\n').to_string();
-        self.text.truncate(MAX_TEXT_SIZE);
+        utf8_truncate(&mut self.text, MAX_TEXT_SIZE);
     }
 
     fn send(&mut self) {

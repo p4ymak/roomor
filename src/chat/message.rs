@@ -94,21 +94,12 @@ impl Message {
         }
     }
 
-    pub fn empty() -> Self {
-        Message {
-            id: 0,
-            checksum: 0,
-            command: Command::Empty,
-            data: vec![],
-        }
-    }
-
     pub fn enter(name: &str) -> Self {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
-    // pub fn greating(name: &str) -> Self {
-    //     Message::new(Command::Greating, be_u8_from_str(name))
-    // }
+    pub fn greating(name: &str) -> Self {
+        Message::new(Command::Greating, be_u8_from_str(name))
+    }
     pub fn exit() -> Self {
         Message::new(Command::Exit, vec![])
     }

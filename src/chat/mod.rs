@@ -280,6 +280,7 @@ impl UdpChat {
 
     fn listen(&self) {
         if let Some(socket) = &self.sender.socket {
+            let local_ip = self.sender.ip;
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
             thread::spawn(move || {
@@ -289,11 +290,12 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-                        if let Some(message) =
-                            Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
-                        {
-                            println!("message: {message}");
-                            receiver.send(ChatEvent::Incoming((ip, message))).ok();
+                        if ip != local_ip {
+                            if let Some(message) =
+                                Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                            {
+                                receiver.send(ChatEvent::Incoming((ip, message))).ok();
+                            }
                         }
                     }
                 }
@@ -340,7 +342,7 @@ impl UdpChat {
                         self.sender.peers.insert(r_ip);
                         if r_ip != self.sender.ip {
                             self.sender
-                                .send(Message::enter(&self.name), Recepients::One(r_ip));
+                                .send(Message::greating(&self.name), Recepients::One(r_ip));
                         }
                     }
                     match r_msg.command {
@@ -405,4 +407,20 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
+}
+
+pub fn utf8_truncate(input: &mut String, maxsize: usize) {
+    let mut utf8_maxsize = input.len();
+    if utf8_maxsize >= maxsize {
+        {
+            let mut char_iter = input.char_indices();
+            while utf8_maxsize >= maxsize {
+                utf8_maxsize = match char_iter.next_back() {
+                    Some((index, _)) => index,
+                    _ => 0,
+                };
+            }
+        } // Extra {} wrap to limit the immutable borrow of char_indices()
+        input.truncate(utf8_maxsize);
+    }
 }
