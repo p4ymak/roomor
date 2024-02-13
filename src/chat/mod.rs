@@ -1,74 +1,23 @@
 pub mod message;
+pub mod networker;
+pub mod notifier;
 
-use eframe::egui::Context;
+use self::{networker::NetWorker, notifier::Repaintable};
+
 use flume::{Receiver, Sender};
 use message::{Command, Id, Message};
-use rodio::source::SineWave;
-use rodio::{OutputStreamHandle, Source};
-use std::collections::{BTreeMap, BTreeSet};
-use std::error::Error;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
-
+use std::{
+    collections::BTreeMap,
+    net::{Ipv4Addr, SocketAddr},
+    sync::{atomic::AtomicBool, Arc},
+    thread,
+};
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
     All,
 }
 
-pub trait Repaintable
-where
-    Self: Clone + Sync + Send + 'static,
-{
-    fn request_repaint(&self);
-}
-#[derive(Clone)]
-pub struct RepaintDummy;
-impl Repaintable for RepaintDummy {
-    fn request_repaint(&self) {}
-}
-
-#[derive(Clone)]
-pub struct Notifier {
-    ctx: Context,
-    audio: Option<OutputStreamHandle>,
-}
-impl Notifier {
-    pub fn new(ctx: &Context, audio: Option<OutputStreamHandle>) -> Self {
-        Notifier {
-            ctx: ctx.clone(),
-            audio,
-        }
-    }
-    fn play_sound(&self) {
-        if let Some(audio) = &self.audio {
-            let mix = SineWave::new(432.0)
-                .take_duration(Duration::from_secs_f32(0.2))
-                .amplify(0.20)
-                .fade_in(Duration::from_secs_f32(0.2))
-                .buffered()
-                .reverb(Duration::from_secs_f32(0.5), 0.2);
-            let mix = SineWave::new(564.0)
-                .take_duration(Duration::from_secs_f32(0.2))
-                .amplify(0.10)
-                .fade_in(Duration::from_secs_f32(0.2))
-                .buffered()
-                .reverb(Duration::from_secs_f32(0.3), 0.2)
-                .mix(mix);
-            audio.play_raw(mix).ok();
-        }
-    }
-}
-
-impl Repaintable for Notifier {
-    fn request_repaint(&self) {
-        self.ctx.request_repaint();
-        self.play_sound();
-    }
-}
 #[derive(Debug)]
 pub enum FrontEvent {
     Enter(String),
@@ -89,87 +38,12 @@ pub enum ChatEvent {
     Incoming((Ipv4Addr, Message)),
 }
 
-struct MessageSender {
-    socket: Option<Arc<UdpSocket>>,
-    pub ip: Ipv4Addr,
-    pub port: u16,
-    pub peers: BTreeSet<Ipv4Addr>,
-    all_recepients: Vec<Ipv4Addr>,
-    front_tx: Sender<BackEvent>,
-}
-impl MessageSender {
-    pub fn new(port: u16, front_tx: Sender<BackEvent>) -> Self {
-        MessageSender {
-            socket: None,
-            ip: Ipv4Addr::UNSPECIFIED,
-            port,
-            peers: BTreeSet::<Ipv4Addr>::new(),
-            all_recepients: vec![],
-            front_tx,
-        }
-    }
-    fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
-        self.ip = get_my_ipv4().ok_or("No local IpV4")?;
-        let octets = self.ip.octets();
-        self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
-
-        self.all_recepients = (0..=254)
-            .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
-            .collect();
-        self.socket = match UdpSocket::bind(SocketAddrV4::new(self.ip, self.port)) {
-            Ok(socket) => {
-                socket.set_broadcast(true).ok();
-                socket.set_multicast_loop_v4(false).ok();
-                socket.set_nonblocking(false).ok();
-                Some(Arc::new(socket))
-            }
-            _ => None,
-        };
-
-        Ok(())
-    }
-
-    pub fn send(&mut self, message: Message, mut addrs: Recepients) {
-        if message.command == Command::Empty {
-            return;
-        }
-        let bytes = message.to_be_bytes();
-        if let Some(socket) = &self.socket {
-            if self.peers.is_empty() {
-                addrs = Recepients::All;
-            }
-            match addrs {
-                Recepients::All => self
-                    .all_recepients
-                    .iter()
-                    .map(|r| {
-                        socket
-                            .send_to(&bytes, SocketAddrV4::new(*r, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
-                Recepients::Peers => self
-                    .peers
-                    .iter()
-                    .map(|ip| {
-                        socket
-                            .send_to(&bytes, format!("{}:{}", ip, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
-                Recepients::One(ip) => socket
-                    .send_to(&bytes, format!("{}:{}", ip, self.port))
-                    .is_ok(),
-            };
-        }
-    }
-}
 pub struct UdpChat {
     pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
     pub play_audio: Arc<AtomicBool>,
-    sender: MessageSender, // pub history: Vec<TextMessage>,
+    sender: NetWorker, // pub history: Vec<TextMessage>,
     history: BTreeMap<Id, Message>,
 }
 
@@ -226,23 +100,6 @@ impl TextMessage {
     //         ""
     //     }
     // }
-    pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
-        if let MessageContent::Text(content) = &self.content {
-            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                font_id.size *= 1.5;
-            }
-            if content.starts_with("http") {
-                if let Some((link, text)) = content.split_once(' ') {
-                    ui.hyperlink(link);
-                    ui.label(text);
-                } else {
-                    ui.hyperlink(content);
-                }
-            } else {
-                ui.label(content);
-            }
-        }
-    }
 }
 
 impl UdpChat {
@@ -254,7 +111,7 @@ impl UdpChat {
     ) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         UdpChat {
-            sender: MessageSender::new(port, front_tx),
+            sender: NetWorker::new(port, front_tx),
             name,
             tx,
             rx,
@@ -390,23 +247,6 @@ impl UdpChat {
             }
         }
     }
-}
-
-pub fn get_my_ipv4() -> Option<Ipv4Addr> {
-    let socket = match UdpSocket::bind("0.0.0.0:0") {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
-
-    match socket.connect("8.8.8.8:80") {
-        Ok(()) => (),
-        Err(_) => return None,
-    };
-
-    if let Ok(SocketAddr::V4(addr)) = socket.local_addr() {
-        return Some(addr.ip().to_owned());
-    }
-    None
 }
 
 pub fn utf8_truncate(input: &mut String, maxsize: usize) {

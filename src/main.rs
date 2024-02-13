@@ -1,6 +1,6 @@
 mod app;
 mod chat;
-use app::ChatApp;
+use app::Roomor;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
@@ -18,5 +18,5 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    eframe::run_native("Roomor", options, Box::new(|cc| Box::new(ChatApp::new(cc))))
+    eframe::run_native("Roomor", options, Box::new(|cc| Box::new(Roomor::new(cc))))
 }

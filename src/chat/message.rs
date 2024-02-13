@@ -1,7 +1,6 @@
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use std::fmt;
-use std::time::SystemTime;
+use std::{fmt, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_TEXT_SIZE: usize = 116;
@@ -19,7 +18,6 @@ pub enum Command {
     Exit,
     Error,
 }
-
 impl Command {
     pub fn to_code(self) -> u8 {
         self as u8
@@ -103,7 +101,6 @@ impl Message {
     pub fn exit() -> Self {
         Message::new(Command::Exit, vec![])
     }
-
     pub fn text(text: &str) -> Self {
         Message::new(
             Command::Text,

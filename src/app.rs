@@ -1,3 +1,12 @@
+use super::chat::{
+    message::MAX_TEXT_SIZE,
+    notifier::{Notifier, Repaintable},
+    utf8_truncate, BackEvent, ChatEvent, FrontEvent, MessageContent, TextMessage, UdpChat,
+};
+use eframe::{egui, CreationContext};
+use egui::*;
+use flume::{Receiver, Sender};
+use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     net::Ipv4Addr,
@@ -5,18 +14,9 @@ use std::{
     thread,
 };
 
-use crate::chat::{utf8_truncate, ChatEvent};
+pub const FONT_SCALE: f32 = 1.5;
 
-use super::chat::{
-    message::MAX_TEXT_SIZE, BackEvent, FrontEvent, MessageContent, Notifier, Repaintable,
-    TextMessage, UdpChat,
-};
-use eframe::{egui, CreationContext};
-use egui::*;
-use flume::{Receiver, Sender};
-use rodio::{OutputStream, OutputStreamHandle};
-
-pub struct ChatApp {
+pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
     port: u16,
@@ -31,7 +31,7 @@ pub struct ChatApp {
     back_tx: Sender<ChatEvent>,
 }
 
-impl eframe::App for ChatApp {
+impl eframe::App for Roomor {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
@@ -57,18 +57,17 @@ impl eframe::App for ChatApp {
     }
 }
 
-impl Default for ChatApp {
+impl Default for Roomor {
     fn default() -> Self {
         let (_audio, audio_handler) = match OutputStream::try_default() {
             Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
             Err(_) => (None, None),
         };
-        // let (back_tx, front_rx) = flume::unbounded();
         let (front_tx, back_rx) = flume::unbounded();
         let play_audio = Arc::new(AtomicBool::new(true));
         let chat = UdpChat::new(String::new(), 4444, front_tx, play_audio.clone());
         let back_tx = chat.tx();
-        ChatApp {
+        Roomor {
             name: String::default(),
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
@@ -84,34 +83,10 @@ impl Default for ChatApp {
         }
     }
 }
-impl Repaintable for egui::Context {
-    fn request_repaint(&self) {
-        self.request_repaint()
-    }
-}
 
-pub struct Peer {
-    name: String,
-    online: bool,
-}
-impl Peer {
-    pub fn new(name: impl Into<String>) -> Self {
-        Peer {
-            name: name.into(),
-            online: true,
-        }
-    }
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn is_online(&self) -> bool {
-        self.online
-    }
-}
-
-impl ChatApp {
+impl Roomor {
     pub fn new(_cc: &CreationContext) -> Self {
-        ChatApp::default()
+        Roomor::default()
     }
 
     fn read_events(&mut self) {
@@ -263,6 +238,9 @@ impl ChatApp {
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
+                for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                    font_id.size *= FONT_SCALE;
+                }
                 let y = ui.max_rect().min.y;
                 let rect = ui.clip_rect();
                 let len = self.text.len();
@@ -306,6 +284,31 @@ impl ChatApp {
             self.play_audio
                 .store(!play_audio, std::sync::atomic::Ordering::Relaxed);
         }
+    }
+}
+
+impl Repaintable for egui::Context {
+    fn request_repaint(&self) {
+        self.request_repaint()
+    }
+}
+
+pub struct Peer {
+    name: String,
+    online: bool,
+}
+impl Peer {
+    pub fn new(name: impl Into<String>) -> Self {
+        Peer {
+            name: name.into(),
+            online: true,
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn is_online(&self) -> bool {
+        self.online
     }
 }
 
@@ -371,5 +374,22 @@ impl TextMessage {
                     });
             },
         );
+    }
+    pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
+        if let MessageContent::Text(content) = self.content() {
+            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                font_id.size *= FONT_SCALE;
+            }
+            if content.starts_with("http") {
+                if let Some((link, text)) = content.split_once(' ') {
+                    ui.hyperlink(link);
+                    ui.label(text);
+                } else {
+                    ui.hyperlink(content);
+                }
+            } else {
+                ui.label(content);
+            }
+        }
     }
 }
