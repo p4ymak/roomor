@@ -85,14 +85,6 @@ impl TextMessage {
         }
     }
 
-    pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
-        TextMessage {
-            ip,
-            id: msg.id,
-            content: FrontEvent::Text(msg.read_text()),
-        }
-    }
-
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
@@ -211,7 +203,7 @@ impl UdpChat {
                     if r_ip == self.sender.ip {
                         continue;
                     }
-                    let txt_msg = TextMessage::from_text_message(r_ip, &r_msg);
+                    let txt_msg = TextMessage::from_message(r_ip, &r_msg);
                     // FIXME
                     if !self.sender.peers.contains(&r_ip) {
                         self.sender

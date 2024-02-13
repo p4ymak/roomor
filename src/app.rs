@@ -128,6 +128,7 @@ impl Roomor {
                     .size(ui.available_width() * 0.4);
                 ui.heading(rmr);
                 ui.group(|ui| {
+                    self.font_multiply(ui);
                     ui.heading("Port");
                     ui.add(egui::DragValue::new(&mut self.port));
                     ui.heading("Display Name");
@@ -249,11 +250,7 @@ impl Roomor {
                     false => MAX_TEXT_SIZE,
                 };
                 self.limit_text(limit);
-
-                for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                    let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
-                    font_id.size *= FONT_SCALE * emoji_scale;
-                }
+                self.font_multiply(ui);
 
                 let y = ui.max_rect().min.y;
                 let rect = ui.clip_rect();
@@ -297,6 +294,12 @@ impl Roomor {
         if ui.button(icon).clicked() {
             self.play_audio
                 .store(!play_audio, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    fn font_multiply(&self, ui: &mut egui::Ui) {
+        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+            let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
+            font_id.size *= FONT_SCALE * emoji_scale;
         }
     }
 }
