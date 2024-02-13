@@ -234,7 +234,7 @@ impl UdpChat {
 
                             ctx.request_repaint();
                         }
-                        Command::Text | Command::Repeat => {
+                        Command::Text | Command::Icon | Command::Repeat => {
                             self.sender.front_tx.send(BackEvent::Message(txt_msg)).ok();
                             ctx.request_repaint()
                         }
@@ -263,7 +263,7 @@ impl UdpChat {
                             self.sender.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
                             ctx.request_repaint();
                         }
-                        _ => (),
+                        Command::Error => (),
                     }
                 }
             }
