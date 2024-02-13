@@ -13,7 +13,7 @@ chrono = "0.4.34"
 enumn = "0.1.13"
 # phf = { version = "0.11.2", features = ["macros"] }
 crc = "3.0.1"
-rodio = "0.17.3"
+rodio = { version = "0.17.3", default-features = false }
 
 [profile.release]
 opt-level = 3
