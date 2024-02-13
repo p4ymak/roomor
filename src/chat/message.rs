@@ -135,10 +135,10 @@ impl Message {
         //     *bytes.get(3)?,
         // ]);
         // let checksum = u16::from_be_bytes([*bytes.get(4)?, *bytes.get(5)?]);
-        let command = Command::from_code(u8::from_be_bytes([*bytes.get(6)?]));
+        let command = Command::from_code(u8::from_be_bytes([*bytes.get(0)?]));
         let data = match bytes.len() {
-            0..=7 => [].to_vec(),
-            _ => bytes[7..].to_owned(),
+            0..=1 => [].to_vec(),
+            _ => bytes[1..].to_owned(),
         };
         // if checksum == CRC.checksum(&data) || command == Command::Repeat {
         Some(Message {
