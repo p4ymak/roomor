@@ -103,28 +103,28 @@ pub enum MessageContent {
 #[allow(dead_code)]
 pub struct TextMessage {
     ip: Ipv4Addr,
-    id: Id,
+    // id: Id,
     content: MessageContent,
 }
 impl TextMessage {
     pub fn from_text_message(ip: Ipv4Addr, msg: &Message) -> Self {
         TextMessage {
             ip,
-            id: msg.id,
+            // id: msg.id,
             content: MessageContent::Text(msg.read_text()),
         }
     }
     pub fn enter(ip: Ipv4Addr) -> Self {
         TextMessage {
             ip,
-            id: 0,
+            // id: 0,
             content: MessageContent::Joined,
         }
     }
     pub fn exit(ip: Ipv4Addr) -> Self {
         TextMessage {
             ip,
-            id: 0,
+            // id: 0,
             content: MessageContent::Left,
         }
     }

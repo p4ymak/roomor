@@ -273,6 +273,7 @@ impl ChatApp {
                         ui.style().visuals.widgets.inactive.fg_stroke,
                     );
                 }
+                ui.label(format!("{}", self.text.len()));
                 ui.horizontal(|h| {
                     self.limit_text();
                     h.add(
