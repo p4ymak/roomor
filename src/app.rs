@@ -200,10 +200,11 @@ impl ChatApp {
     fn send(&mut self) {
         if !self.text.trim().is_empty() && self.peers.values().any(|p| p.is_online()) {
             self.back_tx
-                .send(ChatEvent::Front(FrontEvent::Send(std::mem::take(
-                    &mut self.text,
-                ))))
+                .send(ChatEvent::Front(FrontEvent::Send(
+                    self.text.trim().to_string(),
+                )))
                 .ok();
+            self.text.clear();
         }
     }
 

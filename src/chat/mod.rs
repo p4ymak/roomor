@@ -93,7 +93,6 @@ struct MessageSender {
     socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
     pub port: u16,
-    pub message: Message,
     pub peers: BTreeSet<Ipv4Addr>,
     all_recepients: Vec<Ipv4Addr>,
     front_tx: Sender<BackEvent>,
@@ -104,7 +103,6 @@ impl MessageSender {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
             port,
-            message: Message::empty(),
             peers: BTreeSet::<Ipv4Addr>::new(),
             all_recepients: vec![],
             front_tx,
@@ -135,7 +133,7 @@ impl MessageSender {
         if message.command == Command::Empty {
             return;
         }
-        let bytes = self.message.to_be_bytes();
+        let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.is_empty() {
                 addrs = Recepients::All;
@@ -163,14 +161,6 @@ impl MessageSender {
                     .send_to(&bytes, format!("{}:{}", ip, self.port))
                     .is_ok(),
             };
-        }
-        if message.command == Command::Text {
-            self.front_tx
-                .send(BackEvent::Message(TextMessage::from_text_message(
-                    self.ip,
-                    &self.message,
-                )))
-                .ok();
         }
     }
 }
@@ -260,7 +250,6 @@ impl UdpChat {
         name: String,
         port: u16,
         front_tx: Sender<BackEvent>,
-        // front_rx: Receiver<Event>,
         play_audio: Arc<AtomicBool>,
     ) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
@@ -286,7 +275,6 @@ impl UdpChat {
     pub fn run(&mut self, ctx: &impl Repaintable) {
         self.sender
             .send(Message::enter(&self.name), Recepients::All);
-        // self.read_front_events();
         self.receive(ctx);
     }
 
@@ -294,10 +282,6 @@ impl UdpChat {
         if let Some(socket) = &self.sender.socket {
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
-            // let ctx = ctx.clone();
-            // let play_audio = Arc::clone(&self.play_audio);
-            // let port = self.port;
-            // let name = self.name.clone();
             thread::spawn(move || {
                 let mut buf = [0; 2048];
                 loop {
@@ -308,22 +292,8 @@ impl UdpChat {
                         if let Some(message) =
                             Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
-                            // if matches!(
-                            //     &message.command,
-                            //     Command::Enter | Command::Exit | Command::Text | Command::Greating
-                            // ) && play_audio.load(std::sync::atomic::Ordering::Relaxed)
-                            // {
-                            //     ctx.request_repaint();
-                            // }
-                            // if message.command == Command::Enter {
-                            //     let greating = Message::greating(&name);
-                            //     socket
-                            //         .send_to(&greating.to_be_bytes(), SocketAddrV4::new(ip, port))
-                            //         .ok();
-                            // }
-                            // println!("messsage: {message}");
+                            println!("message: {message}");
                             receiver.send(ChatEvent::Incoming((ip, message))).ok();
-                            // ctx.request_repaint();
                         }
                     }
                 }
@@ -332,8 +302,6 @@ impl UdpChat {
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
-        println!("READ");
-
         for event in self.rx.iter() {
             println!("{:?}", event);
             match event {
@@ -342,7 +310,16 @@ impl UdpChat {
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
                     FrontEvent::Send(text) => {
-                        self.sender.send(Message::text(&text), Recepients::Peers);
+                        let message = Message::text(&text);
+                        self.history.insert(message.id, message.clone());
+                        self.sender
+                            .front_tx
+                            .send(BackEvent::Message(TextMessage::from_text_message(
+                                self.sender.ip,
+                                &message,
+                            )))
+                            .ok();
+                        self.sender.send(message, Recepients::Peers);
                     }
                     FrontEvent::Exit => {
                         self.sender.send(Message::exit(), Recepients::Peers);
