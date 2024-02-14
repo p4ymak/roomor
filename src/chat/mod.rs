@@ -56,6 +56,13 @@ pub struct TextMessage {
     content: FrontEvent,
 }
 impl TextMessage {
+    pub fn logo() -> Self {
+        TextMessage {
+            ip: Ipv4Addr::UNSPECIFIED,
+            id: 0,
+            content: FrontEvent::Text(String::from("RMЯ")),
+        }
+    }
     pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
         TextMessage {
             ip,

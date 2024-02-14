@@ -131,10 +131,15 @@ impl Roomor {
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| {
-                let rmr = egui::RichText::new("RMЯ")
-                    .monospace()
-                    .size(ui.available_width() * 0.4);
-                ui.heading(rmr);
+                ui.vertical_centered(|ui| {
+                    let size = ui.available_width() * 0.3;
+                    for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                        font_id.size = size;
+                    }
+                    TextMessage::logo().draw(ui, None);
+                });
+                ui.label("");
+                ui.label("");
                 ui.group(|ui| {
                     self.font_multiply(ui);
                     ui.heading("Port");
