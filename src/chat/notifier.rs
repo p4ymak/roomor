@@ -14,7 +14,7 @@ where
     Self: Clone + Sync + Send + 'static,
 {
     fn request_repaint(&self) {}
-    fn notify(&self, text: &str) {}
+    fn notify(&self, _text: &str) {}
 }
 
 #[derive(Clone)]

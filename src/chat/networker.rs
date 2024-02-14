@@ -116,6 +116,7 @@ impl NetWorker {
             None => {
                 self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
                 self.peers.insert(ip, None);
+                self.send(Message::ask_name(), Recepients::One(ip));
                 self.send(Message::greating(my_name), Recepients::One(ip));
             }
             Some(None) => {

@@ -200,14 +200,14 @@ impl UdpChat {
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg);
                     self.sender.incoming(r_ip, &self.name);
                     match r_msg.command {
-                        Command::Enter => {
+                        Command::Enter | Command::Greating => {
                             let user_name = String::from_utf8_lossy(&r_msg.data);
                             self.sender.event(
                                 BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
                                 ctx,
                             );
                         }
-                        Command::Greating => (),
+
                         Command::Exit => {
                             self.sender.event(BackEvent::PeerLeft(r_ip), ctx);
                         }
