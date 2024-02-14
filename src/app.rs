@@ -190,7 +190,10 @@ impl Roomor {
                     key: egui::Key::Escape,
                     pressed: true,
                     ..
-                } => self.history.clear(),
+                } => {
+                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
+                    *self = Roomor::default()
+                }
                 _ => (),
             })
         })
