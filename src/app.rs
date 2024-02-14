@@ -130,23 +130,25 @@ impl Roomor {
 
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered_justified(|ui| {
-                ui.vertical_centered(|ui| {
-                    let size = ui.available_width() * 0.3;
-                    for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                        font_id.size = size;
-                    }
-                    TextMessage::logo().draw(ui, None);
-                });
-                ui.label("");
-                ui.label("");
-                ui.group(|ui| {
-                    self.font_multiply(ui);
-                    ui.heading("Port");
-                    ui.add(egui::DragValue::new(&mut self.port));
-                    ui.heading("Display Name");
-                    limit_text(&mut self.name, MAX_NAME_SIZE);
-                    ui.text_edit_singleline(&mut self.name).request_focus();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.vertical_centered_justified(|ui| {
+                    ui.vertical_centered(|ui| {
+                        let size = ui.available_width() * 0.3;
+                        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                            font_id.size = size;
+                        }
+                        TextMessage::logo().draw(ui, None);
+                    });
+                    ui.label("");
+                    ui.label("");
+                    ui.group(|ui| {
+                        self.font_multiply(ui);
+                        ui.heading("Port");
+                        ui.add(egui::DragValue::new(&mut self.port));
+                        ui.heading("Display Name");
+                        limit_text(&mut self.name, MAX_NAME_SIZE);
+                        ui.text_edit_singleline(&mut self.name).request_focus();
+                    });
                 });
             });
         });
