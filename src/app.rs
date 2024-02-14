@@ -1,5 +1,5 @@
 use super::chat::{
-    message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
+    message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
     notifier::{Notifier, Repaintable},
     utf8_truncate, BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
@@ -101,7 +101,6 @@ impl Roomor {
                 BackEvent::PeerJoined((r_ip, name)) => {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
                         ip.insert(Peer::new(name.as_ref()));
-
                         self.history.push(TextMessage::enter(
                             r_ip,
                             name.clone().unwrap_or(r_ip.to_string()),
@@ -141,6 +140,7 @@ impl Roomor {
                     ui.heading("Port");
                     ui.add(egui::DragValue::new(&mut self.port));
                     ui.heading("Display Name");
+                    limit_text(&mut self.name, MAX_NAME_SIZE);
                     ui.text_edit_singleline(&mut self.name).request_focus();
                 });
             });
@@ -187,11 +187,6 @@ impl Roomor {
                 _ => (),
             })
         })
-    }
-
-    fn limit_text(&mut self, limit: usize) {
-        self.text = self.text.trim_end_matches('\n').to_string();
-        utf8_truncate(&mut self.text, limit);
     }
 
     fn send(&mut self) {
@@ -277,7 +272,7 @@ impl Roomor {
                     true => MAX_EMOJI_SIZE,
                     false => MAX_TEXT_SIZE,
                 };
-                self.limit_text(limit);
+                limit_text(&mut self.text, limit);
                 self.font_multiply(ui);
 
                 let y = ui.max_rect().min.y;
@@ -455,4 +450,8 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui) {
     {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
+}
+fn limit_text(text: &mut String, limit: usize) {
+    *text = text.trim_end_matches('\n').to_string();
+    utf8_truncate(text, limit);
 }
