@@ -44,7 +44,7 @@ pub struct UdpChat {
     pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
-    sender: NetWorker, // pub history: Vec<TextMessage>,
+    sender: NetWorker,
     history: BTreeMap<Id, Message>,
 }
 
@@ -199,18 +199,15 @@ impl UdpChat {
                         continue;
                     }
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg);
-                    // FIXME
-                    if !self.sender.peers.contains(&r_ip) {
+                    if self.sender.peers.get(&r_ip).is_none() {
                         self.sender
                             .front_tx
                             .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
                             .ok();
+                        self.sender.peers.insert(r_ip, false);
+                        self.sender
+                            .send(Message::greating(&self.name), Recepients::One(r_ip));
                         ctx.notify();
-                        self.sender.peers.insert(r_ip);
-                        if r_ip != self.sender.ip {
-                            self.sender
-                                .send(Message::greating(&self.name), Recepients::One(r_ip));
-                        }
                     }
                     match r_msg.command {
                         Command::Enter => {
@@ -219,12 +216,29 @@ impl UdpChat {
                                 .front_tx
                                 .send(BackEvent::PeerJoined((r_ip, name.to_string())))
                                 .ok();
-
+                            self.sender
+                                .peers
+                                .entry(r_ip)
+                                .and_modify(|has_name| *has_name = true);
                             // ctx.notify();
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
                             self.sender.front_tx.send(BackEvent::Message(txt_msg)).ok();
-                            ctx.notify()
+                            ctx.notify();
+                            if self
+                                .sender
+                                .peers
+                                .get(&r_ip)
+                                .is_some_and(|has_name| !has_name)
+                            {
+                                self.sender.send(
+                                    Message::new(
+                                        Command::AskToRepeat,
+                                        0_u32.to_be_bytes().to_vec(),
+                                    ),
+                                    Recepients::One(r_ip),
+                                );
+                            }
                         }
                         Command::Damaged => {
                             self.sender.send(
@@ -238,9 +252,13 @@ impl UdpChat {
                                     .map(|i| *r_msg.data.get(i).unwrap_or(&0))
                                     .collect::<Vec<u8>>()
                                     .try_into()
-                                    .unwrap(),
+                                    .unwrap_or_default(),
                             );
-                            if let Some(message) = self.history.get(&id) {
+                            // Resend my Name
+                            if id == 0 {
+                                self.sender
+                                    .send(Message::greating(&self.name), Recepients::One(r_ip));
+                            } else if let Some(message) = self.history.get(&id) {
                                 let mut message = message.clone();
                                 message.command = Command::Repeat;
                                 self.sender.send(message, Recepients::One(r_ip));

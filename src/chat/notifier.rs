@@ -1,7 +1,10 @@
 use eframe::egui::Context;
 use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -58,7 +61,7 @@ impl Repaintable for Notifier {
     }
     fn notify(&self) {
         self.ctx.request_repaint();
-        if self.play_audio.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.play_audio.load(Ordering::Relaxed) {
             self.play_sound();
         }
     }

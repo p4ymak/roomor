@@ -6,6 +6,7 @@ use super::chat::{
 use eframe::{egui, CreationContext};
 use egui::*;
 use flume::{Receiver, Sender};
+use notify_rust::Notification;
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
@@ -29,6 +30,7 @@ pub struct Roomor {
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
+    d_bus: bool,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
 }
@@ -42,7 +44,7 @@ impl eframe::App for Roomor {
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
-            self.read_events();
+            self.read_events(ctx);
             self.draw(ctx);
         }
         self.handle_keys(ctx);
@@ -81,6 +83,7 @@ impl Default for Roomor {
             _audio,
             audio_handler,
             play_audio,
+            d_bus: true,
             back_tx,
             back_rx,
         }
@@ -92,21 +95,29 @@ impl Roomor {
         Roomor::default()
     }
 
-    fn read_events(&mut self) {
+    fn read_events(&mut self, ctx: &Context) {
         for event in self.back_rx.try_iter() {
+            if ctx.is_pointer_over_area() && self.d_bus {
+                Notification::new()
+                    .summary("Roomor")
+                    .body("New message")
+                    .show()
+                    .ok();
+            }
             match event {
                 BackEvent::PeerJoined((r_ip, name)) => {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(Peer::new(name.clone()));
+                        ip.insert(Peer::new(Some(&name)));
                         self.history.push(TextMessage::enter(r_ip, name.clone()));
                     } else if let Some(peer) = self.peers.get_mut(&r_ip) {
                         if !peer.online {
                             peer.online = true;
                             self.history.push(TextMessage::enter(r_ip, name.clone()));
                         }
-                        if peer.name != name {
+
+                        if peer.name != Some(name.to_string()) {
                             // FIXME
-                            peer.name = name;
+                            peer.name = Some(name);
                         }
                     }
                 }
@@ -222,7 +233,11 @@ impl Roomor {
                     )
                     .on_hover_ui(|h| {
                         for (ip, peer) in self.peers.iter() {
-                            let mut label = egui::RichText::new(format!("{ip} - {}", peer.name()));
+                            let name = match peer.name() {
+                                Some(name) => format!("{ip} - {name}"),
+                                None => format!("{ip}"),
+                            };
+                            let mut label = egui::RichText::new(name);
                             if !peer.is_online() {
                                 label = label.weak();
                             }
@@ -315,18 +330,18 @@ impl Repaintable for egui::Context {
 }
 
 pub struct Peer {
-    name: String,
+    name: Option<String>,
     online: bool,
 }
 impl Peer {
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: Option<impl Into<String>>) -> Self {
         Peer {
-            name: name.into(),
+            name: name.map(|n| n.into()),
             online: true,
         }
     }
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> Option<&String> {
+        self.name.as_ref()
     }
     pub fn is_online(&self) -> bool {
         self.online
@@ -363,19 +378,23 @@ impl TextMessage {
                         if let Some(peer) = incoming {
                             g.vertical(|g| {
                                 g.horizontal(|h| {
-                                    if peer.name().is_empty() {
-                                        let mut label = egui::RichText::new(self.ip().to_string());
-                                        if !peer.is_online() {
-                                            label = label.weak();
+                                    match peer.name() {
+                                        None => {
+                                            let mut label =
+                                                egui::RichText::new(self.ip().to_string());
+                                            if !peer.is_online() {
+                                                label = label.weak();
+                                            }
+                                            h.label(label);
                                         }
-                                        h.label(label);
-                                    } else {
-                                        let mut label = egui::RichText::new(peer.name());
-                                        if peer.is_online() {
-                                            label = label.strong();
+                                        Some(name) => {
+                                            let mut label = egui::RichText::new(name);
+                                            if peer.is_online() {
+                                                label = label.strong();
+                                            }
+                                            h.label(label)
+                                                .on_hover_text_at_pointer(self.ip().to_string());
                                         }
-                                        h.label(label)
-                                            .on_hover_text_at_pointer(self.ip().to_string());
                                     }
                                     match self.content() {
                                         FrontEvent::Enter(_) => {

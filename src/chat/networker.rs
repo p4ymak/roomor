@@ -1,17 +1,18 @@
 use super::{message::Message, BackEvent, Recepients};
 use flume::Sender;
 use std::{
-    collections::BTreeSet,
+    collections::BTreeMap,
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     sync::Arc,
 };
+type HasName = bool;
 
 pub struct NetWorker {
     pub socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
     pub port: u16,
-    pub peers: BTreeSet<Ipv4Addr>,
+    pub peers: BTreeMap<Ipv4Addr, HasName>,
     all_recepients: Vec<Ipv4Addr>,
     pub front_tx: Sender<BackEvent>,
 }
@@ -21,7 +22,7 @@ impl NetWorker {
             socket: None,
             ip: Ipv4Addr::UNSPECIFIED,
             port,
-            peers: BTreeSet::<Ipv4Addr>::new(),
+            peers: BTreeMap::<Ipv4Addr, HasName>::new(),
             all_recepients: vec![],
             front_tx,
         }
@@ -65,7 +66,7 @@ impl NetWorker {
                     .all(|r| r),
                 Recepients::Peers => self
                     .peers
-                    .iter()
+                    .keys()
                     .map(|ip| {
                         socket
                             .send_to(&bytes, format!("{}:{}", ip, self.port))
