@@ -6,7 +6,6 @@ use super::chat::{
 use eframe::{egui, CreationContext};
 use egui::*;
 use flume::{Receiver, Sender};
-use notify_rust::Notification;
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     collections::{btree_map::Entry, BTreeMap},
@@ -30,7 +29,7 @@ pub struct Roomor {
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
-    d_bus: bool,
+    d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
 }
@@ -44,7 +43,7 @@ impl eframe::App for Roomor {
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
-            self.read_events(ctx);
+            self.read_events();
             self.draw(ctx);
         }
         self.handle_keys(ctx);
@@ -69,6 +68,7 @@ impl Default for Roomor {
         };
         let (front_tx, back_rx) = flume::unbounded();
         let play_audio = Arc::new(AtomicBool::new(true));
+        let d_bus = Arc::new(AtomicBool::new(true));
         let chat = UdpChat::new(String::new(), 4444, front_tx);
         let back_tx = chat.tx();
         Roomor {
@@ -83,7 +83,7 @@ impl Default for Roomor {
             _audio,
             audio_handler,
             play_audio,
-            d_bus: true,
+            d_bus,
             back_tx,
             back_rx,
         }
@@ -95,30 +95,28 @@ impl Roomor {
         Roomor::default()
     }
 
-    fn read_events(&mut self, ctx: &Context) {
+    fn read_events(&mut self) {
         for event in self.back_rx.try_iter() {
-            if ctx.is_pointer_over_area() && self.d_bus {
-                Notification::new()
-                    .summary("Roomor")
-                    .body("New message")
-                    .show()
-                    .ok();
-            }
             match event {
                 BackEvent::PeerJoined((r_ip, name)) => {
                     if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(Peer::new(Some(&name)));
-                        self.history.push(TextMessage::enter(r_ip, name.clone()));
-                    } else if let Some(peer) = self.peers.get_mut(&r_ip) {
-                        if !peer.online {
-                            peer.online = true;
-                            self.history.push(TextMessage::enter(r_ip, name.clone()));
-                        }
+                        ip.insert(Peer::new(name.as_ref()));
 
-                        if peer.name != Some(name.to_string()) {
-                            // FIXME
-                            peer.name = Some(name);
+                        self.history.push(TextMessage::enter(
+                            r_ip,
+                            name.clone().unwrap_or(r_ip.to_string()),
+                        ));
+                    } else if let Some(peer) = self.peers.get_mut(&r_ip) {
+                        if !peer.is_online() {
+                            self.history.push(TextMessage::enter(
+                                r_ip,
+                                name.clone().unwrap_or(r_ip.to_string()),
+                            ));
                         }
+                        if name.is_some() {
+                            peer.name = name;
+                        }
+                        peer.online = true;
                     }
                 }
                 BackEvent::PeerLeft(ip) => {
@@ -151,7 +149,12 @@ impl Roomor {
 
     fn init_chat(&mut self, ctx: &egui::Context) {
         if let Some(mut init) = self.chat_init.take() {
-            let ctx = Notifier::new(ctx, self.audio_handler.clone(), self.play_audio.clone());
+            let ctx = Notifier::new(
+                ctx,
+                self.audio_handler.clone(),
+                self.play_audio.clone(),
+                self.d_bus.clone(),
+            );
             init.prelude(&self.name, self.port);
             thread::spawn(move || init.run(&ctx));
         }
@@ -169,7 +172,9 @@ impl Roomor {
                     ..
                 } => {
                     if self.chat_init.is_some() {
-                        self.init_chat(ctx);
+                        if !self.name.trim().is_empty() {
+                            self.init_chat(ctx);
+                        }
                     } else {
                         self.send();
                     }
@@ -205,6 +210,7 @@ impl Roomor {
     fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
+                // GUI Settings
                 if h.button(egui::RichText::new("-").monospace()).clicked() {
                     let ppp = h.ctx().pixels_per_point().max(0.75);
                     h.ctx().set_pixels_per_point(ppp - 0.25);
@@ -220,8 +226,13 @@ impl Roomor {
                     h.ctx().request_repaint();
                 }
                 egui::widgets::global_dark_light_mode_switch(h);
+
+                // Notifications
                 h.separator();
-                self.sound_mute_button(h);
+                atomic_button(&self.play_audio, '♪', h);
+                atomic_button(&self.d_bus, '⚑', h);
+
+                // Online Summary
                 if self.chat_init.is_none() {
                     h.separator();
                     h.add(
@@ -300,19 +311,6 @@ impl Roomor {
                     });
                 });
         });
-    }
-
-    fn sound_mute_button(&mut self, ui: &mut egui::Ui) {
-        let play_audio = self.play_audio.load(std::sync::atomic::Ordering::Relaxed);
-        let icon = if play_audio {
-            egui::RichText::new("🔉").monospace()
-        } else {
-            egui::RichText::new("🔇").monospace()
-        };
-        if ui.button(icon).clicked() {
-            self.play_audio
-                .store(!play_audio, std::sync::atomic::Ordering::Relaxed);
-        }
     }
 
     fn font_multiply(&self, ui: &mut egui::Ui) {
@@ -441,5 +439,20 @@ impl TextMessage {
             }
             _ => (),
         }
+    }
+}
+
+fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui) {
+    let val = value.load(std::sync::atomic::Ordering::Relaxed);
+    let mut icon = egui::RichText::new(icon).monospace();
+    if !val {
+        icon = icon.weak();
+    }
+    if ui
+        .button(icon)
+        .on_hover_text_at_pointer("Pop Notifications")
+        .clicked()
+    {
+        value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
 }

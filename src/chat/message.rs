@@ -10,9 +10,9 @@ pub const MAX_EMOJI_SIZE: usize = 8;
 #[repr(u8)]
 pub enum Command {
     Enter,
+    Greating,
     Text,
     Icon,
-    Damaged,
     AskToRepeat,
     Repeat,
     Exit,
@@ -46,7 +46,7 @@ impl fmt::Display for Message {
             self.checksum,
             self.command,
             match self.command {
-                Command::Text | Command::Icon | Command::Damaged | Command::Repeat =>
+                Command::Text | Command::Icon | Command::Error | Command::Repeat =>
                     string_from_be_u8(&self.data),
                 Command::AskToRepeat => u32::from_be_bytes(
                     (0..4)
@@ -97,10 +97,13 @@ impl Message {
         Message::new(Command::Enter, be_u8_from_str(name))
     }
     pub fn greating(name: &str) -> Self {
-        Message::new(Command::Enter, be_u8_from_str(name))
+        Message::new(Command::Greating, be_u8_from_str(name))
     }
     pub fn exit() -> Self {
         Message::new(Command::Exit, vec![])
+    }
+    pub fn ask_name() -> Self {
+        Message::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec())
     }
     pub fn text(text: &str) -> Self {
         Message::new(
@@ -150,7 +153,7 @@ impl Message {
             Some(Message {
                 id,
                 checksum,
-                command: Command::Damaged,
+                command: Command::Error,
                 data,
             })
         }

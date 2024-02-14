@@ -28,7 +28,7 @@ pub enum FrontEvent {
 }
 #[derive(Debug)]
 pub enum BackEvent {
-    PeerJoined((Ipv4Addr, String)),
+    PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
     Message(TextMessage),
     MyIp(Ipv4Addr),
@@ -93,13 +93,12 @@ impl TextMessage {
     pub fn content(&self) -> &FrontEvent {
         &self.content
     }
-    // pub fn text(&self) -> &str {
-    //     if let MessageContent::Text(text) = &self.content {
-    //         text
-    //     } else {
-    //         ""
-    //     }
-    // }
+    pub fn text(&self) -> &str {
+        match &self.content {
+            FrontEvent::Text(text) | FrontEvent::Icon(text) => text,
+            _ => "",
+        }
+    }
 }
 
 impl UdpChat {
@@ -199,48 +198,23 @@ impl UdpChat {
                         continue;
                     }
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg);
-                    if self.sender.peers.get(&r_ip).is_none() {
-                        self.sender
-                            .front_tx
-                            .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
-                            .ok();
-                        self.sender.peers.insert(r_ip, false);
-                        self.sender
-                            .send(Message::greating(&self.name), Recepients::One(r_ip));
-                        ctx.notify();
-                    }
+                    self.sender.incoming(r_ip, &self.name);
                     match r_msg.command {
                         Command::Enter => {
-                            let name = String::from_utf8_lossy(&r_msg.data);
-                            self.sender
-                                .front_tx
-                                .send(BackEvent::PeerJoined((r_ip, name.to_string())))
-                                .ok();
-                            self.sender
-                                .peers
-                                .entry(r_ip)
-                                .and_modify(|has_name| *has_name = true);
-                            // ctx.notify();
+                            let user_name = String::from_utf8_lossy(&r_msg.data);
+                            self.sender.event(
+                                BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
+                                ctx,
+                            );
+                        }
+                        Command::Greating => (),
+                        Command::Exit => {
+                            self.sender.event(BackEvent::PeerLeft(r_ip), ctx);
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
-                            self.sender.front_tx.send(BackEvent::Message(txt_msg)).ok();
-                            ctx.notify();
-                            if self
-                                .sender
-                                .peers
-                                .get(&r_ip)
-                                .is_some_and(|has_name| !has_name)
-                            {
-                                self.sender.send(
-                                    Message::new(
-                                        Command::AskToRepeat,
-                                        0_u32.to_be_bytes().to_vec(),
-                                    ),
-                                    Recepients::One(r_ip),
-                                );
-                            }
+                            self.sender.event(BackEvent::Message(txt_msg), ctx);
                         }
-                        Command::Damaged => {
+                        Command::Error => {
                             self.sender.send(
                                 Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec()),
                                 Recepients::One(r_ip),
@@ -264,12 +238,6 @@ impl UdpChat {
                                 self.sender.send(message, Recepients::One(r_ip));
                             }
                         }
-                        Command::Exit => {
-                            self.sender.peers.remove(&r_ip);
-                            self.sender.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
-                            ctx.notify();
-                        }
-                        Command::Error => (),
                     }
                 }
             }

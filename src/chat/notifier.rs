@@ -1,4 +1,5 @@
 use eframe::egui::Context;
+use notify_rust::Notification;
 use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
     sync::{
@@ -13,7 +14,7 @@ where
     Self: Clone + Sync + Send + 'static,
 {
     fn request_repaint(&self) {}
-    fn notify(&self) {}
+    fn notify(&self, text: &str) {}
 }
 
 #[derive(Clone)]
@@ -21,17 +22,20 @@ pub struct Notifier {
     ctx: Context,
     audio: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
+    d_bus: Arc<AtomicBool>,
 }
 impl Notifier {
     pub fn new(
         ctx: &Context,
         audio: Option<OutputStreamHandle>,
         play_audio: Arc<AtomicBool>,
+        d_bus: Arc<AtomicBool>,
     ) -> Self {
         Notifier {
             ctx: ctx.clone(),
             audio,
             play_audio,
+            d_bus,
         }
     }
 
@@ -59,10 +63,13 @@ impl Repaintable for Notifier {
     fn request_repaint(&self) {
         self.ctx.request_repaint();
     }
-    fn notify(&self) {
+    fn notify(&self, text: &str) {
         self.ctx.request_repaint();
         if self.play_audio.load(Ordering::Relaxed) {
             self.play_sound();
+        }
+        if self.d_bus.load(Ordering::Relaxed) {
+            Notification::new().summary("Roomor").body(text).show().ok();
         }
     }
 }
