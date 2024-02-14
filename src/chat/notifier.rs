@@ -1,10 +1,9 @@
+use eframe::egui::Context;
+use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
-
-use eframe::egui::Context;
-use rodio::{source::SineWave, OutputStreamHandle, Source};
 
 pub trait Repaintable
 where
@@ -13,10 +12,6 @@ where
     fn request_repaint(&self) {}
     fn notify(&self) {}
 }
-
-#[derive(Clone)]
-pub struct RepaintDummy;
-impl Repaintable for RepaintDummy {}
 
 #[derive(Clone)]
 pub struct Notifier {
@@ -36,6 +31,7 @@ impl Notifier {
             play_audio,
         }
     }
+
     pub fn play_sound(&self) {
         if let Some(audio) = &self.audio {
             let mix = SineWave::new(432.0)
