@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
 use eframe::egui::Context;
 use rodio::{source::SineWave, OutputStreamHandle, Source};
@@ -7,24 +10,30 @@ pub trait Repaintable
 where
     Self: Clone + Sync + Send + 'static,
 {
-    fn request_repaint(&self);
+    fn request_repaint(&self) {}
+    fn notify(&self) {}
 }
+
 #[derive(Clone)]
 pub struct RepaintDummy;
-impl Repaintable for RepaintDummy {
-    fn request_repaint(&self) {}
-}
+impl Repaintable for RepaintDummy {}
 
 #[derive(Clone)]
 pub struct Notifier {
     ctx: Context,
     audio: Option<OutputStreamHandle>,
+    play_audio: Arc<AtomicBool>,
 }
 impl Notifier {
-    pub fn new(ctx: &Context, audio: Option<OutputStreamHandle>) -> Self {
+    pub fn new(
+        ctx: &Context,
+        audio: Option<OutputStreamHandle>,
+        play_audio: Arc<AtomicBool>,
+    ) -> Self {
         Notifier {
             ctx: ctx.clone(),
             audio,
+            play_audio,
         }
     }
     pub fn play_sound(&self) {
@@ -50,6 +59,11 @@ impl Notifier {
 impl Repaintable for Notifier {
     fn request_repaint(&self) {
         self.ctx.request_repaint();
-        self.play_sound();
+    }
+    fn notify(&self) {
+        self.ctx.request_repaint();
+        if self.play_audio.load(std::sync::atomic::Ordering::Relaxed) {
+            self.play_sound();
+        }
     }
 }
