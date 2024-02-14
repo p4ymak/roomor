@@ -9,7 +9,7 @@ use message::{Command, Id, Message};
 use std::{
     collections::BTreeMap,
     net::{Ipv4Addr, SocketAddr},
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
     thread,
 };
 pub enum Recepients {
@@ -44,7 +44,6 @@ pub struct UdpChat {
     pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
-    pub play_audio: Arc<AtomicBool>,
     sender: NetWorker, // pub history: Vec<TextMessage>,
     history: BTreeMap<Id, Message>,
 }
@@ -104,19 +103,13 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(
-        name: String,
-        port: u16,
-        front_tx: Sender<BackEvent>,
-        play_audio: Arc<AtomicBool>,
-    ) -> Self {
+    pub fn new(name: String, port: u16, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         UdpChat {
             sender: NetWorker::new(port, front_tx),
             name,
             tx,
             rx,
-            play_audio,
             history: BTreeMap::<Id, Message>::new(),
         }
     }
@@ -179,6 +172,7 @@ impl UdpChat {
                             )))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
+                        ctx.request_repaint();
                     }
                     FrontEvent::Icon(text) => {
                         let message = Message::icon(&text);
@@ -191,6 +185,7 @@ impl UdpChat {
                             )))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
+                        ctx.request_repaint();
                     }
 
                     FrontEvent::Exit => {
@@ -210,6 +205,7 @@ impl UdpChat {
                             .front_tx
                             .send(BackEvent::PeerJoined((r_ip, r_ip.to_string())))
                             .ok();
+                        ctx.notify();
                         self.sender.peers.insert(r_ip);
                         if r_ip != self.sender.ip {
                             self.sender
@@ -224,11 +220,11 @@ impl UdpChat {
                                 .send(BackEvent::PeerJoined((r_ip, name.to_string())))
                                 .ok();
 
-                            ctx.request_repaint();
+                            // ctx.notify();
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
                             self.sender.front_tx.send(BackEvent::Message(txt_msg)).ok();
-                            ctx.request_repaint()
+                            ctx.notify()
                         }
                         Command::Damaged => {
                             self.sender.send(
@@ -253,7 +249,7 @@ impl UdpChat {
                         Command::Exit => {
                             self.sender.peers.remove(&r_ip);
                             self.sender.front_tx.send(BackEvent::PeerLeft(r_ip)).ok();
-                            ctx.request_repaint();
+                            ctx.notify();
                         }
                         Command::Error => (),
                     }

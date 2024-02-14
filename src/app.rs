@@ -67,7 +67,7 @@ impl Default for Roomor {
         };
         let (front_tx, back_rx) = flume::unbounded();
         let play_audio = Arc::new(AtomicBool::new(true));
-        let chat = UdpChat::new(String::new(), 4444, front_tx, play_audio.clone());
+        let chat = UdpChat::new(String::new(), 4444, front_tx);
         let back_tx = chat.tx();
         Roomor {
             name: String::default(),
@@ -137,9 +137,10 @@ impl Roomor {
             });
         });
     }
+
     fn init_chat(&mut self, ctx: &egui::Context) {
         if let Some(mut init) = self.chat_init.take() {
-            let ctx = Notifier::new(ctx, self.audio_handler.clone());
+            let ctx = Notifier::new(ctx, self.audio_handler.clone(), self.play_audio.clone());
             init.prelude(&self.name, self.port);
             thread::spawn(move || init.run(&ctx));
         }
@@ -147,6 +148,7 @@ impl Roomor {
             .send(ChatEvent::Front(FrontEvent::Enter(self.name.to_string())))
             .ok();
     }
+
     fn handle_keys(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
             i.raw.events.iter().for_each(|event| match event {
@@ -284,6 +286,7 @@ impl Roomor {
                 });
         });
     }
+
     fn sound_mute_button(&mut self, ui: &mut egui::Ui) {
         let play_audio = self.play_audio.load(std::sync::atomic::Ordering::Relaxed);
         let icon = if play_audio {
@@ -296,6 +299,7 @@ impl Roomor {
                 .store(!play_audio, std::sync::atomic::Ordering::Relaxed);
         }
     }
+
     fn font_multiply(&self, ui: &mut egui::Ui) {
         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
             let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
@@ -392,6 +396,7 @@ impl TextMessage {
             },
         );
     }
+
     pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
         match self.content() {
             FrontEvent::Text(content) => {
