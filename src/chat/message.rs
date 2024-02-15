@@ -7,7 +7,7 @@ pub const MAX_TEXT_SIZE: usize = 116;
 pub const MAX_EMOJI_SIZE: usize = 8;
 pub const MAX_NAME_SIZE: usize = 44;
 
-#[derive(Debug, PartialEq, Copy, Clone, N)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
 pub enum Command {
     Enter,
