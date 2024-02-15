@@ -1,3 +1,9 @@
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    net::Ipv4Addr,
+    time::SystemTime,
+};
+
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
 impl PeersMap {
     pub fn new() -> Self {

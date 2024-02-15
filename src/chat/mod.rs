@@ -1,6 +1,7 @@
 pub mod message;
 pub mod networker;
 pub mod notifier;
+pub mod peers;
 
 use self::{networker::NetWorker, notifier::Repaintable};
 use flume::{Receiver, Sender};

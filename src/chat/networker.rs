@@ -1,11 +1,9 @@
-use super::{message::Message, notifier::Repaintable, BackEvent, Recepients};
+use super::{message::Message, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
 use flume::Sender;
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     sync::Arc,
-    time::SystemTime,
 };
 
 pub struct NetWorker {

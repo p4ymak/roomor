@@ -1,8 +1,7 @@
-use crate::chat::networker::{Peer, PeersMap};
-
 use super::chat::{
     message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
     notifier::{Notifier, Repaintable},
+    peers::{Peer, PeersMap},
     utf8_truncate, BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
 use eframe::{egui, CreationContext};
