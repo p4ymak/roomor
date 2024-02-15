@@ -15,6 +15,12 @@ pub struct NetWorker {
     all_recepients: Vec<Ipv4Addr>,
     pub front_tx: Sender<BackEvent>,
 }
+impl Drop for NetWorker {
+    fn drop(&mut self) {
+        self.send(Message::exit(), Recepients::All);
+        println!("networker dropped");
+    }
+}
 impl NetWorker {
     pub fn new(port: u16, front_tx: Sender<BackEvent>) -> Self {
         NetWorker {

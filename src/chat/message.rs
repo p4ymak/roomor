@@ -54,7 +54,7 @@ impl fmt::Display for Message {
                         .map(|i| *self.data.get(i).unwrap_or(&0))
                         .collect::<Vec<u8>>()
                         .try_into()
-                        .unwrap(),
+                        .expect("array collected"),
                 )
                 .to_string(),
                 _ => format!("{:?}", &self.data),
@@ -67,7 +67,7 @@ impl Message {
     pub fn new(command: Command, data: Vec<u8>) -> Self {
         let id = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .expect("System Time")
             .as_secs() as u32;
         let checksum = CRC.checksum(&data);
         Message {
@@ -77,6 +77,7 @@ impl Message {
             data,
         }
     }
+
     pub fn _retry_text(id: u32, text: &str) -> Self {
         let data = be_u8_from_str(
             text.to_owned()
