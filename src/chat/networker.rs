@@ -34,15 +34,11 @@ impl NetWorker {
         self.all_recepients = (0..=254)
             .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
             .collect();
-        self.socket = match UdpSocket::bind(SocketAddrV4::new(self.ip, self.port)) {
-            Ok(socket) => {
-                socket.set_broadcast(true).ok();
-                socket.set_multicast_loop_v4(false).ok();
-                socket.set_nonblocking(false).ok();
-                Some(Arc::new(socket))
-            }
-            _ => None,
-        };
+        let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
+        socket.set_broadcast(true).ok();
+        socket.set_multicast_loop_v4(false).ok();
+        socket.set_nonblocking(false).ok();
+        self.socket = Some(Arc::new(socket));
 
         Ok(())
     }

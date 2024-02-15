@@ -3,15 +3,16 @@ pub mod networker;
 pub mod notifier;
 
 use self::{networker::NetWorker, notifier::Repaintable};
-
 use flume::{Receiver, Sender};
 use message::{Command, Id, Message};
 use std::{
     collections::BTreeMap,
+    error::Error,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
     thread,
 };
+
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
@@ -122,11 +123,12 @@ impl UdpChat {
     pub fn tx(&self) -> Sender<ChatEvent> {
         self.tx.clone()
     }
-    pub fn prelude(&mut self, name: &str, port: u16) {
+    pub fn prelude(&mut self, name: &str, port: u16) -> Result<(), Box<dyn Error + 'static>> {
         self.name = name.to_string();
         self.sender.port = port;
-        self.sender.connect().ok(); // FIXME Handle Error
+        self.sender.connect()?;
         self.listen();
+        Ok(())
     }
 
     pub fn run(&mut self, ctx: &impl Repaintable) {

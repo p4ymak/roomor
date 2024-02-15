@@ -32,6 +32,7 @@ pub struct Roomor {
     d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
+    error_message: Option<String>,
 }
 
 impl eframe::App for Roomor {
@@ -86,6 +87,7 @@ impl Default for Roomor {
             d_bus,
             back_tx,
             back_rx,
+            error_message: None,
         }
     }
 }
@@ -149,6 +151,9 @@ impl Roomor {
                         limit_text(&mut self.name, MAX_NAME_SIZE);
                         ui.text_edit_singleline(&mut self.name).request_focus();
                     });
+                    if let Some(err) = &self.error_message {
+                        ui.heading(err);
+                    }
                 });
             });
         });
@@ -162,12 +167,19 @@ impl Roomor {
                 self.play_audio.clone(),
                 self.d_bus.clone(),
             );
-            init.prelude(&self.name, self.port);
-            thread::spawn(move || init.run(&ctx));
+            match init.prelude(&self.name, self.port) {
+                Ok(_) => {
+                    thread::spawn(move || init.run(&ctx));
+                    self.back_tx
+                        .send(ChatEvent::Front(FrontEvent::Enter(self.name.to_string())))
+                        .ok();
+                }
+                Err(err) => {
+                    self.error_message = Some(format!("{err}"));
+                    self.chat_init = Some(init);
+                }
+            }
         }
-        self.back_tx
-            .send(ChatEvent::Front(FrontEvent::Enter(self.name.to_string())))
-            .ok();
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
@@ -191,8 +203,7 @@ impl Roomor {
                     pressed: true,
                     ..
                 } => {
-                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
-                    *self = Roomor::default()
+                    self.history.clear();
                 }
                 _ => (),
             })
