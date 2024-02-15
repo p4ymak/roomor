@@ -1,3 +1,5 @@
+use crate::chat::networker::{Peer, PeersMap};
+
 use super::chat::{
     message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
     notifier::{Notifier, Repaintable},
@@ -8,7 +10,6 @@ use egui::*;
 use flume::{Receiver, Sender};
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
     net::Ipv4Addr,
     sync::{atomic::AtomicBool, Arc},
     thread,
@@ -24,7 +25,7 @@ pub struct Roomor {
     emoji_mode: bool,
     chat_init: Option<UdpChat>,
     history: Vec<TextMessage>,
-    peers: BTreeMap<Ipv4Addr, Peer>,
+    peers: PeersMap,
     text: String,
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
@@ -78,7 +79,7 @@ impl Default for Roomor {
             port: 4444,
             chat_init: Some(chat),
             history: vec![],
-            peers: BTreeMap::<Ipv4Addr, Peer>::new(),
+            peers: PeersMap::new(),
             text: String::with_capacity(MAX_TEXT_SIZE),
             emoji_mode: false,
             _audio,
@@ -100,29 +101,17 @@ impl Roomor {
     fn read_events(&mut self) {
         for event in self.back_rx.try_iter() {
             match event {
-                BackEvent::PeerJoined((r_ip, name)) => {
-                    if let Entry::Vacant(ip) = self.peers.entry(r_ip) {
-                        ip.insert(Peer::new(name.as_ref()));
+                BackEvent::PeerJoined((ip, name)) => {
+                    if self.peers.peer_joined(ip, name.as_ref()) {
                         self.history.push(TextMessage::enter(
-                            r_ip,
-                            name.clone().unwrap_or(r_ip.to_string()),
+                            ip,
+                            name.clone().unwrap_or(ip.to_string()),
                         ));
-                    } else if let Some(peer) = self.peers.get_mut(&r_ip) {
-                        if !peer.is_online() {
-                            self.history.push(TextMessage::enter(
-                                r_ip,
-                                name.clone().unwrap_or(r_ip.to_string()),
-                            ));
-                        }
-                        if name.is_some() {
-                            peer.name = name;
-                        }
-                        peer.online = true;
                     }
                 }
                 BackEvent::PeerLeft(ip) => {
                     self.history.push(TextMessage::exit(ip));
-                    self.peers.entry(ip).and_modify(|p| p.online = false);
+                    self.peers.peer_left(ip);
                 }
                 BackEvent::Message(msg) => self.history.push(msg),
                 BackEvent::MyIp(ip) => self.ip = ip,
@@ -254,12 +243,12 @@ impl Roomor {
                     h.add(
                         egui::Label::new(format!(
                             "Online: {}",
-                            self.peers.values().filter(|p| p.is_online()).count()
+                            self.peers.0.values().filter(|p| p.is_online()).count()
                         ))
                         .wrap(false),
                     )
                     .on_hover_ui(|h| {
-                        for (ip, peer) in self.peers.iter() {
+                        for (ip, peer) in self.peers.0.iter() {
                             let name = match peer.name() {
                                 Some(name) => format!("{ip} - {name}"),
                                 None => format!("{ip}"),
@@ -323,7 +312,7 @@ impl Roomor {
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     self.history.iter().for_each(|m| {
-                        m.draw(ui, self.peers.get(&m.ip()));
+                        m.draw(ui, self.peers.0.get(&m.ip()));
                     });
                 });
         });
@@ -340,25 +329,6 @@ impl Roomor {
 impl Repaintable for egui::Context {
     fn request_repaint(&self) {
         self.request_repaint()
-    }
-}
-
-pub struct Peer {
-    name: Option<String>,
-    online: bool,
-}
-impl Peer {
-    pub fn new(name: Option<impl Into<String>>) -> Self {
-        Peer {
-            name: name.map(|n| n.into()),
-            online: true,
-        }
-    }
-    pub fn name(&self) -> Option<&String> {
-        self.name.as_ref()
-    }
-    pub fn is_online(&self) -> bool {
-        self.online
     }
 }
 
