@@ -86,7 +86,7 @@ impl NetWorker {
         }
     }
 
-    pub fn event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
+    pub fn handle_event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
         match event {
             BackEvent::PeerJoined((ip, ref user_name)) => {
                 let new_comer = self.peers.peer_joined(ip, user_name.clone());
@@ -116,9 +116,9 @@ impl NetWorker {
     }
 
     pub fn incoming(&mut self, ip: Ipv4Addr, my_name: &str) {
+        self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
         match self.peers.0.get_mut(&ip) {
             None => {
-                self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
                 let noname: Option<&str> = None;
                 self.peers.peer_joined(ip, noname);
                 self.send(Message::ask_name(), Recepients::One(ip));

@@ -130,7 +130,10 @@ impl Roomor {
                     self.history.push(TextMessage::exit(ip));
                     self.peers.peer_exited(ip);
                 }
-                BackEvent::Message(msg) => self.history.push(msg),
+                BackEvent::Message(msg) => {
+                    self.peers.peer_refresh(msg.ip());
+                    self.history.push(msg);
+                }
                 BackEvent::MyIp(ip) => self.ip = ip,
             }
         }
