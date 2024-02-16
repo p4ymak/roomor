@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-pub const TIMEOUT: Duration = Duration::from_secs(6 * 4);
+pub const TIMEOUT: Duration = Duration::from_secs(60 * 4);
 
 pub struct NetWorker {
     pub socket: Option<Arc<UdpSocket>>,
