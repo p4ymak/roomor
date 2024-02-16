@@ -5,6 +5,7 @@ pub mod peers;
 
 use self::{networker::NetWorker, notifier::Repaintable};
 use flume::{Receiver, Sender};
+use log::{debug, warn};
 use message::{Command, Id, Message};
 use std::{
     collections::BTreeMap,
@@ -169,9 +170,11 @@ impl UdpChat {
             match event {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Enter(name) => {
+                        debug!("Enter: {name}");
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
                     FrontEvent::Text(text) => {
+                        debug!("Sending: {text}");
                         let message = Message::text(&text);
                         self.history.insert(message.id, message.clone());
                         self.sender
@@ -185,6 +188,7 @@ impl UdpChat {
                         ctx.request_repaint();
                     }
                     FrontEvent::Icon(text) => {
+                        debug!("Sending: {text}");
                         let message = Message::icon(&text);
                         self.history.insert(message.id, message.clone());
                         self.sender
@@ -198,10 +202,12 @@ impl UdpChat {
                         ctx.request_repaint();
                     }
                     FrontEvent::Alive => {
+                        debug!("I'm Alive");
                         self.sender
-                            .send(Message::greating(&self.name), Recepients::All);
+                            .send(Message::greating(&self.name), Recepients::Peers);
                     }
                     FrontEvent::Exit => {
+                        debug!("Exit");
                         self.sender.send(Message::exit(), Recepients::Peers);
                     }
                     FrontEvent::Empty => (),
@@ -213,6 +219,8 @@ impl UdpChat {
                     }
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg);
                     self.sender.incoming(r_ip, &self.name);
+                    debug!("Received {:?} from {r_ip}", r_msg.command);
+
                     match r_msg.command {
                         Command::Enter | Command::Greating => {
                             let user_name = String::from_utf8_lossy(&r_msg.data);
