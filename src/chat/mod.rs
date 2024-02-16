@@ -225,6 +225,7 @@ impl UdpChat {
                     match r_msg.command {
                         Command::Enter | Command::Greating => {
                             let user_name = String::from_utf8_lossy(&r_msg.data);
+
                             self.sender.event(
                                 BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
                                 ctx,
@@ -239,15 +240,18 @@ impl UdpChat {
                             self.sender.event(BackEvent::PeerLeft(r_ip), ctx);
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
+                            self.sender.incoming(r_ip, &self.name);
                             self.sender.event(BackEvent::Message(txt_msg), ctx);
                         }
                         Command::Error => {
+                            self.sender.incoming(r_ip, &self.name);
                             self.sender.send(
                                 Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec()),
                                 Recepients::One(r_ip),
                             );
                         }
                         Command::AskToRepeat => {
+                            self.sender.incoming(r_ip, &self.name);
                             let id: u32 = u32::from_be_bytes(
                                 (0..4)
                                     .map(|i| *r_msg.data.get(i).unwrap_or(&0))
@@ -266,7 +270,6 @@ impl UdpChat {
                             }
                         }
                     }
-                    self.sender.incoming(r_ip, &self.name);
                 }
             }
         }
