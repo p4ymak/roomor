@@ -104,12 +104,14 @@ impl Roomor {
     }
 
     fn stay_alive(&mut self) {
-        if SystemTime::now()
+        let now = SystemTime::now();
+        if now
             .duration_since(self.last_time)
             .is_ok_and(|t| t > TIMEOUT)
         {
             self.peers.check_alive();
             self.back_tx.send(ChatEvent::Front(FrontEvent::Alive)).ok();
+            self.last_time = now;
         }
     }
 
