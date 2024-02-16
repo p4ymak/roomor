@@ -205,7 +205,7 @@ impl UdpChat {
                     FrontEvent::Alive => {
                         debug!("I'm Alive");
                         self.sender
-                            .send(Message::greating(&self.name), Recepients::Peers);
+                            .send(Message::greating(&self.name), Recepients::All);
                     }
                     FrontEvent::Exit => {
                         debug!("Exit");

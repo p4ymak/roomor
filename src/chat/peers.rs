@@ -18,9 +18,6 @@ impl PeersMap {
             new_one = true;
         } else if let Some(peer) = self.0.get_mut(&ip) {
             peer.set_last_time(SystemTime::now());
-            if !peer.is_online() {
-                new_one = true;
-            }
             if name.is_some() {
                 peer.set_name(name);
             }
