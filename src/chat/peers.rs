@@ -4,6 +4,8 @@ use std::{
     time::SystemTime,
 };
 
+use super::networker::TIMEOUT;
+
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
 impl PeersMap {
     pub fn new() -> Self {
@@ -15,6 +17,7 @@ impl PeersMap {
             vip.insert(Peer::new(ip, name));
             new_one = true;
         } else if let Some(peer) = self.0.get_mut(&ip) {
+            peer.set_last_time(SystemTime::now());
             if !peer.is_online() {
                 new_one = true;
             }
@@ -25,14 +28,23 @@ impl PeersMap {
         }
         new_one
     }
-    pub fn peer_left(&mut self, ip: Ipv4Addr) {
+    pub fn peer_offline(&mut self, ip: Ipv4Addr) {
         self.0.entry(ip).and_modify(|p| p.online = false);
+    }
+    pub fn remove(&mut self, ip: &Ipv4Addr) {
+        self.0.remove(ip);
     }
     pub fn get_display_name(&self, ip: Ipv4Addr) -> String {
         self.0
             .get(&ip)
             .map(|r| r.display_name())
             .unwrap_or(ip.to_string())
+    }
+    pub fn check_alive(&mut self) {
+        let now = SystemTime::now();
+        self.0
+            .values_mut()
+            .for_each(|p| p.online = !now.duration_since(p.last_time).is_ok_and(|t| t > TIMEOUT))
     }
 }
 pub struct Peer {

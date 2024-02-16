@@ -1,3 +1,5 @@
+use crate::chat::networker::TIMEOUT;
+
 use super::chat::{
     message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
     notifier::{Notifier, Repaintable},
@@ -12,6 +14,7 @@ use std::{
     net::Ipv4Addr,
     sync::{atomic::AtomicBool, Arc},
     thread,
+    time::SystemTime,
 };
 
 pub const FONT_SCALE: f32 = 1.5;
@@ -33,6 +36,7 @@ pub struct Roomor {
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
     error_message: Option<String>,
+    last_time: SystemTime,
 }
 
 impl eframe::App for Roomor {
@@ -40,6 +44,7 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.stay_alive();
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -88,6 +93,7 @@ impl Default for Roomor {
             back_tx,
             back_rx,
             error_message: None,
+            last_time: SystemTime::now(),
         }
     }
 }
@@ -95,6 +101,16 @@ impl Default for Roomor {
 impl Roomor {
     pub fn new(_cc: &CreationContext) -> Self {
         Roomor::default()
+    }
+
+    fn stay_alive(&mut self) {
+        if SystemTime::now()
+            .duration_since(self.last_time)
+            .is_ok_and(|t| t > TIMEOUT)
+        {
+            self.peers.check_alive();
+            self.back_tx.send(ChatEvent::Front(FrontEvent::Alive)).ok();
+        }
     }
 
     fn read_events(&mut self) {
@@ -110,7 +126,7 @@ impl Roomor {
                 }
                 BackEvent::PeerLeft(ip) => {
                     self.history.push(TextMessage::exit(ip));
-                    self.peers.peer_left(ip);
+                    self.peers.peer_offline(ip);
                 }
                 BackEvent::Message(msg) => self.history.push(msg),
                 BackEvent::MyIp(ip) => self.ip = ip,
@@ -199,6 +215,7 @@ impl Roomor {
     }
 
     fn send(&mut self) {
+        self.last_time = SystemTime::now();
         if !self.text.trim().is_empty() {
             // && self.peers.values().any(|p| p.is_online()) {
             let txt = self.text.trim().to_string();

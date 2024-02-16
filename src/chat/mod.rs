@@ -25,6 +25,7 @@ pub enum FrontEvent {
     Enter(String),
     Text(String),
     Icon(String),
+    Alive,
     Exit,
     Empty,
 }
@@ -196,7 +197,10 @@ impl UdpChat {
                         self.sender.send(message, Recepients::Peers);
                         ctx.request_repaint();
                     }
-
+                    FrontEvent::Alive => {
+                        self.sender
+                            .send(Message::greating(&self.name), Recepients::All);
+                    }
                     FrontEvent::Exit => {
                         self.sender.send(Message::exit(), Recepients::Peers);
                     }

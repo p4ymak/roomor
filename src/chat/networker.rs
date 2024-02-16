@@ -4,7 +4,10 @@ use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     sync::Arc,
+    time::{Duration, SystemTime},
 };
+
+pub const TIMEOUT: Duration = Duration::from_secs(6 * 4);
 
 pub struct NetWorker {
     pub socket: Option<Arc<UdpSocket>>,
@@ -95,7 +98,7 @@ impl NetWorker {
             }
             BackEvent::PeerLeft(ip) => {
                 let notification_text = format!("{} left..", self.peers.get_display_name(ip));
-                self.peers.0.remove(&ip);
+                self.peers.remove(&ip);
                 self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
                 ctx.notify(&notification_text);
             }
@@ -111,7 +114,7 @@ impl NetWorker {
     }
 
     pub fn incoming(&mut self, ip: Ipv4Addr, my_name: &str) {
-        match self.peers.0.get(&ip) {
+        match self.peers.0.get_mut(&ip) {
             None => {
                 self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
                 let noname: Option<&str> = None;
@@ -119,10 +122,12 @@ impl NetWorker {
                 self.send(Message::ask_name(), Recepients::One(ip));
                 self.send(Message::greating(my_name), Recepients::One(ip));
             }
-            Some(peer) if !peer.has_name() => {
-                self.send(Message::ask_name(), Recepients::One(ip));
+            Some(peer) => {
+                peer.set_last_time(SystemTime::now());
+                if !peer.has_name() {
+                    self.send(Message::ask_name(), Recepients::One(ip));
+                }
             }
-            _ => (),
         };
     }
 }
