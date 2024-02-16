@@ -1,5 +1,6 @@
 use super::{message::Message, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
 use flume::Sender;
+use log::debug;
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
@@ -57,6 +58,7 @@ impl NetWorker {
             if self.peers.0.is_empty() {
                 addrs = Recepients::All;
             }
+            debug!("Sent '{:?}' to {addrs:?}", message.command);
             match addrs {
                 Recepients::All => self
                     .all_recepients

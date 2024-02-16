@@ -5,7 +5,7 @@ pub mod peers;
 
 use self::{networker::NetWorker, notifier::Repaintable};
 use flume::{Receiver, Sender};
-use log::{debug, warn};
+use log::debug;
 use message::{Command, Id, Message};
 use std::{
     collections::BTreeMap,
@@ -15,6 +15,7 @@ use std::{
     thread,
 };
 
+#[derive(Debug)]
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
