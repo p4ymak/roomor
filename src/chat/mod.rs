@@ -210,6 +210,7 @@ impl UdpChat {
                     FrontEvent::Exit => {
                         debug!("Exit");
                         self.sender.send(Message::exit(), Recepients::Peers);
+                        continue;
                     }
                     FrontEvent::Empty => (),
                 },
@@ -219,7 +220,6 @@ impl UdpChat {
                         continue;
                     }
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg);
-                    self.sender.incoming(r_ip, &self.name);
                     debug!("Received {:?} from {r_ip}", r_msg.command);
 
                     match r_msg.command {
@@ -266,6 +266,7 @@ impl UdpChat {
                             }
                         }
                     }
+                    self.sender.incoming(r_ip, &self.name);
                 }
             }
         }
