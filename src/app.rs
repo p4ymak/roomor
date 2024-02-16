@@ -176,9 +176,6 @@ impl Roomor {
             match init.prelude(&self.name, self.port) {
                 Ok(_) => {
                     thread::spawn(move || init.run(&ctx));
-                    self.back_tx
-                        .send(ChatEvent::Front(FrontEvent::Enter(self.name.to_string())))
-                        .ok();
                 }
                 Err(err) => {
                     self.error_message = Some(format!("{err}"));
