@@ -8,7 +8,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-pub const TIMEOUT: Duration = Duration::from_secs(60 * 4);
+pub const TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct NetWorker {
     pub socket: Option<Arc<UdpSocket>>,
@@ -90,9 +90,9 @@ impl NetWorker {
         match event {
             BackEvent::PeerJoined((ip, ref user_name)) => {
                 let new_comer = self.peers.peer_joined(ip, user_name.clone());
-                let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
                 self.front_tx.send(event).ok();
                 if new_comer {
+                    let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
                     ctx.notify(&notification_text);
                 } else {
                     ctx.request_repaint();
