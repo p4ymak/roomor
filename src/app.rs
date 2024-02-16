@@ -128,7 +128,7 @@ impl Roomor {
                 }
                 BackEvent::PeerLeft(ip) => {
                     self.history.push(TextMessage::exit(ip));
-                    self.peers.peer_offline(ip);
+                    self.peers.peer_exited(ip);
                 }
                 BackEvent::Message(msg) => self.history.push(msg),
                 BackEvent::MyIp(ip) => self.ip = ip,

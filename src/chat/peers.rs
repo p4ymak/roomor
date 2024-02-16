@@ -21,12 +21,17 @@ impl PeersMap {
             if name.is_some() {
                 peer.set_name(name);
             }
+            new_one = peer.exited;
+            peer.exited = false;
             peer.set_online(true);
         }
         new_one
     }
-    pub fn peer_offline(&mut self, ip: Ipv4Addr) {
-        self.0.entry(ip).and_modify(|p| p.online = false);
+    pub fn peer_exited(&mut self, ip: Ipv4Addr) {
+        self.0.entry(ip).and_modify(|p| {
+            p.online = false;
+            p.exited = true;
+        });
     }
     pub fn remove(&mut self, ip: &Ipv4Addr) {
         self.0.remove(ip);
@@ -48,6 +53,7 @@ pub struct Peer {
     ip: Ipv4Addr,
     name: Option<String>,
     online: bool,
+    exited: bool,
     last_time: SystemTime,
 }
 impl Peer {
@@ -56,6 +62,7 @@ impl Peer {
             ip,
             name: name.map(|n| n.into()),
             online: true,
+            exited: false,
             last_time: SystemTime::now(),
         }
     }
