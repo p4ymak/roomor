@@ -15,18 +15,30 @@ use std::{
     thread,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
     All,
 }
+impl Recepients {
+    pub fn is_public(&self) -> bool {
+        !matches!(self, Recepients::One(_))
+    }
+    pub fn from_ip(ip: Ipv4Addr, public: bool) -> Self {
+        if !public {
+            Recepients::One(ip)
+        } else {
+            Recepients::Peers
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum FrontEvent {
     Enter(String),
-    Text(String, bool),
-    Icon(String, bool),
+    Text(String, Recepients),
+    Icon(String, Recepients),
     Alive,
     Exit,
     Empty,
@@ -56,6 +68,8 @@ pub struct UdpChat {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TextMessage {
+    incoming: bool,
+    public: bool,
     ip: Ipv4Addr,
     id: Id,
     content: FrontEvent,
@@ -63,19 +77,25 @@ pub struct TextMessage {
 impl TextMessage {
     pub fn logo() -> Self {
         TextMessage {
+            incoming: true,
+            public: true,
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
-            content: FrontEvent::Text(String::from("RMЯ"), true),
+            content: FrontEvent::Text(String::from("RMЯ"), Recepients::Peers),
         }
     }
-    pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
+    pub fn from_message(ip: Ipv4Addr, public: bool, msg: &Message, incoming: bool) -> Self {
         TextMessage {
+            incoming,
+            public,
             ip,
             id: msg.id,
             content: match msg.command {
                 Command::Enter => FrontEvent::Enter(msg.read_text()),
-                Command::Text => FrontEvent::Text(msg.read_text(), msg.public),
-                Command::Icon => FrontEvent::Icon(msg.read_text(), msg.public),
+                Command::Text => FrontEvent::Text(msg.read_text(), ip),
+                Command::Icon => {
+                    FrontEvent::Icon(msg.read_text(), Recepients::from_ip(ip, msg.public))
+                }
                 Command::Exit => FrontEvent::Exit,
                 _ => FrontEvent::Empty,
             },
@@ -83,6 +103,7 @@ impl TextMessage {
     }
     pub fn enter(ip: Ipv4Addr, name: String) -> Self {
         TextMessage {
+            incoming: true,
             ip,
             id: 0,
             content: FrontEvent::Enter(name),
@@ -90,6 +111,7 @@ impl TextMessage {
     }
     pub fn exit(ip: Ipv4Addr) -> Self {
         TextMessage {
+            incoming: true,
             ip,
             id: 0,
             content: FrontEvent::Exit,
@@ -174,15 +196,15 @@ impl UdpChat {
                         debug!("Enter: {name}");
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
-                    FrontEvent::Text(text, public) => {
+                    FrontEvent::Text(text, recepients) => {
                         debug!("Sending: {text}");
-                        let message = Message::text(&text, public);
+                        let message = Message::text(&text, recepients.is_public());
                         self.history.insert(message.id, message.clone());
                         self.sender
                             .front_tx
                             .send(BackEvent::Message(
-                                TextMessage::from_message(self.sender.ip, &message),
-                                public,
+                                TextMessage::from_message(recepients, &message, false),
+                                recepients.is_public(),
                             ))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
@@ -195,7 +217,7 @@ impl UdpChat {
                         self.sender
                             .front_tx
                             .send(BackEvent::Message(
-                                TextMessage::from_message(self.sender.ip, &message),
+                                TextMessage::from_message(self.sender.ip, &message, false),
                                 public,
                             ))
                             .ok();
@@ -219,7 +241,7 @@ impl UdpChat {
                     if r_ip == self.sender.ip {
                         continue;
                     }
-                    let txt_msg = TextMessage::from_message(r_ip, &r_msg);
+                    let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                     debug!("Received {:?} from {r_ip}", r_msg.command);
 
                     match r_msg.command {

@@ -64,7 +64,7 @@ impl Chats {
             chat.input.clear();
 
             return Some(match chat.emoji_mode {
-                true => FrontEvent::Icon(txt, public),
+                true => FrontEvent::Icon(txt, chat.recepients),
                 false => FrontEvent::Text(txt, public),
             });
         }
@@ -80,13 +80,15 @@ impl Chats {
     }
     pub fn peer_left(&mut self, ip: Ipv4Addr) {
         self.get_mut_public().history.push(TextMessage::exit(ip));
-
+        self.get_mut_peer(ip).history.push(TextMessage::exit(ip));
         self.peers.peer_exited(ip);
     }
     pub fn message(&mut self, msg: TextMessage, public: bool) {
         if public {
+            println!("Message: {msg:?}");
             self.get_mut_public().history.push(msg);
         } else {
+            println!("Message: {msg:?}");
             self.get_mut_peer(msg.ip()).history.push(msg);
         }
     }
@@ -422,15 +424,14 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("Chats List").show(ctx, |ui| {
-            self.chats.draw_list(ui);
-        });
-
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
                 self.chats.get_mut_active().draw_input(ui);
             });
+        egui::SidePanel::left("Chats List").show(ctx, |ui| {
+            self.chats.draw_list(ui);
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             self.chats.draw_history(ui);
