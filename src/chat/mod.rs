@@ -22,7 +22,7 @@ pub enum Recepients {
     All,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FrontEvent {
     Enter(String),
     Text(String, bool),
@@ -54,7 +54,7 @@ pub struct UdpChat {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,

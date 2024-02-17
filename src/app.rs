@@ -41,11 +41,17 @@ impl Chats {
             .get_mut(&Recepients::Peers)
             .expect("Public Exists")
     }
+    fn get_mut_peer(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
+        self.chats
+            .entry(Recepients::One(ip))
+            .or_insert(ChatHistory::new(Recepients::One(ip)))
+    }
     fn get_mut_active(&mut self) -> &mut ChatHistory {
         self.chats
             .get_mut(&self.active_chat)
             .expect("Active Exists")
     }
+
     fn get_active(&self) -> &ChatHistory {
         self.chats.get(&self.active_chat).expect("Active Exists")
     }
@@ -67,13 +73,14 @@ impl Chats {
 
     pub fn peer_joined(&mut self, ip: Ipv4Addr, name: Option<String>) {
         if self.peers.peer_joined(ip, name.as_ref()) {
-            self.get_mut_public()
-                .history
-                .push(TextMessage::enter(ip, name.unwrap_or(ip.to_string())));
+            let msg = TextMessage::enter(ip, name.unwrap_or(ip.to_string()));
+            self.get_mut_public().history.push(msg.clone());
+            self.get_mut_peer(ip).history.push(msg);
         }
     }
     pub fn peer_left(&mut self, ip: Ipv4Addr) {
         self.get_mut_public().history.push(TextMessage::exit(ip));
+
         self.peers.peer_exited(ip);
     }
     pub fn message(&mut self, msg: TextMessage, public: bool) {
@@ -90,6 +97,18 @@ impl Chats {
                     m.draw(ui, self.peers.0.get(&m.ip()));
                 });
             });
+    }
+    pub fn draw_list(&mut self, ui: &mut egui::Ui) {
+        ui.selectable_value(&mut self.active_chat, Recepients::Peers, "PUBLIC");
+        egui::ScrollArea::both().show(ui, |ui| {
+            for peer in self.peers.0.values() {
+                ui.selectable_value(
+                    &mut self.active_chat,
+                    Recepients::One(peer.ip()),
+                    peer.display_name(),
+                );
+            }
+        });
     }
 }
 pub struct ChatHistory {
@@ -401,6 +420,10 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
+        egui::SidePanel::left("Chats List").show(ctx, |ui| {
+            self.chats.draw_list(ui);
+        });
+
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {

@@ -93,4 +93,7 @@ impl Peer {
     pub fn set_last_time(&mut self, time: SystemTime) {
         self.last_time = time;
     }
+    pub fn ip(&self) -> Ipv4Addr {
+        self.ip
+    }
 }
