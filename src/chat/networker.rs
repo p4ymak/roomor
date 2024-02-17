@@ -104,11 +104,11 @@ impl NetWorker {
                 self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
                 ctx.notify(&notification_text);
             }
-            BackEvent::Message(msg) => {
+            BackEvent::Message(msg, public) => {
                 let text = msg.text();
                 let name = self.peers.get_display_name(msg.ip());
                 let notification_text = format!("{name}: {text}");
-                self.front_tx.send(BackEvent::Message(msg)).ok();
+                self.front_tx.send(BackEvent::Message(msg, public)).ok();
                 ctx.notify(&notification_text);
             }
             _ => (),

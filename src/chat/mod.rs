@@ -15,7 +15,7 @@ use std::{
     thread,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
@@ -25,8 +25,8 @@ pub enum Recepients {
 #[derive(Debug)]
 pub enum FrontEvent {
     Enter(String),
-    Text(String),
-    Icon(String),
+    Text(String, bool),
+    Icon(String, bool),
     Alive,
     Exit,
     Empty,
@@ -35,7 +35,7 @@ pub enum FrontEvent {
 pub enum BackEvent {
     PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
-    Message(TextMessage),
+    Message(TextMessage, bool),
     MyIp(Ipv4Addr),
 }
 
@@ -65,7 +65,7 @@ impl TextMessage {
         TextMessage {
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
-            content: FrontEvent::Text(String::from("RMЯ")),
+            content: FrontEvent::Text(String::from("RMЯ"), true),
         }
     }
     pub fn from_message(ip: Ipv4Addr, msg: &Message) -> Self {
@@ -74,8 +74,8 @@ impl TextMessage {
             id: msg.id,
             content: match msg.command {
                 Command::Enter => FrontEvent::Enter(msg.read_text()),
-                Command::Text => FrontEvent::Text(msg.read_text()),
-                Command::Icon => FrontEvent::Icon(msg.read_text()),
+                Command::Text => FrontEvent::Text(msg.read_text(), msg.public),
+                Command::Icon => FrontEvent::Icon(msg.read_text(), msg.public),
                 Command::Exit => FrontEvent::Exit,
                 _ => FrontEvent::Empty,
             },
@@ -107,7 +107,7 @@ impl TextMessage {
     }
     pub fn text(&self) -> &str {
         match &self.content {
-            FrontEvent::Text(text) | FrontEvent::Icon(text) => text,
+            FrontEvent::Text(text, _) | FrontEvent::Icon(text, _) => text,
             _ => "",
         }
     }
@@ -174,30 +174,30 @@ impl UdpChat {
                         debug!("Enter: {name}");
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
-                    FrontEvent::Text(text) => {
+                    FrontEvent::Text(text, public) => {
                         debug!("Sending: {text}");
-                        let message = Message::text(&text);
+                        let message = Message::text(&text, public);
                         self.history.insert(message.id, message.clone());
                         self.sender
                             .front_tx
-                            .send(BackEvent::Message(TextMessage::from_message(
-                                self.sender.ip,
-                                &message,
-                            )))
+                            .send(BackEvent::Message(
+                                TextMessage::from_message(self.sender.ip, &message),
+                                public,
+                            ))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
                         ctx.request_repaint();
                     }
-                    FrontEvent::Icon(text) => {
+                    FrontEvent::Icon(text, public) => {
                         debug!("Sending: {text}");
-                        let message = Message::icon(&text);
+                        let message = Message::icon(&text, public);
                         self.history.insert(message.id, message.clone());
                         self.sender
                             .front_tx
-                            .send(BackEvent::Message(TextMessage::from_message(
-                                self.sender.ip,
-                                &message,
-                            )))
+                            .send(BackEvent::Message(
+                                TextMessage::from_message(self.sender.ip, &message),
+                                public,
+                            ))
                             .ok();
                         self.sender.send(message, Recepients::Peers);
                         ctx.request_repaint();
@@ -241,12 +241,17 @@ impl UdpChat {
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
                             self.sender.incoming(r_ip, &self.name);
-                            self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                            self.sender
+                                .handle_event(BackEvent::Message(txt_msg, r_msg.public), ctx);
                         }
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.send(
-                                Message::new(Command::AskToRepeat, r_msg.id.to_be_bytes().to_vec()),
+                                Message::new(
+                                    Command::AskToRepeat,
+                                    r_msg.id.to_be_bytes().to_vec(),
+                                    r_msg.public,
+                                ),
                                 Recepients::One(r_ip),
                             );
                         }

@@ -35,6 +35,7 @@ pub struct Message {
     pub id: Id,
     checksum: u16,
     pub command: Command,
+    pub public: bool,
     pub data: Vec<u8>,
 }
 
@@ -64,7 +65,7 @@ impl fmt::Display for Message {
 }
 
 impl Message {
-    pub fn new(command: Command, data: Vec<u8>) -> Self {
+    pub fn new(command: Command, data: Vec<u8>, public: bool) -> Self {
         let id = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("System Time")
@@ -73,6 +74,7 @@ impl Message {
         Message {
             id,
             checksum,
+            public,
             command,
             data,
         }
@@ -92,22 +94,23 @@ impl Message {
             checksum,
             command: Command::Repeat,
             data,
+            public: true,
         }
     }
 
     pub fn enter(name: &str) -> Self {
-        Message::new(Command::Enter, be_u8_from_str(name))
+        Message::new(Command::Enter, be_u8_from_str(name), true)
     }
     pub fn greating(name: &str) -> Self {
-        Message::new(Command::Greating, be_u8_from_str(name))
+        Message::new(Command::Greating, be_u8_from_str(name), true)
     }
     pub fn exit() -> Self {
-        Message::new(Command::Exit, vec![])
+        Message::new(Command::Exit, vec![], true)
     }
     pub fn ask_name() -> Self {
-        Message::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec())
+        Message::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
     }
-    pub fn text(text: &str) -> Self {
+    pub fn text(text: &str, public: bool) -> Self {
         Message::new(
             Command::Text,
             be_u8_from_str(
@@ -117,9 +120,10 @@ impl Message {
                     .collect::<String>()
                     .as_ref(),
             ),
+            public,
         )
     }
-    pub fn icon(text: &str) -> Self {
+    pub fn icon(text: &str, public: bool) -> Self {
         Message::new(
             Command::Icon,
             be_u8_from_str(
@@ -129,6 +133,7 @@ impl Message {
                     .collect::<String>()
                     .as_ref(),
             ),
+            public,
         )
     }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
@@ -140,15 +145,17 @@ impl Message {
         ]);
         let checksum = u16::from_be_bytes([*bytes.get(4)?, *bytes.get(5)?]);
         let command = Command::from_code(u8::from_be_bytes([*bytes.get(6)?]));
+        let public = bytes.get(7)?.count_ones() > 0;
         let data = match bytes.len() {
-            0..=7 => [].to_vec(),
-            _ => bytes[7..].to_owned(),
+            0..=8 => [].to_vec(),
+            _ => bytes[8..].to_owned(),
         };
         if checksum == CRC.checksum(&data) || command == Command::Repeat {
             Some(Message {
                 id,
                 checksum,
                 command,
+                public,
                 data,
             })
         } else {
@@ -156,6 +163,7 @@ impl Message {
                 id,
                 checksum,
                 command: Command::Error,
+                public,
                 data,
             })
         }
@@ -166,6 +174,7 @@ impl Message {
         bytes.extend(self.id.to_be_bytes());
         bytes.extend(self.checksum.to_be_bytes());
         bytes.extend(self.command.to_code().to_be_bytes());
+        bytes.extend([self.public as u8]);
         bytes.extend(self.data.to_owned());
 
         bytes

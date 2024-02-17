@@ -1,4 +1,4 @@
-use crate::chat::networker::TIMEOUT;
+use crate::chat::{networker::TIMEOUT, Recepients};
 
 use super::chat::{
     message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
@@ -11,6 +11,7 @@ use egui::*;
 use flume::{Receiver, Sender};
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
+    collections::BTreeMap,
     net::Ipv4Addr,
     sync::{atomic::AtomicBool, Arc},
     thread,
@@ -20,15 +21,135 @@ use std::{
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 
+pub struct Chats {
+    active_chat: Recepients,
+    peers: PeersMap,
+    chats: BTreeMap<Recepients, ChatHistory>,
+}
+impl Chats {
+    pub fn new() -> Self {
+        let mut chats = BTreeMap::new();
+        chats.insert(Recepients::Peers, ChatHistory::new(Recepients::Peers));
+        Chats {
+            active_chat: Recepients::Peers,
+            peers: PeersMap::new(),
+            chats,
+        }
+    }
+    fn get_mut_public(&mut self) -> &mut ChatHistory {
+        self.chats
+            .get_mut(&Recepients::Peers)
+            .expect("Public Exists")
+    }
+    fn get_mut_active(&mut self) -> &mut ChatHistory {
+        self.chats
+            .get_mut(&self.active_chat)
+            .expect("Active Exists")
+    }
+    fn get_active(&self) -> &ChatHistory {
+        self.chats.get(&self.active_chat).expect("Active Exists")
+    }
+    pub fn compose_message(&mut self) -> Option<FrontEvent> {
+        let chat = self.get_mut_active();
+        if !chat.input.trim().is_empty() {
+            // && self.peers.values().any(|p| p.is_online()) {
+            let txt = chat.input.trim().to_string();
+            let public = chat.recepients == Recepients::Peers;
+            chat.input.clear();
+
+            return Some(match chat.emoji_mode {
+                true => FrontEvent::Icon(txt, public),
+                false => FrontEvent::Text(txt, public),
+            });
+        }
+        None
+    }
+
+    pub fn peer_joined(&mut self, ip: Ipv4Addr, name: Option<String>) {
+        if self.peers.peer_joined(ip, name.as_ref()) {
+            self.get_mut_public()
+                .history
+                .push(TextMessage::enter(ip, name.unwrap_or(ip.to_string())));
+        }
+    }
+    pub fn peer_left(&mut self, ip: Ipv4Addr) {
+        self.get_mut_public().history.push(TextMessage::exit(ip));
+        self.peers.peer_exited(ip);
+    }
+    pub fn message(&mut self, msg: TextMessage, public: bool) {
+        if public {
+            self.get_mut_public().history.push(msg);
+        }
+    }
+    pub fn draw_history(&self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                self.get_active().history.iter().for_each(|m| {
+                    m.draw(ui, self.peers.0.get(&m.ip()));
+                });
+            });
+    }
+}
+pub struct ChatHistory {
+    recepients: Recepients,
+    emoji_mode: bool,
+    input: String,
+    history: Vec<TextMessage>,
+}
+impl ChatHistory {
+    pub fn new(recepients: Recepients) -> Self {
+        ChatHistory {
+            recepients,
+            emoji_mode: false,
+            input: String::with_capacity(MAX_TEXT_SIZE),
+            history: vec![],
+        }
+    }
+    fn font_multiply(&self, ui: &mut egui::Ui) {
+        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+            let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
+            font_id.size *= FONT_SCALE * emoji_scale;
+        }
+    }
+    pub fn draw_input(&mut self, ui: &mut egui::Ui) {
+        self.emoji_mode = self.input.starts_with(' ');
+        let limit = match self.emoji_mode {
+            true => MAX_EMOJI_SIZE,
+            false => MAX_TEXT_SIZE,
+        };
+        limit_text(&mut self.input, limit);
+        self.font_multiply(ui);
+
+        let y = ui.max_rect().min.y;
+        let rect = ui.clip_rect();
+        let len = self.input.len();
+        if len > 0 {
+            ui.painter().hline(
+                rect.min.x..=(rect.max.x * (len as f32 / limit as f32)),
+                y,
+                ui.style().visuals.widgets.inactive.fg_stroke,
+            );
+        }
+
+        ui.add(
+            egui::TextEdit::multiline(&mut self.input)
+                .frame(false)
+                .cursor_at_end(true)
+                .desired_rows(if self.emoji_mode { 1 } else { 4 })
+                .desired_width(ui.available_rect_before_wrap().width()),
+        )
+        .request_focus();
+    }
+}
 pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
     port: u16,
-    emoji_mode: bool,
     chat_init: Option<UdpChat>,
-    history: Vec<TextMessage>,
+    chats: Chats,
     peers: PeersMap,
-    text: String,
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
@@ -77,15 +198,14 @@ impl Default for Roomor {
         let d_bus = Arc::new(AtomicBool::new(true));
         let chat = UdpChat::new(String::new(), 4444, front_tx);
         let back_tx = chat.tx();
+
         Roomor {
             name: String::default(),
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(chat),
-            history: vec![],
             peers: PeersMap::new(),
-            text: String::with_capacity(MAX_TEXT_SIZE),
-            emoji_mode: false,
+            chats: Chats::new(),
             _audio,
             audio_handler,
             play_audio,
@@ -115,23 +235,24 @@ impl Roomor {
         }
     }
 
+    fn send(&mut self) {
+        self.last_time = SystemTime::now();
+        if let Some(msg) = self.chats.compose_message() {
+            self.back_tx.send(ChatEvent::Front(msg)).ok();
+        }
+    }
+
     fn read_events(&mut self) {
         for event in self.back_rx.try_iter() {
             match event {
                 BackEvent::PeerJoined((ip, name)) => {
-                    if self.peers.peer_joined(ip, name.as_ref()) {
-                        self.history.push(TextMessage::enter(
-                            ip,
-                            name.clone().unwrap_or(ip.to_string()),
-                        ));
-                    }
+                    self.chats.peer_joined(ip, name);
                 }
                 BackEvent::PeerLeft(ip) => {
-                    self.history.push(TextMessage::exit(ip));
-                    self.peers.peer_exited(ip);
+                    self.chats.peer_left(ip);
                 }
-                BackEvent::Message(msg) => {
-                    self.history.push(msg);
+                BackEvent::Message(msg, public) => {
+                    self.chats.message(msg, public);
                 }
                 BackEvent::MyIp(ip) => self.ip = ip,
             }
@@ -152,7 +273,7 @@ impl Roomor {
                     ui.label("");
                     ui.label("");
                     ui.group(|ui| {
-                        self.font_multiply(ui);
+                        self.chats.get_mut_active().font_multiply(ui);
                         ui.heading("Port");
                         ui.add(egui::DragValue::new(&mut self.port));
                         ui.heading("Display Name");
@@ -208,25 +329,11 @@ impl Roomor {
                     pressed: true,
                     ..
                 } => {
-                    self.history.clear();
+                    // self.history.clear(); //FIXME
                 }
                 _ => (),
             })
         })
-    }
-
-    fn send(&mut self) {
-        self.last_time = SystemTime::now();
-        if !self.text.trim().is_empty() {
-            // && self.peers.values().any(|p| p.is_online()) {
-            let txt = self.text.trim().to_string();
-            let msg_ty = match self.emoji_mode {
-                true => FrontEvent::Icon(txt),
-                false => FrontEvent::Text(txt),
-            };
-            self.back_tx.send(ChatEvent::Front(msg_ty)).ok();
-            self.text.clear();
-        }
     }
 
     fn top_panel(&mut self, ctx: &egui::Context) {
@@ -294,52 +401,12 @@ impl Roomor {
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
             .show(ctx, |ui| {
-                self.emoji_mode = self.text.starts_with(' ');
-                let limit = match self.emoji_mode {
-                    true => MAX_EMOJI_SIZE,
-                    false => MAX_TEXT_SIZE,
-                };
-                limit_text(&mut self.text, limit);
-                self.font_multiply(ui);
-
-                let y = ui.max_rect().min.y;
-                let rect = ui.clip_rect();
-                let len = self.text.len();
-                if len > 0 {
-                    ui.painter().hline(
-                        rect.min.x..=(rect.max.x * (len as f32 / limit as f32)),
-                        y,
-                        ui.style().visuals.widgets.inactive.fg_stroke,
-                    );
-                }
-
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.text)
-                        .frame(false)
-                        .cursor_at_end(true)
-                        .desired_rows(if self.emoji_mode { 1 } else { 4 })
-                        .desired_width(ui.available_rect_before_wrap().width()),
-                )
-                .request_focus();
+                self.chats.get_mut_active().draw_input(ui);
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .stick_to_bottom(true)
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    self.history.iter().for_each(|m| {
-                        m.draw(ui, self.peers.0.get(&m.ip()));
-                    });
-                });
+            self.chats.draw_history(ui);
         });
-    }
-
-    fn font_multiply(&self, ui: &mut egui::Ui) {
-        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-            let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
-            font_id.size *= FONT_SCALE * emoji_scale;
-        }
     }
 }
 
@@ -419,7 +486,7 @@ impl TextMessage {
 
     pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
         match self.content() {
-            FrontEvent::Text(content) => {
+            FrontEvent::Text(content, _public) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE;
                 }
@@ -434,7 +501,7 @@ impl TextMessage {
                     ui.label(content);
                 }
             }
-            FrontEvent::Icon(content) => {
+            FrontEvent::Icon(content, _public) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE * EMOJI_SCALE;
                 }
