@@ -149,7 +149,6 @@ pub struct Roomor {
     port: u16,
     chat_init: Option<UdpChat>,
     chats: Chats,
-    peers: PeersMap,
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
@@ -204,7 +203,6 @@ impl Default for Roomor {
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(chat),
-            peers: PeersMap::new(),
             chats: Chats::new(),
             _audio,
             audio_handler,
@@ -229,7 +227,7 @@ impl Roomor {
             .duration_since(self.last_time)
             .is_ok_and(|t| t > TIMEOUT)
         {
-            self.peers.check_alive();
+            self.chats.peers.check_alive();
             self.back_tx.send(ChatEvent::Front(FrontEvent::Alive)).ok();
             self.last_time = now;
         }
@@ -367,12 +365,17 @@ impl Roomor {
                     h.add(
                         egui::Label::new(format!(
                             "Online: {}",
-                            self.peers.0.values().filter(|p| p.is_online()).count()
+                            self.chats
+                                .peers
+                                .0
+                                .values()
+                                .filter(|p| p.is_online())
+                                .count()
                         ))
                         .wrap(false),
                     )
                     .on_hover_ui(|h| {
-                        for (ip, peer) in self.peers.0.iter() {
+                        for (ip, peer) in self.chats.peers.0.iter() {
                             let name = match peer.name() {
                                 Some(name) => format!("{ip} - {name}"),
                                 None => format!("{ip}"),
