@@ -86,6 +86,8 @@ impl Chats {
     pub fn message(&mut self, msg: TextMessage, public: bool) {
         if public {
             self.get_mut_public().history.push(msg);
+        } else {
+            self.get_mut_peer(msg.ip()).history.push(msg);
         }
     }
     pub fn draw_history(&self, ui: &mut egui::Ui) {
