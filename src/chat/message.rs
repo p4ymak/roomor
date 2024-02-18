@@ -2,6 +2,8 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use std::{fmt, time::SystemTime};
 
+use super::TextMessage;
+
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_TEXT_SIZE: usize = 116;
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -109,6 +111,23 @@ impl Message {
     }
     pub fn ask_name() -> Self {
         Message::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
+    }
+    pub fn from_message(msg: &TextMessage) -> Self {
+        let (command, text) = match &msg.content {
+            super::Content::Enter(name) => (Command::Enter, name.as_str()),
+            super::Content::Text(text) => (Command::Text, text.as_str()),
+            super::Content::Icon(icon) => (Command::Icon, icon.as_str()),
+            super::Content::Alive => (Command::Greating, ""),
+            super::Content::Exit => (Command::Exit, ""),
+            super::Content::Empty => (Command::Error, ""),
+        };
+        let data = be_u8_from_str(
+            text.chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .as_ref(),
+        );
+        Message::new(command, data, msg.public)
     }
     pub fn text(text: &str, public: bool) -> Self {
         Message::new(

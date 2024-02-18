@@ -34,11 +34,26 @@ impl Recepients {
     }
 }
 
+type IsPublic = bool;
 #[derive(Debug, Clone)]
-pub enum FrontEvent {
+pub struct Address {
+    ip: Ipv4Addr,
+    public: bool,
+}
+impl Address {
+    pub fn new_public(ip: Ipv4Addr) -> Self {
+        Address { ip, public: true }
+    }
+    pub fn new_private(ip: Ipv4Addr) -> Self {
+        Address { ip, public: false }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Content {
     Enter(String),
-    Text(String, Recepients),
-    Icon(String, Recepients),
+    Text(String),
+    Icon(String),
     Alive,
     Exit,
     Empty,
@@ -47,8 +62,16 @@ pub enum FrontEvent {
 pub enum BackEvent {
     PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
-    Message(TextMessage, bool),
+    Message(TextMessage),
     MyIp(Ipv4Addr),
+}
+
+#[derive(Debug)]
+pub enum FrontEvent {
+    Enter(String),
+    Alive,
+    Exit,
+    Message(TextMessage),
 }
 
 #[derive(Debug)]
@@ -72,7 +95,7 @@ pub struct TextMessage {
     public: bool,
     ip: Ipv4Addr,
     id: Id,
-    content: FrontEvent,
+    content: Content,
 }
 impl TextMessage {
     pub fn logo() -> Self {
@@ -81,40 +104,74 @@ impl TextMessage {
             public: true,
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
-            content: FrontEvent::Text(String::from("RMЯ"), Recepients::Peers),
+            content: Content::Text(String::from("RMЯ")),
         }
     }
-    pub fn from_message(ip: Ipv4Addr, public: bool, msg: &Message, incoming: bool) -> Self {
+
+    pub fn from_message(ip: Ipv4Addr, msg: &Message, incoming: bool) -> Self {
         TextMessage {
             incoming,
-            public,
+            public: msg.public,
             ip,
             id: msg.id,
             content: match msg.command {
-                Command::Enter => FrontEvent::Enter(msg.read_text()),
-                Command::Text => FrontEvent::Text(msg.read_text(), ip),
-                Command::Icon => {
-                    FrontEvent::Icon(msg.read_text(), Recepients::from_ip(ip, msg.public))
-                }
-                Command::Exit => FrontEvent::Exit,
-                _ => FrontEvent::Empty,
+                Command::Enter => Content::Enter(msg.read_text()),
+                Command::Text => Content::Text(msg.read_text()),
+                Command::Icon => Content::Icon(msg.read_text()),
+                Command::Exit => Content::Exit,
+                _ => Content::Empty,
             },
         }
     }
-    pub fn enter(ip: Ipv4Addr, name: String) -> Self {
+    pub fn is_public(&self) -> bool {
+        self.public
+    }
+    pub fn in_enter(ip: Ipv4Addr, name: String) -> Self {
         TextMessage {
             incoming: true,
+            public: true,
             ip,
             id: 0,
-            content: FrontEvent::Enter(name),
+            content: Content::Enter(name),
         }
     }
-    pub fn exit(ip: Ipv4Addr) -> Self {
+
+    pub fn out_exit() -> Self {
+        TextMessage {
+            incoming: false,
+            public: true,
+            ip: Ipv4Addr::UNSPECIFIED,
+            id: 0,
+            content: Content::Exit,
+        }
+    }
+
+    pub fn out_text(txt: String, public: bool) -> Self {
+        TextMessage {
+            incoming: false,
+            public,
+            ip: Ipv4Addr::UNSPECIFIED,
+            id: 0,
+            content: Content::Text(txt),
+        }
+    }
+
+    pub fn out_icon(txt: String, public: bool) -> Self {
+        TextMessage {
+            incoming: false,
+            public,
+            ip: Ipv4Addr::UNSPECIFIED,
+            id: 0,
+            content: Content::Icon(txt),
+        }
+    }
+    pub fn in_exit(ip: Ipv4Addr) -> Self {
         TextMessage {
             incoming: true,
+            public: true,
             ip,
             id: 0,
-            content: FrontEvent::Exit,
+            content: Content::Exit,
         }
     }
 
@@ -124,12 +181,12 @@ impl TextMessage {
     pub fn _id(&self) -> Id {
         self.id
     }
-    pub fn content(&self) -> &FrontEvent {
+    pub fn content(&self) -> &Content {
         &self.content
     }
-    pub fn text(&self) -> &str {
+    pub fn get_text(&self) -> &str {
         match &self.content {
-            FrontEvent::Text(text, _) | FrontEvent::Icon(text, _) => text,
+            Content::Text(text) | Content::Icon(text) => text,
             _ => "",
         }
     }
@@ -196,34 +253,17 @@ impl UdpChat {
                         debug!("Enter: {name}");
                         self.sender.send(Message::enter(&name), Recepients::All);
                     }
-                    FrontEvent::Text(text, recepients) => {
-                        debug!("Sending: {text}");
-                        let message = Message::text(&text, recepients.is_public());
+                    FrontEvent::Message(msg) => {
+                        debug!("Sending: {}", msg.get_text());
+
+                        let message = Message::from_message(&msg);
                         self.history.insert(message.id, message.clone());
                         self.sender
-                            .front_tx
-                            .send(BackEvent::Message(
-                                TextMessage::from_message(recepients, &message, false),
-                                recepients.is_public(),
-                            ))
-                            .ok();
-                        self.sender.send(message, Recepients::Peers);
+                            .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
+                        self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
-                    FrontEvent::Icon(text, public) => {
-                        debug!("Sending: {text}");
-                        let message = Message::icon(&text, public);
-                        self.history.insert(message.id, message.clone());
-                        self.sender
-                            .front_tx
-                            .send(BackEvent::Message(
-                                TextMessage::from_message(self.sender.ip, &message, false),
-                                public,
-                            ))
-                            .ok();
-                        self.sender.send(message, Recepients::Peers);
-                        ctx.request_repaint();
-                    }
+
                     FrontEvent::Alive => {
                         debug!("I'm Alive");
                         self.sender
@@ -234,7 +274,6 @@ impl UdpChat {
                         self.sender.send(Message::exit(), Recepients::Peers);
                         continue;
                     }
-                    FrontEvent::Empty => (),
                 },
 
                 ChatEvent::Incoming((r_ip, r_msg)) => {
@@ -263,8 +302,7 @@ impl UdpChat {
                         }
                         Command::Text | Command::Icon | Command::Repeat => {
                             self.sender.incoming(r_ip, &self.name);
-                            self.sender
-                                .handle_event(BackEvent::Message(txt_msg, r_msg.public), ctx);
+                            self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);

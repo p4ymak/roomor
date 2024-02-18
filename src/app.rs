@@ -1,11 +1,13 @@
-use crate::chat::{networker::TIMEOUT, Recepients};
+use crate::chat::{Content, FrontEvent};
 
 use super::chat::{
     message::{MAX_EMOJI_SIZE, MAX_NAME_SIZE, MAX_TEXT_SIZE},
+    networker::TIMEOUT,
     notifier::{Notifier, Repaintable},
     peers::{Peer, PeersMap},
-    utf8_truncate, BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
+    utf8_truncate, BackEvent, ChatEvent, Recepients, TextMessage, UdpChat,
 };
+
 use eframe::{egui, CreationContext};
 use egui::*;
 use flume::{Receiver, Sender};
@@ -22,30 +24,35 @@ pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 
 pub struct Chats {
+    ip: Ipv4Addr,
     active_chat: Recepients,
     peers: PeersMap,
     chats: BTreeMap<Recepients, ChatHistory>,
 }
 impl Chats {
-    pub fn new() -> Self {
+    pub fn new(ip: Ipv4Addr) -> Self {
         let mut chats = BTreeMap::new();
         chats.insert(Recepients::Peers, ChatHistory::new(Recepients::Peers));
         Chats {
+            ip,
             active_chat: Recepients::Peers,
             peers: PeersMap::new(),
             chats,
         }
     }
+
     fn get_mut_public(&mut self) -> &mut ChatHistory {
         self.chats
             .get_mut(&Recepients::Peers)
             .expect("Public Exists")
     }
+
     fn get_mut_peer(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
         self.chats
             .entry(Recepients::One(ip))
             .or_insert(ChatHistory::new(Recepients::One(ip)))
     }
+
     fn get_mut_active(&mut self) -> &mut ChatHistory {
         self.chats
             .get_mut(&self.active_chat)
@@ -55,36 +62,41 @@ impl Chats {
     fn get_active(&self) -> &ChatHistory {
         self.chats.get(&self.active_chat).expect("Active Exists")
     }
-    pub fn compose_message(&mut self) -> Option<FrontEvent> {
-        let chat = self.get_mut_active();
-        if !chat.input.trim().is_empty() {
-            // && self.peers.values().any(|p| p.is_online()) {
-            let txt = chat.input.trim().to_string();
-            let public = chat.recepients == Recepients::Peers;
-            chat.input.clear();
 
-            return Some(match chat.emoji_mode {
-                true => FrontEvent::Icon(txt, chat.recepients),
-                false => FrontEvent::Text(txt, public),
-            });
-        }
-        None
+    pub fn compose_message(&mut self) -> Option<TextMessage> {
+        let chat = self.get_mut_active();
+        let trimmed = chat.input.trim().to_string();
+        (!trimmed.is_empty()).then_some(
+            // && self.peers.values().any(|p| p.is_online()) {
+            {
+                let public = chat.recepients == Recepients::Peers;
+                chat.input.clear();
+
+                if chat.emoji_mode {
+                    TextMessage::out_icon(trimmed, public)
+                } else {
+                    TextMessage::out_text(trimmed, public)
+                }
+            },
+        )
     }
 
     pub fn peer_joined(&mut self, ip: Ipv4Addr, name: Option<String>) {
         if self.peers.peer_joined(ip, name.as_ref()) {
-            let msg = TextMessage::enter(ip, name.unwrap_or(ip.to_string()));
+            let msg = TextMessage::in_enter(ip, name.unwrap_or(ip.to_string()));
             self.get_mut_public().history.push(msg.clone());
             self.get_mut_peer(ip).history.push(msg);
         }
     }
+
     pub fn peer_left(&mut self, ip: Ipv4Addr) {
-        self.get_mut_public().history.push(TextMessage::exit(ip));
-        self.get_mut_peer(ip).history.push(TextMessage::exit(ip));
+        self.get_mut_public().history.push(TextMessage::in_exit(ip));
+        self.get_mut_peer(ip).history.push(TextMessage::in_exit(ip));
         self.peers.peer_exited(ip);
     }
-    pub fn message(&mut self, msg: TextMessage, public: bool) {
-        if public {
+
+    pub fn take_message(&mut self, msg: TextMessage) {
+        if msg.is_public() {
             println!("Message: {msg:?}");
             self.get_mut_public().history.push(msg);
         } else {
@@ -92,6 +104,7 @@ impl Chats {
             self.get_mut_peer(msg.ip()).history.push(msg);
         }
     }
+
     pub fn draw_history(&self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
@@ -102,6 +115,7 @@ impl Chats {
                 });
             });
     }
+
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
         ui.selectable_value(&mut self.active_chat, Recepients::Peers, "PUBLIC");
         egui::ScrollArea::both().show(ui, |ui| {
@@ -115,12 +129,14 @@ impl Chats {
         });
     }
 }
+
 pub struct ChatHistory {
     recepients: Recepients,
     emoji_mode: bool,
     input: String,
     history: Vec<TextMessage>,
 }
+
 impl ChatHistory {
     pub fn new(recepients: Recepients) -> Self {
         ChatHistory {
@@ -130,12 +146,14 @@ impl ChatHistory {
             history: vec![],
         }
     }
+
     fn font_multiply(&self, ui: &mut egui::Ui) {
         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
             let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
             font_id.size *= FONT_SCALE * emoji_scale;
         }
     }
+
     pub fn draw_input(&mut self, ui: &mut egui::Ui) {
         self.emoji_mode = self.input.starts_with(' ');
         let limit = match self.emoji_mode {
@@ -166,6 +184,7 @@ impl ChatHistory {
         .request_focus();
     }
 }
+
 pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
@@ -186,6 +205,7 @@ impl eframe::App for Roomor {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.stay_alive();
         self.top_panel(ctx);
@@ -226,7 +246,7 @@ impl Default for Roomor {
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(chat),
-            chats: Chats::new(),
+            chats: Chats::new(Ipv4Addr::UNSPECIFIED),
             _audio,
             audio_handler,
             play_audio,
@@ -259,7 +279,9 @@ impl Roomor {
     fn send(&mut self) {
         self.last_time = SystemTime::now();
         if let Some(msg) = self.chats.compose_message() {
-            self.back_tx.send(ChatEvent::Front(msg)).ok();
+            self.back_tx
+                .send(ChatEvent::Front(FrontEvent::Message(msg)))
+                .ok();
         }
     }
 
@@ -272,8 +294,8 @@ impl Roomor {
                 BackEvent::PeerLeft(ip) => {
                     self.chats.peer_left(ip);
                 }
-                BackEvent::Message(msg, public) => {
-                    self.chats.message(msg, public);
+                BackEvent::Message(msg) => {
+                    self.chats.take_message(msg);
                 }
                 BackEvent::MyIp(ip) => self.ip = ip,
             }
@@ -494,10 +516,10 @@ impl TextMessage {
                                         }
                                     }
                                     match self.content() {
-                                        FrontEvent::Enter(_) => {
+                                        Content::Enter(_) => {
                                             h.label("joined..");
                                         }
-                                        FrontEvent::Exit => {
+                                        Content::Exit => {
                                             h.label("left..");
                                         }
                                         _ => (),
@@ -515,7 +537,7 @@ impl TextMessage {
 
     pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
         match self.content() {
-            FrontEvent::Text(content, _public) => {
+            Content::Text(content) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE;
                 }
@@ -530,7 +552,7 @@ impl TextMessage {
                     ui.label(content);
                 }
             }
-            FrontEvent::Icon(content, _public) => {
+            Content::Icon(content) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE * EMOJI_SCALE;
                 }
@@ -555,6 +577,7 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui) {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
 }
+
 fn limit_text(text: &mut String, limit: usize) {
     *text = text.trim_end_matches('\n').to_string();
     utf8_truncate(text, limit);
