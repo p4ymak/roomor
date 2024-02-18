@@ -24,19 +24,19 @@ pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 
 pub struct Chats {
-    ip: Ipv4Addr,
     active_chat: Recepients,
     peers: PeersMap,
+    order: Vec<Recepients>,
     chats: BTreeMap<Recepients, ChatHistory>,
 }
 impl Chats {
-    pub fn new(ip: Ipv4Addr) -> Self {
+    pub fn new() -> Self {
         let mut chats = BTreeMap::new();
         chats.insert(Recepients::Peers, ChatHistory::new(Recepients::Peers));
         Chats {
-            ip,
             active_chat: Recepients::Peers,
             peers: PeersMap::new(),
+            order: vec![],
             chats,
         }
     }
@@ -70,7 +70,6 @@ impl Chats {
             // && self.peers.values().any(|p| p.is_online()) {
             {
                 chat.input.clear();
-
                 if chat.emoji_mode {
                     TextMessage::out_message(Content::Icon(trimmed), chat.recepients)
                 } else {
@@ -96,12 +95,20 @@ impl Chats {
 
     pub fn take_message(&mut self, msg: TextMessage) {
         if msg.is_public() {
-            println!("Message: {msg:?}");
             self.get_mut_public().history.push(msg);
         } else {
-            println!("Message: {msg:?}");
             self.get_mut_peer(msg.ip()).history.push(msg);
         }
+    }
+
+    fn recalculate_order(&mut self) {
+        let mut order = self
+            .chats
+            .values()
+            .filter_map(|c| c.history.last().map(|m| (m.time(), c.recepients)))
+            .collect::<Vec<_>>();
+        order.sort_by(|a, b| b.0.cmp(&a.0));
+        self.order = order.into_iter().map(|o| o.1).collect();
     }
 
     pub fn draw_history(&self, ui: &mut egui::Ui) {
@@ -110,7 +117,11 @@ impl Chats {
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 self.get_active().history.iter().for_each(|m| {
-                    m.draw(ui, self.peers.0.get(&m.ip()));
+                    let peer = m
+                        .is_incoming()
+                        .then_some(self.peers.0.get(&m.ip()))
+                        .flatten();
+                    m.draw(ui, peer);
                 });
             });
     }
@@ -118,12 +129,14 @@ impl Chats {
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
         ui.selectable_value(&mut self.active_chat, Recepients::Peers, "PUBLIC");
         egui::ScrollArea::both().show(ui, |ui| {
-            for peer in self.peers.0.values() {
-                ui.selectable_value(
-                    &mut self.active_chat,
-                    Recepients::One(peer.ip()),
-                    peer.display_name(),
-                );
+            for peer in self.order.iter() {
+                if let Recepients::One(ip) = peer {
+                    ui.selectable_value(
+                        &mut self.active_chat,
+                        *peer,
+                        self.peers.get_display_name(*ip),
+                    );
+                }
             }
         });
     }
@@ -245,7 +258,7 @@ impl Default for Roomor {
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(chat),
-            chats: Chats::new(Ipv4Addr::UNSPECIFIED),
+            chats: Chats::new(),
             _audio,
             audio_handler,
             play_audio,
@@ -298,6 +311,7 @@ impl Roomor {
                 }
                 BackEvent::MyIp(ip) => self.ip = ip,
             }
+            self.chats.recalculate_order();
         }
     }
 
@@ -450,9 +464,11 @@ impl Roomor {
             .show(ctx, |ui| {
                 self.chats.get_mut_active().draw_input(ui);
             });
-        egui::SidePanel::left("Chats List").show(ctx, |ui| {
-            self.chats.draw_list(ui);
-        });
+        egui::SidePanel::left("Chats List")
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.chats.draw_list(ui);
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             self.chats.draw_history(ui);
@@ -468,7 +484,7 @@ impl Repaintable for egui::Context {
 
 impl TextMessage {
     fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>) {
-        let (direction, _fill_color) = if incoming.is_some() {
+        let (direction, _fill_color) = if self.is_incoming() {
             (
                 egui::Direction::LeftToRight,
                 egui::Color32::from_rgb(42, 42, 42),
@@ -484,7 +500,7 @@ impl TextMessage {
                 .with_main_wrap(true),
             |line| {
                 let mut rounding = Rounding::same(line.style().visuals.window_rounding.nw * 2.0);
-                if incoming.is_some() {
+                if self.is_incoming() {
                     rounding.sw = 0.0;
                 } else {
                     rounding.se = 0.0;

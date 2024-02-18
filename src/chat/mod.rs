@@ -13,6 +13,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
     thread,
+    time::SystemTime,
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -54,7 +55,6 @@ pub enum Content {
     Enter(String),
     Text(String),
     Icon(String),
-    Alive,
     Exit,
     Empty,
 }
@@ -91,6 +91,7 @@ pub struct UdpChat {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TextMessage {
+    timestamp: SystemTime,
     incoming: bool,
     public: bool,
     ip: Ipv4Addr,
@@ -100,6 +101,7 @@ pub struct TextMessage {
 impl TextMessage {
     pub fn logo() -> Self {
         TextMessage {
+            timestamp: SystemTime::now(),
             incoming: true,
             public: true,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -110,6 +112,7 @@ impl TextMessage {
 
     pub fn from_message(ip: Ipv4Addr, msg: &UdpMessage, incoming: bool) -> Self {
         TextMessage {
+            timestamp: SystemTime::now(),
             incoming,
             public: msg.public,
             ip,
@@ -126,23 +129,18 @@ impl TextMessage {
     pub fn is_public(&self) -> bool {
         self.public
     }
+    pub fn is_incoming(&self) -> bool {
+        self.incoming
+    }
+
     pub fn in_enter(ip: Ipv4Addr, name: String) -> Self {
         TextMessage {
+            timestamp: SystemTime::now(),
             incoming: true,
             public: true,
             ip,
             id: 0,
             content: Content::Enter(name),
-        }
-    }
-
-    pub fn out_exit() -> Self {
-        TextMessage {
-            incoming: false,
-            public: true,
-            ip: Ipv4Addr::UNSPECIFIED,
-            id: 0,
-            content: Content::Exit,
         }
     }
 
@@ -153,6 +151,7 @@ impl TextMessage {
         };
 
         TextMessage {
+            timestamp: SystemTime::now(),
             incoming: false,
             public,
             ip,
@@ -162,6 +161,7 @@ impl TextMessage {
     }
     pub fn in_exit(ip: Ipv4Addr) -> Self {
         TextMessage {
+            timestamp: SystemTime::now(),
             incoming: true,
             public: true,
             ip,
@@ -173,7 +173,7 @@ impl TextMessage {
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
-    pub fn _id(&self) -> Id {
+    pub fn id(&self) -> Id {
         self.id
     }
     pub fn content(&self) -> &Content {
@@ -184,6 +184,9 @@ impl TextMessage {
             Content::Text(text) | Content::Icon(text) => text,
             _ => "",
         }
+    }
+    pub fn time(&self) -> SystemTime {
+        self.timestamp
     }
 }
 

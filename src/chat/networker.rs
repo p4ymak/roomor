@@ -21,7 +21,6 @@ pub struct NetWorker {
 impl Drop for NetWorker {
     fn drop(&mut self) {
         self.send(UdpMessage::exit(), Recepients::All);
-        println!("networker dropped");
     }
 }
 impl NetWorker {
@@ -39,7 +38,6 @@ impl NetWorker {
         self.ip = get_my_ipv4().ok_or("No local IpV4")?;
         let octets = self.ip.octets();
         self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
-
         self.all_recepients = (0..=254)
             .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
             .collect();

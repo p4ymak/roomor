@@ -117,7 +117,6 @@ impl UdpMessage {
             super::Content::Enter(name) => (Command::Enter, name.as_str()),
             super::Content::Text(text) => (Command::Text, text.as_str()),
             super::Content::Icon(icon) => (Command::Icon, icon.as_str()),
-            super::Content::Alive => (Command::Greating, ""),
             super::Content::Exit => (Command::Exit, ""),
             super::Content::Empty => (Command::Error, ""),
         };
@@ -128,32 +127,6 @@ impl UdpMessage {
                 .as_ref(),
         );
         UdpMessage::new(command, data, msg.public)
-    }
-    pub fn text(text: &str, public: bool) -> Self {
-        UdpMessage::new(
-            Command::Text,
-            be_u8_from_str(
-                text.to_owned()
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .collect::<String>()
-                    .as_ref(),
-            ),
-            public,
-        )
-    }
-    pub fn icon(text: &str, public: bool) -> Self {
-        UdpMessage::new(
-            Command::Icon,
-            be_u8_from_str(
-                text.to_owned()
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .collect::<String>()
-                    .as_ref(),
-            ),
-            public,
-        )
     }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
         let id = u32::from_be_bytes([
