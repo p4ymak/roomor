@@ -81,6 +81,9 @@ impl Peer {
     pub fn is_online(&self) -> bool {
         self.online
     }
+    pub fn is_exited(&self) -> bool {
+        self.exited
+    }
     pub fn set_name(&mut self, name: Option<impl Into<String>>) {
         self.name = name.map(|n| n.into());
     }

@@ -94,10 +94,19 @@ impl Chats {
     }
 
     pub fn take_message(&mut self, msg: TextMessage) {
-        if msg.is_public() {
-            self.get_mut_public().history.push(msg);
-        } else {
-            self.get_mut_peer(msg.ip()).history.push(msg);
+        let recepients = Recepients::from_ip(msg.ip(), msg.is_public());
+        // if msg.is_public() {
+        //     self.get_mut_public().history.push(msg);
+        // } else {
+        // self.get_mut_peer(msg.ip()).history.push(msg);
+        // }
+        let target_chat = self
+            .chats
+            .entry(recepients)
+            .or_insert(ChatHistory::new(recepients));
+        target_chat.history.push(msg);
+        if recepients != self.active_chat {
+            target_chat.unread += 1;
         }
     }
 
@@ -127,12 +136,43 @@ impl Chats {
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
-        ui.selectable_value(&mut self.active_chat, Recepients::Peers, "Everyone");
+        ui.horizontal(|ui| {
+            let unread = &mut self
+                .chats
+                .get_mut(&Recepients::Peers)
+                .expect("Chat exists")
+                .unread;
+            if ui
+                .selectable_value(&mut self.active_chat, Recepients::Peers, "Everyone")
+                .clicked()
+            {
+                *unread = 0;
+            }
+            if *unread > 0 {
+                ui.label(format!("[{}]", unread));
+            }
+        });
         egui::ScrollArea::both().show(ui, |ui| {
             for recepient in self.order.iter() {
                 if let Recepients::One(ip) = recepient {
                     if let Some(peer) = self.peers.0.get(ip) {
-                        ui.selectable_value(&mut self.active_chat, *recepient, peer.rich_name());
+                        ui.horizontal(|ui| {
+                            let unread =
+                                &mut self.chats.get_mut(recepient).expect("Chat exists").unread;
+                            if ui
+                                .selectable_value(
+                                    &mut self.active_chat,
+                                    *recepient,
+                                    peer.rich_name(),
+                                )
+                                .clicked()
+                            {
+                                *unread = 0;
+                            }
+                            if *unread > 0 {
+                                ui.label(format!("[{}]", unread));
+                            }
+                        });
                     }
                 }
             }
@@ -145,6 +185,7 @@ pub struct ChatHistory {
     emoji_mode: bool,
     input: String,
     history: Vec<TextMessage>,
+    unread: usize,
 }
 
 impl ChatHistory {
@@ -154,6 +195,7 @@ impl ChatHistory {
             emoji_mode: false,
             input: String::with_capacity(MAX_TEXT_SIZE),
             history: vec![],
+            unread: 0,
         }
     }
 
@@ -483,9 +525,12 @@ impl Repaintable for egui::Context {
 
 impl Peer {
     fn rich_name(&self) -> egui::RichText {
-        let mut label = egui::RichText::new(self.display_name()).weak();
+        let mut label = egui::RichText::new(self.display_name());
         if self.is_online() {
             label = label.strong();
+        }
+        if self.is_exited() {
+            label = label.weak();
         }
         label
     }
