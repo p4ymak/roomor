@@ -464,13 +464,11 @@ impl Roomor {
             .show(ctx, |ui| {
                 self.chats.get_mut_active().draw_input(ui);
             });
-        if self.show_list {
-            egui::SidePanel::left("Chats List")
-                .resizable(true)
-                .show(ctx, |ui| {
-                    self.chats.draw_list(ui);
-                });
-        }
+        egui::SidePanel::left("Chats List")
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.chats.draw_list(ui);
+            });
         egui::CentralPanel::default().show(ctx, |ui| {
             self.chats.draw_history(ui);
         });
