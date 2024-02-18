@@ -526,11 +526,10 @@ impl Repaintable for egui::Context {
 impl Peer {
     fn rich_name(&self) -> egui::RichText {
         let mut label = egui::RichText::new(self.display_name());
-        if self.is_online() {
-            label = label.strong();
-        }
         if self.is_exited() {
             label = label.weak();
+        } else if self.is_online() {
+            label = label.strong();
         }
         label
     }
