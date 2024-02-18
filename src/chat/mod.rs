@@ -6,7 +6,7 @@ pub mod peers;
 use self::{networker::NetWorker, notifier::Repaintable};
 use flume::{Receiver, Sender};
 use log::debug;
-use message::{Command, Id, Message};
+use message::{Command, Id, UdpMessage};
 use std::{
     collections::BTreeMap,
     error::Error,
@@ -15,7 +15,7 @@ use std::{
     thread,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Recepients {
     One(Ipv4Addr),
     Peers,
@@ -77,7 +77,7 @@ pub enum FrontEvent {
 #[derive(Debug)]
 pub enum ChatEvent {
     Front(FrontEvent),
-    Incoming((Ipv4Addr, Message)),
+    Incoming((Ipv4Addr, UdpMessage)),
 }
 
 pub struct UdpChat {
@@ -85,7 +85,7 @@ pub struct UdpChat {
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
     sender: NetWorker,
-    history: BTreeMap<Id, Message>,
+    history: BTreeMap<Id, UdpMessage>,
 }
 
 #[allow(dead_code)]
@@ -108,7 +108,7 @@ impl TextMessage {
         }
     }
 
-    pub fn from_message(ip: Ipv4Addr, msg: &Message, incoming: bool) -> Self {
+    pub fn from_message(ip: Ipv4Addr, msg: &UdpMessage, incoming: bool) -> Self {
         TextMessage {
             incoming,
             public: msg.public,
@@ -146,23 +146,18 @@ impl TextMessage {
         }
     }
 
-    pub fn out_text(txt: String, public: bool) -> Self {
-        TextMessage {
-            incoming: false,
-            public,
-            ip: Ipv4Addr::UNSPECIFIED,
-            id: 0,
-            content: Content::Text(txt),
-        }
-    }
+    pub fn out_message(content: Content, recipients: Recepients) -> Self {
+        let (public, ip) = match recipients {
+            Recepients::One(ip) => (false, ip),
+            _ => (true, Ipv4Addr::BROADCAST),
+        };
 
-    pub fn out_icon(txt: String, public: bool) -> Self {
         TextMessage {
             incoming: false,
             public,
-            ip: Ipv4Addr::UNSPECIFIED,
+            ip,
             id: 0,
-            content: Content::Icon(txt),
+            content,
         }
     }
     pub fn in_exit(ip: Ipv4Addr) -> Self {
@@ -200,7 +195,7 @@ impl UdpChat {
             name,
             tx,
             rx,
-            history: BTreeMap::<Id, Message>::new(),
+            history: BTreeMap::<Id, UdpMessage>::new(),
         }
     }
     pub fn tx(&self) -> Sender<ChatEvent> {
@@ -216,7 +211,7 @@ impl UdpChat {
 
     pub fn run(&mut self, ctx: &impl Repaintable) {
         self.sender
-            .send(Message::enter(&self.name), Recepients::All);
+            .send(UdpMessage::enter(&self.name), Recepients::All);
         self.receive(ctx);
     }
 
@@ -234,7 +229,7 @@ impl UdpChat {
                         let ip = *src_addr_v4.ip();
                         if ip != local_ip {
                             if let Some(message) =
-                                Message::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                                UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                             {
                                 receiver.send(ChatEvent::Incoming((ip, message))).ok();
                             }
@@ -251,12 +246,12 @@ impl UdpChat {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Enter(name) => {
                         debug!("Enter: {name}");
-                        self.sender.send(Message::enter(&name), Recepients::All);
+                        self.sender.send(UdpMessage::enter(&name), Recepients::All);
                     }
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
 
-                        let message = Message::from_message(&msg);
+                        let message = UdpMessage::from_message(&msg);
                         self.history.insert(message.id, message.clone());
                         self.sender
                             .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
@@ -267,11 +262,11 @@ impl UdpChat {
                     FrontEvent::Alive => {
                         debug!("I'm Alive");
                         self.sender
-                            .send(Message::greating(&self.name), Recepients::All);
+                            .send(UdpMessage::greating(&self.name), Recepients::All);
                     }
                     FrontEvent::Exit => {
                         debug!("Exit");
-                        self.sender.send(Message::exit(), Recepients::Peers);
+                        self.sender.send(UdpMessage::exit(), Recepients::Peers);
                         continue;
                     }
                 },
@@ -293,7 +288,7 @@ impl UdpChat {
                             );
                             if r_msg.command == Command::Enter {
                                 self.sender
-                                    .send(Message::greating(&self.name), Recepients::One(r_ip));
+                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
                             }
                         }
 
@@ -307,7 +302,7 @@ impl UdpChat {
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.send(
-                                Message::new(
+                                UdpMessage::new(
                                     Command::AskToRepeat,
                                     r_msg.id.to_be_bytes().to_vec(),
                                     r_msg.public,
@@ -327,7 +322,7 @@ impl UdpChat {
                             // Resend my Name
                             if id == 0 {
                                 self.sender
-                                    .send(Message::greating(&self.name), Recepients::One(r_ip));
+                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
                             } else if let Some(message) = self.history.get(&id) {
                                 let mut message = message.clone();
                                 message.command = Command::Repeat;

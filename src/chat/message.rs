@@ -33,7 +33,7 @@ impl Command {
 pub type Id = u32;
 
 #[derive(Debug, Clone)]
-pub struct Message {
+pub struct UdpMessage {
     pub id: Id,
     checksum: u16,
     pub command: Command,
@@ -41,7 +41,7 @@ pub struct Message {
     pub data: Vec<u8>,
 }
 
-impl fmt::Display for Message {
+impl fmt::Display for UdpMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -66,14 +66,14 @@ impl fmt::Display for Message {
     }
 }
 
-impl Message {
+impl UdpMessage {
     pub fn new(command: Command, data: Vec<u8>, public: bool) -> Self {
         let id = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("System Time")
             .as_secs() as u32;
         let checksum = CRC.checksum(&data);
-        Message {
+        UdpMessage {
             id,
             checksum,
             public,
@@ -91,7 +91,7 @@ impl Message {
                 .as_ref(),
         );
         let checksum = CRC.checksum(&data);
-        Message {
+        UdpMessage {
             id,
             checksum,
             command: Command::Repeat,
@@ -101,16 +101,16 @@ impl Message {
     }
 
     pub fn enter(name: &str) -> Self {
-        Message::new(Command::Enter, be_u8_from_str(name), true)
+        UdpMessage::new(Command::Enter, be_u8_from_str(name), true)
     }
     pub fn greating(name: &str) -> Self {
-        Message::new(Command::Greating, be_u8_from_str(name), true)
+        UdpMessage::new(Command::Greating, be_u8_from_str(name), true)
     }
     pub fn exit() -> Self {
-        Message::new(Command::Exit, vec![], true)
+        UdpMessage::new(Command::Exit, vec![], true)
     }
     pub fn ask_name() -> Self {
-        Message::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
+        UdpMessage::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
     }
     pub fn from_message(msg: &TextMessage) -> Self {
         let (command, text) = match &msg.content {
@@ -127,10 +127,10 @@ impl Message {
                 .collect::<String>()
                 .as_ref(),
         );
-        Message::new(command, data, msg.public)
+        UdpMessage::new(command, data, msg.public)
     }
     pub fn text(text: &str, public: bool) -> Self {
-        Message::new(
+        UdpMessage::new(
             Command::Text,
             be_u8_from_str(
                 text.to_owned()
@@ -143,7 +143,7 @@ impl Message {
         )
     }
     pub fn icon(text: &str, public: bool) -> Self {
-        Message::new(
+        UdpMessage::new(
             Command::Icon,
             be_u8_from_str(
                 text.to_owned()
@@ -170,7 +170,7 @@ impl Message {
             _ => bytes[8..].to_owned(),
         };
         if checksum == CRC.checksum(&data) || command == Command::Repeat {
-            Some(Message {
+            Some(UdpMessage {
                 id,
                 checksum,
                 command,
@@ -178,7 +178,7 @@ impl Message {
                 data,
             })
         } else {
-            Some(Message {
+            Some(UdpMessage {
                 id,
                 checksum,
                 command: Command::Error,

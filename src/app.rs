@@ -69,13 +69,12 @@ impl Chats {
         (!trimmed.is_empty()).then_some(
             // && self.peers.values().any(|p| p.is_online()) {
             {
-                let public = chat.recepients == Recepients::Peers;
                 chat.input.clear();
 
                 if chat.emoji_mode {
-                    TextMessage::out_icon(trimmed, public)
+                    TextMessage::out_message(Content::Icon(trimmed), chat.recepients)
                 } else {
-                    TextMessage::out_text(trimmed, public)
+                    TextMessage::out_message(Content::Text(trimmed), chat.recepients)
                 }
             },
         )
@@ -276,7 +275,7 @@ impl Roomor {
         }
     }
 
-    fn send(&mut self) {
+    fn dispatch(&mut self) {
         self.last_time = SystemTime::now();
         if let Some(msg) = self.chats.compose_message() {
             self.back_tx
@@ -364,7 +363,7 @@ impl Roomor {
                             self.init_chat(ctx);
                         }
                     } else {
-                        self.send();
+                        self.dispatch();
                     }
                 }
                 Event::Key {

@@ -1,4 +1,4 @@
-use super::{message::Message, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
+use super::{message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
 use flume::Sender;
 use log::debug;
 use std::{
@@ -20,7 +20,7 @@ pub struct NetWorker {
 }
 impl Drop for NetWorker {
     fn drop(&mut self) {
-        self.send(Message::exit(), Recepients::All);
+        self.send(UdpMessage::exit(), Recepients::All);
         println!("networker dropped");
     }
 }
@@ -52,7 +52,7 @@ impl NetWorker {
         Ok(())
     }
 
-    pub fn send(&mut self, message: Message, mut addrs: Recepients) {
+    pub fn send(&mut self, message: UdpMessage, mut addrs: Recepients) {
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
             if self.peers.0.is_empty() {
@@ -121,13 +121,13 @@ impl NetWorker {
             None => {
                 let noname: Option<&str> = None;
                 self.peers.peer_joined(ip, noname);
-                self.send(Message::ask_name(), Recepients::One(ip));
-                self.send(Message::greating(my_name), Recepients::One(ip));
+                self.send(UdpMessage::ask_name(), Recepients::One(ip));
+                self.send(UdpMessage::greating(my_name), Recepients::One(ip));
             }
             Some(peer) => {
                 peer.set_last_time(SystemTime::now());
                 if !peer.has_name() {
-                    self.send(Message::ask_name(), Recepients::One(ip));
+                    self.send(UdpMessage::ask_name(), Recepients::One(ip));
                 }
             }
         };
