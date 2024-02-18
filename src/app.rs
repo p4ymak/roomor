@@ -127,15 +127,13 @@ impl Chats {
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
-        ui.selectable_value(&mut self.active_chat, Recepients::Peers, "PUBLIC");
+        ui.selectable_value(&mut self.active_chat, Recepients::Peers, "Everyone");
         egui::ScrollArea::both().show(ui, |ui| {
-            for peer in self.order.iter() {
-                if let Recepients::One(ip) = peer {
-                    ui.selectable_value(
-                        &mut self.active_chat,
-                        *peer,
-                        self.peers.get_display_name(*ip),
-                    );
+            for recepient in self.order.iter() {
+                if let Recepients::One(ip) = recepient {
+                    if let Some(peer) = self.peers.0.get(ip) {
+                        ui.selectable_value(&mut self.active_chat, *recepient, peer.rich_name());
+                    }
                 }
             }
         });
@@ -167,6 +165,8 @@ impl ChatHistory {
     }
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui) {
+        ui.style_mut().visuals.clip_rect_margin = 0.0;
+
         self.emoji_mode = self.input.starts_with(' ');
         let limit = match self.emoji_mode {
             true => MAX_EMOJI_SIZE,
@@ -464,12 +464,13 @@ impl Roomor {
             .show(ctx, |ui| {
                 self.chats.get_mut_active().draw_input(ui);
             });
-        egui::SidePanel::left("Chats List")
-            .resizable(true)
-            .show(ctx, |ui| {
-                self.chats.draw_list(ui);
-            });
-
+        if self.show_list {
+            egui::SidePanel::left("Chats List")
+                .resizable(true)
+                .show(ctx, |ui| {
+                    self.chats.draw_list(ui);
+                });
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             self.chats.draw_history(ui);
         });
@@ -479,6 +480,16 @@ impl Roomor {
 impl Repaintable for egui::Context {
     fn request_repaint(&self) {
         self.request_repaint()
+    }
+}
+
+impl Peer {
+    fn rich_name(&self) -> egui::RichText {
+        let mut label = egui::RichText::new(self.display_name()).weak();
+        if self.is_online() {
+            label = label.strong();
+        }
+        label
     }
 }
 
@@ -512,24 +523,8 @@ impl TextMessage {
                         if let Some(peer) = incoming {
                             g.vertical(|g| {
                                 g.horizontal(|h| {
-                                    match peer.name() {
-                                        None => {
-                                            let mut label =
-                                                egui::RichText::new(self.ip().to_string());
-                                            if !peer.is_online() {
-                                                label = label.weak();
-                                            }
-                                            h.label(label);
-                                        }
-                                        Some(name) => {
-                                            let mut label = egui::RichText::new(name);
-                                            if peer.is_online() {
-                                                label = label.strong();
-                                            }
-                                            h.label(label)
-                                                .on_hover_text_at_pointer(self.ip().to_string());
-                                        }
-                                    }
+                                    h.label(peer.rich_name())
+                                        .on_hover_text_at_pointer(peer.ip().to_string());
                                     match self.content() {
                                         Content::Enter(_) => {
                                             h.label("joined..");
