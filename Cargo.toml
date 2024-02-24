@@ -4,17 +4,23 @@ version = "0.2.0"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 resolver = "2"
-description = "Chat over local network."
+description = "Roomor: Offline chat over local network."
 
 [dependencies]
 eframe = "0.26.2"
 flume = "0.11.0"
+
 chrono = "0.4.34"
+timediff = "0.2.3"
+
 enumn = "0.1.13"
 crc = "3.0.1"
+
 rodio = { version = "0.17.3", default-features = false }
 notify-rust = "4.10.0"
+
 image = "0.24.7"
+
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.10.1"
 

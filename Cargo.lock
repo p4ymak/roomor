@@ -2908,6 +2908,7 @@ dependencies = [
  "log",
  "notify-rust",
  "rodio",
+ "timediff",
 ]
 
 [[package]]
@@ -3257,6 +3258,15 @@ name = "time-core"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
+
+[[package]]
+name = "timediff"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec397e7943b73844bbf8329640375f30d62fc65ee0180489ccf54e0b32462cd"
+dependencies = [
+ "humantime",
+]
 
 [[package]]
 name = "tiny-skia"

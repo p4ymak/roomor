@@ -98,7 +98,7 @@ impl TextMessage {
             public: true,
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
-            content: Content::Text(String::from("RMЯ")),
+            content: Content::Icon(String::from("RMЯ")),
         }
     }
 
@@ -352,4 +352,8 @@ pub fn utf8_truncate(input: &mut String, maxsize: usize) {
         } // Extra {} wrap to limit the immutable borrow of char_indices()
         input.truncate(utf8_maxsize);
     }
+}
+pub fn limit_text(text: &mut String, limit: usize) {
+    *text = text.trim_end_matches('\n').to_string();
+    utf8_truncate(text, limit);
 }
