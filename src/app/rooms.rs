@@ -388,23 +388,31 @@ fn draw_list_entry(
             Stroke::new(stroke_width * 4.0, active_fg.color),
         );
     }
-    response.on_hover_ui_at_pointer(|ui| {
-        if unread > 0 {
-            ui.label(format!("Unread: {}", unread));
+
+    // Hover
+    let mut hover_lines = vec![];
+    if unread > 0 {
+        hover_lines.push(format!("Unread: {}", unread));
+    }
+    if let Some(msg) = chats.get(&recepient).and_then(|c| c.history.last()) {
+        if let Some(ago) = pretty_ago(msg.time()) {
+            hover_lines.push(format!("Last message {}", ago));
         }
-        if let Some(msg) = chats.get(&recepient).and_then(|c| c.history.last()) {
-            if let Some(ago) = pretty_ago(msg.time()) {
-                ui.label(format!("Last message {}", ago));
+    }
+    if let Recepients::One(ip) = recepient {
+        let peer = peers.0.get(&ip).expect("Peer exists");
+        if let Some(ago) = pretty_ago(peer.last_time()) {
+            hover_lines.push(format!("Last seen {}", ago));
+        }
+        hover_lines.push(format!("{ip}"));
+    }
+    if !hover_lines.is_empty() {
+        response.on_hover_ui_at_pointer(|ui| {
+            for line in hover_lines {
+                ui.label(line);
             }
-        }
-        if let Recepients::One(ip) = recepient {
-            let peer = peers.0.get(&ip).expect("Peer exists");
-            if let Some(ago) = pretty_ago(peer.last_time()) {
-                ui.label(format!("Last seen {}", ago));
-            }
-            ui.label(format!("{ip}"));
-        }
-    });
+        });
+    }
 }
 
 fn rounding(ui: &mut egui::Ui) -> f32 {
