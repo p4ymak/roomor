@@ -245,8 +245,8 @@ impl Roomor {
 
                 // Notifications
                 h.separator();
-                atomic_button(&self.notification_sound, '♪', h);
-                atomic_button(&self.notification_d_bus, '⚑', h);
+                atomic_button(&self.notification_sound, '♪', h, "Sound Notifications");
+                atomic_button(&self.notification_d_bus, '⚑', h, "Pop notifications");
 
                 // Online Summary
                 if self.chat_init.is_none() {
@@ -316,17 +316,13 @@ impl Repaintable for egui::Context {
     }
 }
 
-fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui) {
+fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: &str) {
     let val = value.load(std::sync::atomic::Ordering::Relaxed);
     let mut icon = egui::RichText::new(icon).monospace();
     if !val {
         icon = icon.weak();
     }
-    if ui
-        .button(icon)
-        .on_hover_text_at_pointer("Pop Notifications")
-        .clicked()
-    {
+    if ui.button(icon).on_hover_text_at_pointer(hover).clicked() {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
 }
