@@ -325,9 +325,9 @@ fn draw_list_entry(
     let active_fg = ui.visuals().widgets.hovered.fg_stroke;
     let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
     let stroke = if is_active {
-        Stroke::new(stroke_width(ui) * 2.0, active_fg.color)
-    } else if response.hovered() {
         Stroke::new(stroke_width(ui) * 2.0, inactive_fg.color)
+    } else if response.hovered() {
+        Stroke::new(stroke_width(ui) * 2.0, active_fg.color)
     } else {
         egui::Stroke::NONE
     };
@@ -401,7 +401,7 @@ fn draw_list_entry(
             if let Some(ago) = pretty_ago(peer.last_time()) {
                 ui.label(format!("Last seen {}", ago));
             }
-            ui.label(format!("IP: {}", ip));
+            ui.label(format!("{ip}"));
         }
     });
 }
