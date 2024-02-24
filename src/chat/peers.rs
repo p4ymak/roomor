@@ -6,6 +6,7 @@ use std::{
 
 use super::networker::TIMEOUT;
 
+#[derive(Default)]
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
 impl PeersMap {
     pub fn new() -> Self {

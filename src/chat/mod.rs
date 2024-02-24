@@ -12,41 +12,25 @@ use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
-    thread,
+    thread::{self, JoinHandle},
     time::SystemTime,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Recepients {
     One(Ipv4Addr),
+    #[default]
     Peers,
     All,
+    Myself,
 }
 impl Recepients {
-    pub fn is_public(&self) -> bool {
-        !matches!(self, Recepients::One(_))
-    }
     pub fn from_ip(ip: Ipv4Addr, public: bool) -> Self {
         if !public {
             Recepients::One(ip)
         } else {
             Recepients::Peers
         }
-    }
-}
-
-type IsPublic = bool;
-#[derive(Debug, Clone)]
-pub struct Address {
-    ip: Ipv4Addr,
-    public: bool,
-}
-impl Address {
-    pub fn new_public(ip: Ipv4Addr) -> Self {
-        Address { ip, public: true }
-    }
-    pub fn new_private(ip: Ipv4Addr) -> Self {
-        Address { ip, public: false }
     }
 }
 
@@ -68,7 +52,7 @@ pub enum BackEvent {
 
 #[derive(Debug)]
 pub enum FrontEvent {
-    Enter(String),
+    // Enter(String),
     Alive,
     Exit,
     Message(TextMessage),
@@ -86,6 +70,14 @@ pub struct UdpChat {
     rx: Receiver<ChatEvent>,
     sender: NetWorker,
     history: BTreeMap<Id, UdpMessage>,
+    thread_handle: Option<JoinHandle<()>>,
+}
+impl Drop for UdpChat {
+    fn drop(&mut self) {
+        if let Some(handle) = self.thread_handle.take() {
+            handle.join().ok();
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -173,9 +165,9 @@ impl TextMessage {
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
-    pub fn id(&self) -> Id {
-        self.id
-    }
+    // pub fn id(&self) -> Id {
+    //     self.id
+    // }
     pub fn content(&self) -> &Content {
         &self.content
     }
@@ -193,12 +185,15 @@ impl TextMessage {
 impl UdpChat {
     pub fn new(name: String, port: u16, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
+        let sender = NetWorker::new(port, front_tx);
+
         UdpChat {
-            sender: NetWorker::new(port, front_tx),
+            sender,
             name,
             tx,
             rx,
             history: BTreeMap::<Id, UdpMessage>::new(),
+            thread_handle: None,
         }
     }
     pub fn tx(&self) -> Sender<ChatEvent> {
@@ -218,8 +213,8 @@ impl UdpChat {
         self.receive(ctx);
     }
 
-    fn listen(&self) {
-        if let Some(socket) = &self.sender.socket {
+    fn listen(&mut self) {
+        self.thread_handle = self.sender.socket.as_ref().map(|socket| {
             let local_ip = self.sender.ip;
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
@@ -230,27 +225,30 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-                        if ip != local_ip {
-                            if let Some(message) =
-                                UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
-                            {
+
+                        if let Some(message) =
+                            UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                        {
+                            if ip != local_ip {
                                 receiver.send(ChatEvent::Incoming((ip, message))).ok();
+                            } else if message.command == Command::Exit {
+                                break;
                             }
                         }
                     }
                 }
-            });
-        }
+            })
+        });
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
             match event {
                 ChatEvent::Front(front) => match front {
-                    FrontEvent::Enter(name) => {
-                        debug!("Enter: {name}");
-                        self.sender.send(UdpMessage::enter(&name), Recepients::All);
-                    }
+                    // FrontEvent::Enter(name) => {
+                    //     debug!("Enter: {name}");
+                    //     self.sender.send(UdpMessage::enter(&name), Recepients::All);
+                    // }
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
 
@@ -270,7 +268,8 @@ impl UdpChat {
                     FrontEvent::Exit => {
                         debug!("Exit");
                         self.sender.send(UdpMessage::exit(), Recepients::Peers);
-                        continue;
+                        self.sender.send(UdpMessage::exit(), Recepients::Myself);
+                        break;
                     }
                 },
 

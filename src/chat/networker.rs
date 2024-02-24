@@ -18,11 +18,7 @@ pub struct NetWorker {
     all_recepients: Vec<Ipv4Addr>,
     pub front_tx: Sender<BackEvent>,
 }
-impl Drop for NetWorker {
-    fn drop(&mut self) {
-        self.send(UdpMessage::exit(), Recepients::All);
-    }
-}
+
 impl NetWorker {
     pub fn new(port: u16, front_tx: Sender<BackEvent>) -> Self {
         NetWorker {
@@ -73,12 +69,15 @@ impl NetWorker {
                     .keys()
                     .map(|ip| {
                         socket
-                            .send_to(&bytes, format!("{}:{}", ip, self.port))
+                            .send_to(&bytes, SocketAddrV4::new(*ip, self.port))
                             .is_ok()
                     })
                     .all(|r| r),
                 Recepients::One(ip) => socket
-                    .send_to(&bytes, format!("{}:{}", ip, self.port))
+                    .send_to(&bytes, SocketAddrV4::new(ip, self.port))
+                    .is_ok(),
+                Recepients::Myself => socket
+                    .send_to(&bytes, SocketAddrV4::new(self.ip, self.port))
                     .is_ok(),
             };
         }

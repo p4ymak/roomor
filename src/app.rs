@@ -16,13 +16,14 @@ use std::{
     collections::BTreeMap,
     net::Ipv4Addr,
     sync::{atomic::AtomicBool, Arc},
-    thread,
+    thread::{self, JoinHandle},
     time::SystemTime,
 };
 
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 
+#[derive(Default)]
 pub struct Chats {
     active_chat: Recepients,
     peers: PeersMap,
@@ -95,11 +96,6 @@ impl Chats {
 
     pub fn take_message(&mut self, msg: TextMessage) {
         let recepients = Recepients::from_ip(msg.ip(), msg.is_public());
-        // if msg.is_public() {
-        //     self.get_mut_public().history.push(msg);
-        // } else {
-        // self.get_mut_peer(msg.ip()).history.push(msg);
-        // }
         let target_chat = self
             .chats
             .entry(recepients)
@@ -244,11 +240,12 @@ pub struct Roomor {
     ip: Ipv4Addr,
     port: u16,
     chat_init: Option<UdpChat>,
+    chat_handle: Option<JoinHandle<()>>,
     chats: Chats,
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
-    play_audio: Arc<AtomicBool>,
-    d_bus: Arc<AtomicBool>,
+    notification_sound: Arc<AtomicBool>,
+    notification_d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
     error_message: Option<String>,
@@ -290,8 +287,8 @@ impl Default for Roomor {
             Err(_) => (None, None),
         };
         let (front_tx, back_rx) = flume::unbounded();
-        let play_audio = Arc::new(AtomicBool::new(true));
-        let d_bus = Arc::new(AtomicBool::new(true));
+        let notification_sound = Arc::new(AtomicBool::new(true));
+        let notification_d_bus = Arc::new(AtomicBool::new(true));
         let chat = UdpChat::new(String::new(), 4444, front_tx);
         let back_tx = chat.tx();
 
@@ -300,11 +297,12 @@ impl Default for Roomor {
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
             chat_init: Some(chat),
+            chat_handle: None,
             chats: Chats::new(),
             _audio,
             audio_handler,
-            play_audio,
-            d_bus,
+            notification_sound,
+            notification_d_bus,
             back_tx,
             back_rx,
             error_message: None,
@@ -391,12 +389,12 @@ impl Roomor {
             let ctx = Notifier::new(
                 ctx,
                 self.audio_handler.clone(),
-                self.play_audio.clone(),
-                self.d_bus.clone(),
+                self.notification_sound.clone(),
+                self.notification_d_bus.clone(),
             );
             match init.prelude(&self.name, self.port) {
                 Ok(_) => {
-                    thread::spawn(move || init.run(&ctx));
+                    self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
                 }
                 Err(err) => {
                     self.error_message = Some(format!("{err}"));
@@ -427,7 +425,16 @@ impl Roomor {
                     pressed: true,
                     ..
                 } => {
-                    // self.history.clear(); //FIXME
+                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
+                    if let Some(handle) = self.chat_handle.take() {
+                        handle.join().unwrap();
+                    }
+                    *self = Roomor {
+                        chats: std::mem::take(&mut self.chats),
+                        notification_sound: std::mem::take(&mut self.notification_sound),
+                        notification_d_bus: std::mem::take(&mut self.notification_d_bus),
+                        ..Default::default()
+                    };
                 }
                 _ => (),
             })
@@ -456,8 +463,8 @@ impl Roomor {
 
                 // Notifications
                 h.separator();
-                atomic_button(&self.play_audio, '♪', h);
-                atomic_button(&self.d_bus, '⚑', h);
+                atomic_button(&self.notification_sound, '♪', h);
+                atomic_button(&self.notification_d_bus, '⚑', h);
 
                 // Online Summary
                 if self.chat_init.is_none() {
