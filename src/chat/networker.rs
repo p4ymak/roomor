@@ -52,7 +52,6 @@ impl NetWorker {
             if self.peers.0.is_empty() {
                 addrs = Recepients::All;
             }
-            debug!("Sent '{:?}' to {addrs:?}", message.command);
             match addrs {
                 Recepients::All => self
                     .all_recepients
@@ -80,6 +79,7 @@ impl NetWorker {
                     .send_to(&bytes, SocketAddrV4::new(self.ip, self.port))
                     .is_ok(),
             };
+            debug!("Sent '{:?}' to {addrs:?}", message.command);
         }
     }
 
