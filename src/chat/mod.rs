@@ -266,7 +266,7 @@ impl UdpChat {
                             .send(UdpMessage::greating(&self.name), Recepients::All);
                     }
                     FrontEvent::Exit => {
-                        debug!("Exit");
+                        debug!("I'm Exit");
                         self.sender.send(UdpMessage::exit(), Recepients::Peers);
                         self.sender.send(UdpMessage::exit(), Recepients::Myself);
                         break;
