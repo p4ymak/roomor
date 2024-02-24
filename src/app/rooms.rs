@@ -324,12 +324,13 @@ fn draw_list_entry(
     let is_active = *active_chat == recepient;
     let active_fg = ui.visuals().widgets.hovered.fg_stroke;
     let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
-    let stroke = if is_active {
-        Stroke::new(stroke_width(ui) * 2.0, inactive_fg.color)
-    } else if response.hovered() {
-        Stroke::new(stroke_width(ui) * 2.0, active_fg.color)
+    let stroke_width = stroke_width(ui);
+    let stroke = if response.hovered() {
+        Stroke::new(stroke_width * 2.0, active_fg.color)
+    } else if is_active {
+        Stroke::new(stroke_width * 2.0, inactive_fg.color)
     } else {
-        egui::Stroke::NONE
+        Stroke::new(stroke_width, inactive_fg.color)
     };
 
     let unread = &mut chats.get_mut(&recepient).expect("Chat exists").unread;
@@ -340,9 +341,9 @@ fn draw_list_entry(
     }
 
     let rounding = Rounding {
-        nw: rounding(ui),
+        nw: rounding(ui) * 2.0,
         ne: 0.0,
-        sw: rounding(ui),
+        sw: rounding(ui) * 2.0,
         se: 0.0,
     };
 
@@ -384,7 +385,7 @@ fn draw_list_entry(
         painter.vline(
             painter.clip_rect().right(),
             painter.clip_rect().y_range(),
-            Stroke::new(stroke_width(ui) * 2.0, active_fg.color),
+            Stroke::new(stroke_width * 4.0, active_fg.color),
         );
     }
     response.on_hover_ui_at_pointer(|ui| {

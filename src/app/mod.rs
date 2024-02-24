@@ -298,7 +298,7 @@ impl Roomor {
                 self.chats.get_mut_active().draw_input(ui);
             });
         egui::SidePanel::left("Chats List")
-            .default_width(font_size * 10.0)
+            .min_width(font_size)
             .max_width(ctx.input(|i| i.screen_rect.width()) * 0.5)
             .resizable(true)
             .show(ctx, |ui| {
