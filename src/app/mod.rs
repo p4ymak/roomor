@@ -238,7 +238,7 @@ impl Roomor {
                 // Online Summary
                 if self.chat_init.is_none() {
                     h.separator();
-                    h.add(
+                    let summary = h.add(
                         egui::Label::new(format!(
                             "Online: {}",
                             self.rooms
@@ -249,20 +249,22 @@ impl Roomor {
                                 .count()
                         ))
                         .wrap(false),
-                    )
-                    .on_hover_ui(|h| {
-                        for (ip, peer) in self.rooms.peers.0.iter() {
-                            let name = match peer.name() {
-                                Some(name) => format!("{ip} - {name}"),
-                                None => format!("{ip}"),
-                            };
-                            let mut label = egui::RichText::new(name);
-                            if !peer.is_online() {
-                                label = label.weak();
+                    );
+                    if !self.rooms.peers.0.is_empty() {
+                        summary.on_hover_ui(|h| {
+                            for (ip, peer) in self.rooms.peers.0.iter() {
+                                let name = match peer.name() {
+                                    Some(name) => format!("{ip} - {name}"),
+                                    None => format!("{ip}"),
+                                };
+                                let mut label = egui::RichText::new(name);
+                                if !peer.is_online() {
+                                    label = label.weak();
+                                }
+                                h.label(label);
                             }
-                            h.label(label);
-                        }
-                    });
+                        });
+                    }
                     h.separator();
                     if self.name.is_empty() {
                         h.label(format!("{}:{}", self.ip, self.port));
