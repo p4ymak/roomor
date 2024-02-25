@@ -3,8 +3,13 @@ name = "roomor"
 version = "0.2.0"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
+description = "Minimalistic offline chat over local network."
+license = "MIT"
+repository = "https://github.com/p4ymak/roomor"
+readme = "README.md"
+categories = ["network-programming"]
+keywords = ["chat", "lan", "offline"]
 resolver = "2"
-description = "Offline chat over local network."
 
 [dependencies]
 eframe = "0.26.2"

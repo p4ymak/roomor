@@ -104,6 +104,7 @@ impl Rooms {
         let mut order = self
             .chats
             .values()
+            .filter(|v| v.recepients != Recepients::Peers)
             .filter_map(|c| c.history.last().map(|m| (m.time(), c.recepients)))
             .collect::<Vec<_>>();
         order.sort_by(|a, b| b.0.cmp(&a.0));
@@ -164,6 +165,39 @@ impl Rooms {
         if ui.button(side_ico).clicked() {
             self.side_panel_opened = !self.side_panel_opened;
         }
+    }
+
+    pub fn list_go_up(&mut self) {
+        if self.active_chat == Recepients::Peers {
+            self.active_chat = self.order.last().cloned().unwrap_or_default();
+            return;
+        }
+        let mut filtered = self.order.iter().filter(|k| k != &&Recepients::Peers);
+        let active_id = filtered
+            .position(|k| k == &self.active_chat)
+            .unwrap_or_default();
+        self.active_chat = match active_id {
+            0 => Recepients::Peers,
+            _ => filtered
+                .nth(active_id.saturating_sub(1))
+                .unwrap_or(&Recepients::Peers)
+                .to_owned(),
+        };
+    }
+
+    pub fn list_go_down(&mut self) {
+        if self.active_chat == Recepients::Peers {
+            self.active_chat = self.order.first().cloned().unwrap_or_default();
+            return;
+        }
+        let mut filtered = self.order.iter().filter(|k| k != &&Recepients::Peers);
+        let active_id = filtered
+            .position(|k| k == &self.active_chat)
+            .unwrap_or_default();
+        self.active_chat = filtered
+            .nth(active_id.saturating_add(1))
+            .unwrap_or(&Recepients::Peers)
+            .to_owned();
     }
 }
 

@@ -193,43 +193,6 @@ impl Roomor {
         }
     }
 
-    fn handle_keys(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
-            i.raw.events.iter().for_each(|event| match event {
-                Event::Key {
-                    key: egui::Key::Enter,
-                    pressed: true,
-                    ..
-                } => {
-                    if self.chat_init.is_some() {
-                        if !self.name.trim().is_empty() {
-                            self.init_chat(ctx);
-                        }
-                    } else {
-                        self.dispatch();
-                    }
-                }
-                Event::Key {
-                    key: egui::Key::Escape,
-                    pressed: true,
-                    ..
-                } => {
-                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
-                    if let Some(handle) = self.chat_handle.take() {
-                        handle.join().unwrap();
-                    }
-                    *self = Roomor {
-                        rooms: std::mem::take(&mut self.rooms),
-                        notification_sound: std::mem::take(&mut self.notification_sound),
-                        notification_d_bus: std::mem::take(&mut self.notification_d_bus),
-                        ..Default::default()
-                    };
-                }
-                _ => (),
-            })
-        })
-    }
-
     fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
@@ -335,6 +298,53 @@ impl Roomor {
                 egui::widgets::global_dark_light_mode_switch(h);
             });
         });
+    }
+
+    fn handle_keys(&mut self, ctx: &egui::Context) {
+        ctx.input(|i| {
+            i.raw.events.iter().for_each(|event| match event {
+                Event::Key {
+                    key: egui::Key::Enter,
+                    pressed: true,
+                    ..
+                } => {
+                    if self.chat_init.is_some() {
+                        if !self.name.trim().is_empty() {
+                            self.init_chat(ctx);
+                        }
+                    } else {
+                        self.dispatch();
+                    }
+                }
+                Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    ..
+                } => {
+                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
+                    if let Some(handle) = self.chat_handle.take() {
+                        handle.join().unwrap();
+                    }
+                    *self = Roomor {
+                        rooms: std::mem::take(&mut self.rooms),
+                        notification_sound: std::mem::take(&mut self.notification_sound),
+                        notification_d_bus: std::mem::take(&mut self.notification_d_bus),
+                        ..Default::default()
+                    };
+                }
+                Event::Key {
+                    key: egui::Key::ArrowUp,
+                    pressed: true,
+                    ..
+                } => self.rooms.list_go_up(),
+                Event::Key {
+                    key: egui::Key::ArrowDown,
+                    pressed: true,
+                    ..
+                } => self.rooms.list_go_down(),
+                _ => (),
+            })
+        })
     }
 }
 
