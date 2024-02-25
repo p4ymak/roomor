@@ -14,6 +14,7 @@ use timediff::TimeDiff;
 
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
+pub const PUBLIC: &str = "Everyone";
 
 #[derive(Default)]
 pub struct Rooms {
@@ -116,6 +117,16 @@ impl Rooms {
     }
 
     pub fn draw_history(&self, ui: &mut egui::Ui) {
+        if !self.side_panel_opened {
+            ui.vertical_centered(|ui| {
+                let name = match self.active_chat {
+                    Recepients::One(ip) => self.peers.0.get(&ip).expect("Peer exists").rich_name(),
+                    _ => egui::RichText::new(PUBLIC).strong(),
+                };
+                ui.label(name);
+            });
+            ui.separator();
+        }
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
             .auto_shrink([false; 2])
@@ -420,7 +431,7 @@ fn draw_list_entry(
                 },
             )
         }
-        _ => ("Everyone".to_string(), ui.visuals().strong_text_color()),
+        _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
     };
 
     painter.text(
