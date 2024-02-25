@@ -319,6 +319,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
+                    modifiers: egui::Modifiers::SHIFT,
                     ..
                 } => {
                     self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
@@ -331,6 +332,13 @@ impl Roomor {
                         notification_d_bus: std::mem::take(&mut self.notification_d_bus),
                         ..Default::default()
                     };
+                }
+                Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    ..
+                } => {
+                    self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
                 }
                 Event::Key {
                     key: egui::Key::ArrowUp,
