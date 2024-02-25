@@ -112,7 +112,7 @@ impl Rooms {
         self.order = order.into_iter().map(|o| o.1).collect();
     }
 
-    pub fn has_unread(&self) -> bool {
+    pub fn _has_unread(&self) -> bool {
         self.chats.values().any(|c| c.unread > 0)
     }
 
@@ -168,11 +168,11 @@ impl Rooms {
     }
 
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
-        let side_ico = if self.side_panel_opened { "←" } else { "→" };
-        let mut side_ico = egui::RichText::new(side_ico).monospace();
-        if self.has_unread() {
-            side_ico = side_ico.strong();
-        }
+        let side_ico = if self.side_panel_opened { "" } else { "" };
+        let side_ico = egui::RichText::new(side_ico).monospace();
+        // if self.has_unread() {
+        //     side_ico = side_ico.strong();
+        // }
         if ui.button(side_ico).clicked() {
             self.side_panel_opened = !self.side_panel_opened;
         }
