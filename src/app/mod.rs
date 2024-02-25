@@ -27,7 +27,7 @@ pub struct Roomor {
     port: u16,
     chat_init: Option<UdpChat>,
     chat_handle: Option<JoinHandle<()>>,
-    chats: Rooms,
+    rooms: Rooms,
     _audio: Option<OutputStream>,
     audio_handler: Option<OutputStreamHandle>,
     notification_sound: Arc<AtomicBool>,
@@ -80,7 +80,7 @@ impl Default for Roomor {
             port: 4444,
             chat_init: Some(chat),
             chat_handle: None,
-            chats: Rooms::new(),
+            rooms: Rooms::new(),
             _audio,
             audio_handler,
             notification_sound,
@@ -104,7 +104,7 @@ impl Roomor {
             .duration_since(self.last_time)
             .is_ok_and(|t| t > TIMEOUT)
         {
-            self.chats.peers.check_alive();
+            self.rooms.peers.check_alive();
             self.back_tx.send(ChatEvent::Front(FrontEvent::Alive)).ok();
             self.last_time = now;
         }
@@ -112,7 +112,7 @@ impl Roomor {
 
     fn dispatch(&mut self) {
         self.last_time = SystemTime::now();
-        if let Some(msg) = self.chats.compose_message() {
+        if let Some(msg) = self.rooms.compose_message() {
             self.back_tx
                 .send(ChatEvent::Front(FrontEvent::Message(msg)))
                 .ok();
@@ -123,17 +123,17 @@ impl Roomor {
         for event in self.back_rx.try_iter() {
             match event {
                 BackEvent::PeerJoined((ip, name)) => {
-                    self.chats.peer_joined(ip, name);
+                    self.rooms.peer_joined(ip, name);
                 }
                 BackEvent::PeerLeft(ip) => {
-                    self.chats.peer_left(ip);
+                    self.rooms.peer_left(ip);
                 }
                 BackEvent::Message(msg) => {
-                    self.chats.take_message(msg);
+                    self.rooms.take_message(msg);
                 }
                 BackEvent::MyIp(ip) => self.ip = ip,
             }
-            self.chats.recalculate_order();
+            self.rooms.recalculate_order();
         }
     }
 
@@ -151,7 +151,7 @@ impl Roomor {
                     ui.label("");
                     ui.label("");
                     ui.group(|ui| {
-                        self.chats.get_mut_active().font_multiply(ui);
+                        self.rooms.get_mut_active().font_multiply(ui);
                         ui.heading("Port");
                         ui.add(egui::DragValue::new(&mut self.port));
                         ui.heading("Display Name");
@@ -212,7 +212,7 @@ impl Roomor {
                         handle.join().unwrap();
                     }
                     *self = Roomor {
-                        chats: std::mem::take(&mut self.chats),
+                        rooms: std::mem::take(&mut self.rooms),
                         notification_sound: std::mem::take(&mut self.notification_sound),
                         notification_d_bus: std::mem::take(&mut self.notification_d_bus),
                         ..Default::default()
@@ -226,27 +226,14 @@ impl Roomor {
     fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
-                // GUI Settings
-                if h.button(egui::RichText::new("-").monospace()).clicked() {
-                    let ppp = h.ctx().pixels_per_point().max(0.75);
-                    h.ctx().set_pixels_per_point(ppp - 0.25);
-                    h.ctx().request_repaint();
-                }
-                if h.button(egui::RichText::new("=").monospace()).clicked() {
-                    h.ctx().set_pixels_per_point(1.0);
-                    h.ctx().request_repaint();
-                }
-                if h.button(egui::RichText::new("+").monospace()).clicked() {
-                    let ppp = h.ctx().pixels_per_point();
-                    h.ctx().set_pixels_per_point(ppp + 0.25);
-                    h.ctx().request_repaint();
-                }
-                egui::widgets::global_dark_light_mode_switch(h);
-
+                h.horizontal(|h| {
+                    h.set_enabled(self.chat_init.is_none());
+                    self.rooms.side_panel_toggle(h);
+                });
                 // Notifications
-                h.separator();
-                atomic_button(&self.notification_sound, '♪', h, "Sound Notifications");
+                atomic_button(&self.notification_sound, '🎵', h, "Sound Notifications");
                 atomic_button(&self.notification_d_bus, '⚑', h, "Pop notifications");
+                self.settings_button(h);
 
                 // Online Summary
                 if self.chat_init.is_none() {
@@ -254,7 +241,7 @@ impl Roomor {
                     h.add(
                         egui::Label::new(format!(
                             "Online: {}",
-                            self.chats
+                            self.rooms
                                 .peers
                                 .0
                                 .values()
@@ -264,7 +251,7 @@ impl Roomor {
                         .wrap(false),
                     )
                     .on_hover_ui(|h| {
-                        for (ip, peer) in self.chats.peers.0.iter() {
+                        for (ip, peer) in self.rooms.peers.0.iter() {
                             let name = match peer.name() {
                                 Some(name) => format!("{ip} - {name}"),
                                 None => format!("{ip}"),
@@ -295,17 +282,47 @@ impl Roomor {
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                self.chats.get_mut_active().draw_input(ui);
+                self.rooms.get_mut_active().draw_input(ui);
             });
         egui::SidePanel::left("Chats List")
-            .min_width(font_size)
+            .min_width(font_size * 4.0)
             .max_width(ctx.input(|i| i.screen_rect.width()) * 0.5)
+            .default_width(font_size * 8.0)
             .resizable(true)
-            .show(ctx, |ui| {
-                self.chats.draw_list(ui);
+            .show_animated(ctx, self.rooms.side_panel_opened, |ui| {
+                self.rooms.draw_list(ui);
+            });
+        egui::SidePanel::left("Chats List Light")
+            .exact_width(font_size)
+            .resizable(false)
+            .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
+                self.rooms.draw_list(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.chats.draw_history(ui);
+            self.rooms.draw_history(ui);
+        });
+    }
+
+    fn settings_button(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("✱", |ui| {
+            ui.horizontal(|h| {
+                // GUI Settings
+                if h.button(egui::RichText::new("-").monospace()).clicked() {
+                    let ppp = h.ctx().pixels_per_point().max(0.75);
+                    h.ctx().set_pixels_per_point(ppp - 0.25);
+                    h.ctx().request_repaint();
+                }
+                if h.button(egui::RichText::new("=").monospace()).clicked() {
+                    h.ctx().set_pixels_per_point(1.0);
+                    h.ctx().request_repaint();
+                }
+                if h.button(egui::RichText::new("+").monospace()).clicked() {
+                    let ppp = h.ctx().pixels_per_point();
+                    h.ctx().set_pixels_per_point(ppp + 0.25);
+                    h.ctx().request_repaint();
+                }
+                egui::widgets::global_dark_light_mode_switch(h);
+            });
         });
     }
 }

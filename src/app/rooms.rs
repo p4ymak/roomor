@@ -21,6 +21,7 @@ pub struct Rooms {
     pub peers: PeersMap,
     order: Vec<Recepients>,
     chats: BTreeMap<Recepients, ChatHistory>,
+    pub side_panel_opened: bool,
 }
 impl Rooms {
     pub fn new() -> Self {
@@ -31,6 +32,7 @@ impl Rooms {
             peers: PeersMap::new(),
             order: vec![],
             chats,
+            side_panel_opened: true,
         }
     }
 
@@ -108,6 +110,10 @@ impl Rooms {
         self.order = order.into_iter().map(|o| o.1).collect();
     }
 
+    pub fn has_unread(&self) -> bool {
+        self.chats.values().any(|c| c.unread > 0)
+    }
+
     pub fn draw_history(&self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
@@ -130,6 +136,7 @@ impl Rooms {
             &mut self.chats,
             &self.peers,
             Recepients::Peers,
+            self.side_panel_opened,
         );
 
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -141,10 +148,22 @@ impl Rooms {
                     &mut self.chats,
                     &self.peers,
                     *recepient,
+                    self.side_panel_opened,
                 );
             }
             ui.label("");
         });
+    }
+
+    pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
+        let side_ico = if self.side_panel_opened { "←" } else { "→" };
+        let mut side_ico = egui::RichText::new(side_ico).monospace();
+        if self.has_unread() {
+            side_ico = side_ico.strong();
+        }
+        if ui.button(side_ico).clicked() {
+            self.side_panel_opened = !self.side_panel_opened;
+        }
     }
 }
 
@@ -269,7 +288,9 @@ impl TextMessage {
                         } else {
                             self.draw_text(g);
                         }
-                    });
+                    })
+                    .response
+                    .on_hover_text_at_pointer(pretty_ago(self.time()).unwrap_or_default());
             },
         );
     }
@@ -308,6 +329,7 @@ fn draw_list_entry(
     chats: &mut BTreeMap<Recepients, ChatHistory>,
     peers: &PeersMap,
     recepient: Recepients,
+    side_panel_opened: bool,
 ) {
     let max_rect = ui.max_rect();
     let font_size = ui.text_style_height(&egui::TextStyle::Body);
@@ -330,7 +352,7 @@ fn draw_list_entry(
     } else if is_active {
         Stroke::new(stroke_width * 2.0, inactive_fg.color)
     } else {
-        Stroke::new(stroke_width, inactive_fg.color)
+        Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
     };
 
     let unread = &mut chats.get_mut(&recepient).expect("Chat exists").unread;
@@ -370,7 +392,7 @@ fn draw_list_entry(
     painter.text(
         painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
         Align2::LEFT_CENTER,
-        name,
+        name.clone(),
         font_id.clone(),
         color,
     );
@@ -391,6 +413,9 @@ fn draw_list_entry(
 
     // Hover
     let mut hover_lines = vec![];
+    if !side_panel_opened {
+        hover_lines.push(name);
+    }
     if unread > 0 {
         hover_lines.push(format!("Unread: {}", unread));
     }
