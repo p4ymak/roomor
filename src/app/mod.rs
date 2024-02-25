@@ -139,13 +139,15 @@ impl Roomor {
 
     fn setup(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::both().show(ui, |ui| {
                 ui.vertical_centered_justified(|ui| {
                     ui.vertical_centered(|ui| {
-                        let size = ui.available_width() * 0.075;
+                        ui.style_mut().wrap = Some(false);
+                        let size = ui.available_size_before_wrap().x * 0.075;
                         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                             font_id.size = size;
                         }
+
                         TextMessage::logo().draw(ui, None);
                     });
                     ui.label("");
@@ -161,6 +163,11 @@ impl Roomor {
                     if let Some(err) = &self.error_message {
                         ui.heading(err);
                     }
+                    ui.label("");
+                    ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
+                    ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
+                    ui.hyperlink_to("by Roman Chumak", "https://www.p4ymak.su");
+                    ui.hyperlink_to("Source Code", "https://www.github.com/p4ymak/roomor");
                 });
             });
         });
@@ -232,7 +239,7 @@ impl Roomor {
                 });
                 // Notifications
                 atomic_button(&self.notification_sound, '🎵', h, "Sound Notifications");
-                atomic_button(&self.notification_d_bus, '⚑', h, "Pop notifications");
+                atomic_button(&self.notification_d_bus, '⚑', h, "Pop Notifications");
                 self.settings_button(h);
 
                 // Online Summary
@@ -309,20 +316,22 @@ impl Roomor {
         ui.menu_button("✱", |ui| {
             ui.horizontal(|h| {
                 // GUI Settings
+                h.label("UI Zoom");
                 if h.button(egui::RichText::new("-").monospace()).clicked() {
-                    let ppp = h.ctx().pixels_per_point().max(0.75);
-                    h.ctx().set_pixels_per_point(ppp - 0.25);
+                    let zoom = h.ctx().zoom_factor().max(0.5);
+                    h.ctx().set_zoom_factor(zoom - 0.5);
                     h.ctx().request_repaint();
                 }
                 if h.button(egui::RichText::new("=").monospace()).clicked() {
-                    h.ctx().set_pixels_per_point(1.0);
+                    h.ctx().set_zoom_factor(1.0);
                     h.ctx().request_repaint();
                 }
                 if h.button(egui::RichText::new("+").monospace()).clicked() {
-                    let ppp = h.ctx().pixels_per_point();
-                    h.ctx().set_pixels_per_point(ppp + 0.25);
+                    let zoom = h.ctx().zoom_factor().min(5.0);
+                    h.ctx().set_zoom_factor(zoom + 0.5);
                     h.ctx().request_repaint();
                 }
+                h.separator();
                 egui::widgets::global_dark_light_mode_switch(h);
             });
         });
