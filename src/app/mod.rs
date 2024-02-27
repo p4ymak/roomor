@@ -161,7 +161,10 @@ impl Roomor {
                         self.rooms.get_mut_active().font_multiply(ui);
                         ui.heading("Name");
                         limit_text(&mut self.name, MAX_NAME_SIZE);
-                        ui.text_edit_singleline(&mut self.name);
+                        let name = ui.text_edit_singleline(&mut self.name);
+                        if self.name.is_empty() {
+                            name.request_focus();
+                        }
                         ui.heading("Port");
                         ui.add(egui::DragValue::new(&mut self.port));
                         ui.heading("Mask");
