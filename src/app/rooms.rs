@@ -180,40 +180,40 @@ impl Rooms {
     pub fn list_go_up(&mut self) {
         if self.active_chat == Recepients::Peers {
             self.active_chat = self.order.last().cloned().unwrap_or_default();
-            return;
-        }
-        let active_id = self
-            .order
-            .iter()
-            .position(|k| k == &self.active_chat)
-            .unwrap_or_default();
-
-        self.active_chat = match active_id {
-            0 => Recepients::Peers,
-            _ => self
+        } else {
+            let active_id = self
                 .order
-                .get(active_id.saturating_sub(1))
-                .unwrap_or(&Recepients::Peers)
-                .to_owned(),
-        };
+                .iter()
+                .position(|k| k == &self.active_chat)
+                .unwrap_or_default();
+
+            self.active_chat = match active_id {
+                0 => Recepients::Peers,
+                _ => self
+                    .order
+                    .get(active_id.saturating_sub(1))
+                    .unwrap_or(&Recepients::Peers)
+                    .to_owned(),
+            };
+        }
         self.get_mut_active().unread = 0;
     }
 
     pub fn list_go_down(&mut self) {
         if self.active_chat == Recepients::Peers {
             self.active_chat = self.order.first().cloned().unwrap_or_default();
-            return;
+        } else {
+            let active_id = self
+                .order
+                .iter()
+                .position(|k| k == &self.active_chat)
+                .unwrap_or_default();
+            self.active_chat = self
+                .order
+                .get(active_id.saturating_add(1))
+                .unwrap_or(&Recepients::Peers)
+                .to_owned();
         }
-        let active_id = self
-            .order
-            .iter()
-            .position(|k| k == &self.active_chat)
-            .unwrap_or_default();
-        self.active_chat = self
-            .order
-            .get(active_id.saturating_add(1))
-            .unwrap_or(&Recepients::Peers)
-            .to_owned();
         self.get_mut_active().unread = 0;
     }
 }
