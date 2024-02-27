@@ -152,8 +152,7 @@ impl Rooms {
         );
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let order = &self.order;
-            for recepient in order.iter().filter(|r| r != &&Recepients::Peers) {
+            for recepient in self.order.iter() {
                 draw_list_entry(
                     ui,
                     &mut self.active_chat,
@@ -183,14 +182,16 @@ impl Rooms {
             self.active_chat = self.order.last().cloned().unwrap_or_default();
             return;
         }
-        let mut filtered = self.order.iter().filter(|k| k != &&Recepients::Peers);
-        let active_id = filtered
+        let active_id = self
+            .order
+            .iter()
             .position(|k| k == &self.active_chat)
             .unwrap_or_default();
         self.active_chat = match active_id {
             0 => Recepients::Peers,
-            _ => filtered
-                .nth(active_id.saturating_sub(1))
+            _ => self
+                .order
+                .get(active_id.saturating_sub(1))
                 .unwrap_or(&Recepients::Peers)
                 .to_owned(),
         };
@@ -201,12 +202,14 @@ impl Rooms {
             self.active_chat = self.order.first().cloned().unwrap_or_default();
             return;
         }
-        let mut filtered = self.order.iter().filter(|k| k != &&Recepients::Peers);
-        let active_id = filtered
+        let active_id = self
+            .order
+            .iter()
             .position(|k| k == &self.active_chat)
             .unwrap_or_default();
-        self.active_chat = filtered
-            .nth(active_id.saturating_add(1))
+        self.active_chat = self
+            .order
+            .get(active_id.saturating_add(1))
             .unwrap_or(&Recepients::Peers)
             .to_owned();
     }
