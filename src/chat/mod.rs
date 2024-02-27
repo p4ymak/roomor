@@ -199,10 +199,15 @@ impl UdpChat {
     pub fn tx(&self) -> Sender<ChatEvent> {
         self.tx.clone()
     }
-    pub fn prelude(&mut self, name: &str, port: u16) -> Result<(), Box<dyn Error + 'static>> {
+    pub fn prelude(
+        &mut self,
+        name: &str,
+        port: u16,
+        mask: u8,
+    ) -> Result<(), Box<dyn Error + 'static>> {
         self.name = name.to_string();
         self.sender.port = port;
-        self.sender.connect()?;
+        self.sender.connect(mask)?;
         self.listen();
         Ok(())
     }

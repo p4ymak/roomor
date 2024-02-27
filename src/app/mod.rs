@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::TIMEOUT,
+    networker::{parse_netmask, TIMEOUT},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
@@ -13,9 +13,11 @@ use eframe::{
     CreationContext,
 };
 use flume::{Receiver, Sender};
+use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
+    str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -27,6 +29,7 @@ pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
     port: u16,
+    mask: u8,
     chat_init: Option<UdpChat>,
     chat_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
@@ -80,6 +83,7 @@ impl Default for Roomor {
             name: String::default(),
             ip: Ipv4Addr::UNSPECIFIED,
             port: 4444,
+            mask: 24,
             chat_init: Some(chat),
             chat_handle: None,
             rooms: Rooms::new(),
@@ -156,11 +160,27 @@ impl Roomor {
                     ui.label("");
                     ui.group(|ui| {
                         self.rooms.get_mut_active().font_multiply(ui);
+                        ui.heading("Name");
+                        limit_text(&mut self.name, MAX_NAME_SIZE);
+                        ui.text_edit_singleline(&mut self.name);
                         ui.heading("Port");
                         ui.add(egui::DragValue::new(&mut self.port));
-                        ui.heading("Display Name");
-                        limit_text(&mut self.name, MAX_NAME_SIZE);
-                        ui.text_edit_singleline(&mut self.name).request_focus();
+                        ui.heading("Mask");
+                        ui.add(
+                            egui::DragValue::new(&mut self.mask)
+                                .speed(1)
+                                .custom_formatter(|m, _| {
+                                    let net =
+                                        Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8)
+                                            .expect("exists");
+                                    let mask = net.netmask().octets();
+                                    format!(
+                                        "{:03}.{:03}.{:03}.{:03}",
+                                        mask[0], mask[1], mask[2], mask[3]
+                                    )
+                                })
+                                .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
+                        );
                     });
                     if let Some(err) = &self.error_message {
                         ui.heading(err);
@@ -183,7 +203,7 @@ impl Roomor {
                 self.notification_sound.clone(),
                 self.notification_d_bus.clone(),
             );
-            match init.prelude(&self.name, self.port) {
+            match init.prelude(&self.name, self.port, self.mask) {
                 Ok(_) => {
                     self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
                 }

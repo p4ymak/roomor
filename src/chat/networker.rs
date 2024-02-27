@@ -1,9 +1,11 @@
 use super::{message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
 use flume::Sender;
+use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
 use log::debug;
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
+    str::FromStr,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -15,7 +17,7 @@ pub struct NetWorker {
     pub ip: Ipv4Addr,
     pub port: u16,
     pub peers: PeersMap,
-    all_recepients: Vec<Ipv4Addr>,
+    ipnet: Ipv4Net,
     pub front_tx: Sender<BackEvent>,
 }
 
@@ -26,17 +28,15 @@ impl NetWorker {
             ip: Ipv4Addr::UNSPECIFIED,
             port,
             peers: PeersMap::new(),
-            all_recepients: vec![],
+            ipnet: Ipv4Net::default(),
             front_tx,
         }
     }
-    pub fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
+    pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
         self.ip = get_my_ipv4().ok_or("No local IpV4")?;
         let octets = self.ip.octets();
         self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
-        self.all_recepients = (0..=254)
-            .map(|i| Ipv4Addr::new(octets[0], octets[1], octets[2], i))
-            .collect();
+        self.ipnet = Ipv4Net::new(self.ip, mask)?;
         let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
         socket.set_broadcast(true).ok();
         socket.set_multicast_loop_v4(false).ok();
@@ -54,11 +54,11 @@ impl NetWorker {
             }
             match addrs {
                 Recepients::All => self
-                    .all_recepients
-                    .iter()
+                    .ipnet
+                    .hosts()
                     .map(|r| {
                         socket
-                            .send_to(&bytes, SocketAddrV4::new(*r, self.port))
+                            .send_to(&bytes, SocketAddrV4::new(r, self.port))
                             .is_ok()
                     })
                     .all(|r| r),
@@ -146,4 +146,12 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
+}
+
+pub fn parse_netmask(s: &str) -> Option<u8> {
+    if let Ok(mask) = s.parse::<u8>() {
+        return Some(mask);
+    }
+    let ip = Ipv4Addr::from_str(s).ok()?;
+    ipv4_mask_to_prefix(ip).ok()
 }
