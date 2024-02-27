@@ -13,11 +13,10 @@ use eframe::{
     CreationContext,
 };
 use flume::{Receiver, Sender};
-use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
+use ipnet::Ipv4Net;
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
-    str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, JoinHandle},
     time::SystemTime,

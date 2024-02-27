@@ -34,7 +34,6 @@ impl NetWorker {
     }
     pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
         self.ip = get_my_ipv4().ok_or("No local IpV4")?;
-        let octets = self.ip.octets();
         self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
         self.ipnet = Ipv4Net::new(self.ip, mask)?;
         let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
