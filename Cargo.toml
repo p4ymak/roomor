@@ -39,3 +39,15 @@ debug-assertions = false
 codegen-units = 1
 panic = "abort"
 strip = "debuginfo"
+
+[package.metadata.bundle]
+name = "Roomor"
+identifier = "com.p4ymak.roomor"
+icon = ["icon/128x128.png"]
+version = "0.2.1"
+copyright = "Copyright (c) Roman Chumak 2024. All rights reserved."
+# category = "communication"
+short_description = "Minimalistic offline chat over local network."
+long_description = "Minimalistic offline chat over local network."
+deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]
+osx_frameworks = ["SDL2"]

@@ -12,7 +12,7 @@ fn main() -> Result<(), eframe::Error> {
     }
 
     let icon = egui::viewport::IconData {
-        rgba: image::load_from_memory(include_bytes!("./icon_128x128.png"))
+        rgba: image::load_from_memory(include_bytes!("../icon/128x128.png"))
             .expect("Icon exists")
             .to_rgba8()
             .to_vec(),
