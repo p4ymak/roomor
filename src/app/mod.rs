@@ -21,6 +21,8 @@ use std::{
     time::SystemTime,
 };
 
+pub const ZOOM_STEP: f32 = 0.25;
+
 pub struct Roomor {
     name: String,
     ip: Ipv4Addr,
@@ -282,7 +284,7 @@ impl Roomor {
                 h.label("UI Zoom");
                 if h.button(egui::RichText::new("-").monospace()).clicked() {
                     let zoom = h.ctx().zoom_factor().max(0.5);
-                    h.ctx().set_zoom_factor(zoom - 0.5);
+                    h.ctx().set_zoom_factor(zoom - ZOOM_STEP);
                     h.ctx().request_repaint();
                 }
                 if h.button(egui::RichText::new("=").monospace()).clicked() {
@@ -291,7 +293,7 @@ impl Roomor {
                 }
                 if h.button(egui::RichText::new("+").monospace()).clicked() {
                     let zoom = h.ctx().zoom_factor().min(5.0);
-                    h.ctx().set_zoom_factor(zoom + 0.5);
+                    h.ctx().set_zoom_factor(zoom + ZOOM_STEP);
                     h.ctx().request_repaint();
                 }
                 h.separator();

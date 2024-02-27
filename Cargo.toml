@@ -24,10 +24,10 @@ crc = "3.0.1"
 rodio = { version = "0.17.3", default-features = false }
 notify-rust = "4.10.0"
 
-image = "0.24.7"
+image = "0.24.9"
 
 log = { version = "0.4", features = ["std"] }
-env_logger = "0.10.1"
+env_logger = "0.10.2"
 
 [profile.release]
 opt-level = 3
