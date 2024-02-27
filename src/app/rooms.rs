@@ -187,6 +187,7 @@ impl Rooms {
             .iter()
             .position(|k| k == &self.active_chat)
             .unwrap_or_default();
+
         self.active_chat = match active_id {
             0 => Recepients::Peers,
             _ => self
@@ -195,6 +196,7 @@ impl Rooms {
                 .unwrap_or(&Recepients::Peers)
                 .to_owned(),
         };
+        self.get_mut_active().unread = 0;
     }
 
     pub fn list_go_down(&mut self) {
@@ -212,6 +214,7 @@ impl Rooms {
             .get(active_id.saturating_add(1))
             .unwrap_or(&Recepients::Peers)
             .to_owned();
+        self.get_mut_active().unread = 0;
     }
 }
 
