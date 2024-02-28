@@ -51,8 +51,8 @@ pub enum BackEvent {
 
 #[derive(Debug)]
 pub enum FrontEvent {
-    // Enter(String),
-    Alive,
+    Enter,
+    Greating,
     Exit,
     Message(TextMessage),
 }
@@ -249,10 +249,6 @@ impl UdpChat {
         for event in self.rx.iter() {
             match event {
                 ChatEvent::Front(front) => match front {
-                    // FrontEvent::Enter(name) => {
-                    //     debug!("Enter: {name}");
-                    //     self.sender.send(UdpMessage::enter(&name), Recepients::All);
-                    // }
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
 
@@ -263,8 +259,12 @@ impl UdpChat {
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
-
-                    FrontEvent::Alive => {
+                    FrontEvent::Enter => {
+                        debug!("I'm still Alive");
+                        self.sender
+                            .send(UdpMessage::enter(&self.name), Recepients::All);
+                    }
+                    FrontEvent::Greating => {
                         debug!("I'm Alive");
                         self.sender
                             .send(UdpMessage::greating(&self.name), Recepients::All);
