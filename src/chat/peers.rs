@@ -4,7 +4,7 @@ use std::{
     time::SystemTime,
 };
 
-use super::networker::TIMEOUT;
+use super::networker::TIMEOUT_ALIVE;
 
 #[derive(Default)]
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
@@ -43,11 +43,12 @@ impl PeersMap {
             .map(|r| r.display_name())
             .unwrap_or(ip.to_string())
     }
-    pub fn check_alive(&mut self) {
-        let now = SystemTime::now();
-        self.0
-            .values_mut()
-            .for_each(|p| p.online = !now.duration_since(p.last_time).is_ok_and(|t| t > TIMEOUT))
+    pub fn check_alive(&mut self, now: SystemTime) {
+        self.0.values_mut().for_each(|p| {
+            p.online = !now
+                .duration_since(p.last_time)
+                .is_ok_and(|t| t > TIMEOUT_ALIVE)
+        })
     }
 }
 pub struct Peer {

@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, parse_netmask, TIMEOUT},
+    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
@@ -48,7 +48,7 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.check_alive();
+        self.keep_alive();
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -112,14 +112,14 @@ impl Roomor {
         Roomor::default()
     }
 
-    fn check_alive(&mut self) {
+    fn keep_alive(&mut self) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(self.last_time) {
-            if delta > TIMEOUT {
-                if delta > TIMEOUT * 2 {
-                    self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
-                }
-                self.rooms.peers.check_alive();
+            if delta > TIMEOUT_CHECK {
+                self.rooms.peers.check_alive(now);
+            }
+            if delta > TIMEOUT_ALIVE * 2 {
+                self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
                 self.last_time = now;
             }
         }
@@ -425,11 +425,11 @@ fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
 fn pulse(tx: Sender<ChatEvent>) {
     let mut last_time = SystemTime::now();
     loop {
-        sleep(TIMEOUT);
+        sleep(TIMEOUT_ALIVE);
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
-            if delta > TIMEOUT {
-                if delta > TIMEOUT * 2 {
+            if delta > TIMEOUT_ALIVE {
+                if delta > TIMEOUT_ALIVE * 2 {
                     tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
                 } else {
                     tx.send(ChatEvent::Front(FrontEvent::Greating)).ok();

@@ -10,7 +10,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-pub const TIMEOUT: Duration = Duration::from_secs(60);
+pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
+pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
 
 pub struct NetWorker {
     pub socket: Option<Arc<UdpSocket>>,
