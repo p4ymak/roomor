@@ -18,7 +18,7 @@ use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
     sync::{atomic::AtomicBool, Arc},
-    thread::{self, JoinHandle},
+    thread::{self, sleep, JoinHandle},
     time::SystemTime,
 };
 
@@ -31,6 +31,7 @@ pub struct Roomor {
     mask: u8,
     chat_init: Option<UdpChat>,
     chat_handle: Option<JoinHandle<()>>,
+    pulse_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
     _audio: Option<OutputStream>,
     audio_handle: Option<OutputStreamHandle>,
@@ -47,7 +48,7 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.stay_alive();
+        self.check_alive();
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -92,6 +93,7 @@ impl Default for Roomor {
             mask: 24,
             chat_init: Some(chat),
             chat_handle: None,
+            pulse_handle: None,
             rooms: Rooms::new(),
             _audio,
             audio_handle: audio_handler,
@@ -110,18 +112,11 @@ impl Roomor {
         Roomor::default()
     }
 
-    fn stay_alive(&mut self) {
+    fn check_alive(&mut self) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(self.last_time) {
             if delta > TIMEOUT {
                 self.rooms.peers.check_alive();
-                if delta > TIMEOUT * 10 {
-                    self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
-                } else {
-                    self.back_tx
-                        .send(ChatEvent::Front(FrontEvent::Greating))
-                        .ok();
-                }
                 self.last_time = now;
             }
         }
@@ -206,6 +201,10 @@ impl Roomor {
             match init.prelude(&self.name, self.port, self.mask) {
                 Ok(_) => {
                     self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
+                    self.pulse_handle = Some({
+                        let tx = self.back_tx.clone();
+                        thread::spawn(move || pulse(tx))
+                    });
                 }
                 Err(err) => {
                     self.error_message = Some(format!("{err}"));
@@ -417,4 +416,22 @@ fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
                 format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
             }),
     );
+}
+
+fn pulse(tx: Sender<ChatEvent>) {
+    let mut last_time = SystemTime::now();
+    loop {
+        sleep(TIMEOUT);
+        let now = SystemTime::now();
+        if let Ok(delta) = now.duration_since(last_time) {
+            if delta > TIMEOUT {
+                if delta > TIMEOUT * 10 {
+                    tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
+                } else {
+                    tx.send(ChatEvent::Front(FrontEvent::Greating)).ok();
+                }
+                last_time = now;
+            }
+        }
+    }
 }
