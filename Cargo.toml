@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -44,7 +44,7 @@ strip = "debuginfo"
 name = "Roomor"
 identifier = "com.p4ymak.roomor"
 icon = ["icon/128x128.png"]
-version = "0.2.2"
+version = "0.2.3"
 copyright = "Copyright (c) Roman Chumak 2024. All rights reserved."
 # category = "communication"
 short_description = "Minimalistic offline chat over local network."
