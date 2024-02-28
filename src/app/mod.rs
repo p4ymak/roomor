@@ -128,7 +128,6 @@ impl Roomor {
     }
 
     fn dispatch(&mut self) {
-        self.last_time = SystemTime::now();
         if let Some(msg) = self.rooms.compose_message() {
             self.back_tx
                 .send(ChatEvent::Front(FrontEvent::Message(msg)))
