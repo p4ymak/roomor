@@ -105,6 +105,7 @@ impl NetWorker {
                 self.front_tx.send(BackEvent::Message(msg)).ok();
                 ctx.notify(&notification_text);
             }
+            BackEvent::Pulse => (),
         }
     }
 

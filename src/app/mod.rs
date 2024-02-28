@@ -116,6 +116,9 @@ impl Roomor {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(self.last_time) {
             if delta > TIMEOUT {
+                if delta > TIMEOUT * 2 {
+                    self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
+                }
                 self.rooms.peers.check_alive();
                 self.last_time = now;
             }
@@ -142,6 +145,7 @@ impl Roomor {
                 BackEvent::Message(msg) => {
                     self.rooms.take_message(msg);
                 }
+                BackEvent::Pulse => self.last_time = SystemTime::now(),
             }
             self.rooms.recalculate_order();
         }
@@ -425,7 +429,7 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT {
-                if delta > TIMEOUT * 10 {
+                if delta > TIMEOUT * 2 {
                     tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
                 } else {
                     tx.send(ChatEvent::Front(FrontEvent::Greating)).ok();

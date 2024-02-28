@@ -44,6 +44,7 @@ pub enum Content {
 }
 #[derive(Debug)]
 pub enum BackEvent {
+    Pulse,
     PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
     Message(TextMessage),
@@ -261,11 +262,13 @@ impl UdpChat {
                     }
                     FrontEvent::Enter => {
                         debug!("I'm still Alive");
+                        self.sender.front_tx.send(BackEvent::Pulse).ok();
                         self.sender
                             .send(UdpMessage::enter(&self.name), Recepients::All);
                     }
                     FrontEvent::Greating => {
                         debug!("I'm Alive");
+                        self.sender.front_tx.send(BackEvent::Pulse).ok();
                         self.sender
                             .send(UdpMessage::greating(&self.name), Recepients::All);
                     }
