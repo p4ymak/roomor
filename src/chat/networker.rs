@@ -22,24 +22,22 @@ pub struct NetWorker {
 }
 
 impl NetWorker {
-    pub fn new(port: u16, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         NetWorker {
             socket: None,
-            ip: Ipv4Addr::UNSPECIFIED,
-            port,
+            ip,
+            port: 4444,
             peers: PeersMap::new(),
             ipnet: Ipv4Net::default(),
             front_tx,
         }
     }
     pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
-        self.ip = get_my_ipv4().ok_or("No local IpV4")?;
-        self.front_tx.send(BackEvent::MyIp(self.ip)).ok();
         self.ipnet = Ipv4Net::new(self.ip, mask)?;
         let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
-        socket.set_broadcast(true).ok();
-        socket.set_multicast_loop_v4(false).ok();
-        socket.set_nonblocking(false).ok();
+        socket.set_broadcast(true)?;
+        socket.set_multicast_loop_v4(false)?;
+        socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
 
         Ok(())
@@ -107,7 +105,6 @@ impl NetWorker {
                 self.front_tx.send(BackEvent::Message(msg)).ok();
                 ctx.notify(&notification_text);
             }
-            _ => (),
         }
     }
 

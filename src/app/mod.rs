@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{parse_netmask, TIMEOUT},
+    networker::{get_my_ipv4, parse_netmask, TIMEOUT},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
@@ -33,7 +33,7 @@ pub struct Roomor {
     chat_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
     _audio: Option<OutputStream>,
-    audio_handler: Option<OutputStreamHandle>,
+    audio_handle: Option<OutputStreamHandle>,
     notification_sound: Arc<AtomicBool>,
     notification_d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
@@ -75,24 +75,31 @@ impl Default for Roomor {
         let (front_tx, back_rx) = flume::unbounded();
         let notification_sound = Arc::new(AtomicBool::new(true));
         let notification_d_bus = Arc::new(AtomicBool::new(true));
-        let chat = UdpChat::new(String::new(), 4444, front_tx);
+        let (ip, error_message) = match get_my_ipv4() {
+            Some(ip) => (ip, None),
+            None => (
+                Ipv4Addr::UNSPECIFIED,
+                Some("Couldn't get local IP!".to_string()),
+            ),
+        };
+        let chat = UdpChat::new(ip, front_tx);
         let back_tx = chat.tx();
 
         Roomor {
             name: String::default(),
-            ip: Ipv4Addr::UNSPECIFIED,
+            ip,
             port: 4444,
             mask: 24,
             chat_init: Some(chat),
             chat_handle: None,
             rooms: Rooms::new(),
             _audio,
-            audio_handler,
+            audio_handle: audio_handler,
             notification_sound,
             notification_d_bus,
             back_tx,
             back_rx,
-            error_message: None,
+            error_message,
             last_time: SystemTime::now(),
         }
     }
@@ -136,7 +143,6 @@ impl Roomor {
                 BackEvent::Message(msg) => {
                     self.rooms.take_message(msg);
                 }
-                BackEvent::MyIp(ip) => self.ip = ip,
             }
             self.rooms.recalculate_order();
         }
@@ -165,24 +171,12 @@ impl Roomor {
                         if self.name.is_empty() {
                             name.request_focus();
                         }
+                        ui.heading("IPv4");
+                        drag_ip(ui, &self.ip);
                         ui.heading("Port");
                         ui.add(egui::DragValue::new(&mut self.port));
                         ui.heading("Mask");
-                        ui.add(
-                            egui::DragValue::new(&mut self.mask)
-                                .speed(1)
-                                .custom_formatter(|m, _| {
-                                    let net =
-                                        Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8)
-                                            .expect("exists");
-                                    let mask = net.netmask().octets();
-                                    format!(
-                                        "{:03}.{:03}.{:03}.{:03}",
-                                        mask[0], mask[1], mask[2], mask[3]
-                                    )
-                                })
-                                .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
-                        );
+                        drag_mask(ui, &mut self.mask);
                     });
                     if let Some(err) = &self.error_message {
                         ui.heading(err);
@@ -201,7 +195,7 @@ impl Roomor {
         if let Some(mut init) = self.chat_init.take() {
             let ctx = Notifier::new(
                 ctx,
-                self.audio_handler.clone(),
+                self.audio_handle.clone(),
                 self.notification_sound.clone(),
                 self.notification_d_bus.clone(),
             );
@@ -395,4 +389,28 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: 
     if ui.button(icon).on_hover_text_at_pointer(hover).clicked() {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
+}
+
+fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
+    ui.add(
+        egui::DragValue::new(mask)
+            .speed(1)
+            .custom_formatter(|m, _| {
+                let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
+                let mask = net.netmask().octets();
+                format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
+            })
+            .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
+    );
+}
+fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
+    ui.add_enabled(
+        false,
+        egui::DragValue::new(&mut 0)
+            .speed(1)
+            .custom_formatter(|_, _| {
+                let mask = ip.octets();
+                format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
+            }),
+    );
 }

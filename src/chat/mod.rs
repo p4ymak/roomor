@@ -47,7 +47,6 @@ pub enum BackEvent {
     PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
     Message(TextMessage),
-    MyIp(Ipv4Addr),
 }
 
 #[derive(Debug)]
@@ -183,13 +182,13 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(name: String, port: u16, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
-        let sender = NetWorker::new(port, front_tx);
+        let sender = NetWorker::new(ip, front_tx);
 
         UdpChat {
             sender,
-            name,
+            name: String::new(),
             tx,
             rx,
             history: BTreeMap::<Id, UdpMessage>::new(),
