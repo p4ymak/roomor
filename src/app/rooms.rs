@@ -265,7 +265,6 @@ impl ChatHistory {
                 ui.style().visuals.widgets.inactive.fg_stroke,
             );
         }
-
         ui.add(
             egui::TextEdit::multiline(&mut self.input)
                 .frame(false)
