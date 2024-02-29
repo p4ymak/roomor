@@ -6,7 +6,7 @@ use crate::chat::{
     message::MAX_NAME_SIZE,
     networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
-    BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
+    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
 use eframe::{
     egui::{self, *},
@@ -123,7 +123,9 @@ impl Roomor {
             }
             if delta > TIMEOUT_ALIVE {
                 debug!("Front Alive Enter");
-                self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                    .ok();
                 self.last_time = now;
             }
         }
@@ -149,7 +151,6 @@ impl Roomor {
                 BackEvent::Message(msg) => {
                     self.rooms.take_message(msg);
                 }
-                BackEvent::Pulse => self.last_time = SystemTime::now(),
             }
             self.rooms.recalculate_order();
         }
@@ -291,13 +292,13 @@ impl Roomor {
             .default_width(font_size * 8.0)
             .resizable(true)
             .show_animated(ctx, self.rooms.side_panel_opened, |ui| {
-                self.rooms.draw_list(ui);
+                self.rooms.draw_list(ui, &self.back_tx);
             });
         egui::SidePanel::left("Chats List Light")
             .exact_width(font_size)
             .resizable(false)
             .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
-                self.rooms.draw_list(ui);
+                self.rooms.draw_list(ui, &self.back_tx);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
             self.rooms.draw_history(ui);
@@ -375,12 +376,12 @@ impl Roomor {
                     key: egui::Key::ArrowUp,
                     pressed: true,
                     ..
-                } => self.rooms.list_go_up(),
+                } => self.rooms.list_go_up(&self.back_tx),
                 Event::Key {
                     key: egui::Key::ArrowDown,
                     pressed: true,
                     ..
-                } => self.rooms.list_go_down(),
+                } => self.rooms.list_go_down(&self.back_tx),
                 _ => (),
             })
         })

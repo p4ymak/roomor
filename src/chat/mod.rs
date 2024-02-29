@@ -44,7 +44,6 @@ pub enum Content {
 }
 #[derive(Debug)]
 pub enum BackEvent {
-    Pulse,
     PeerJoined((Ipv4Addr, Option<String>)),
     PeerLeft(Ipv4Addr),
     Message(TextMessage),
@@ -52,6 +51,7 @@ pub enum BackEvent {
 
 #[derive(Debug)]
 pub enum FrontEvent {
+    Ping(Recepients),
     Enter,
     Greating,
     Exit,
@@ -261,15 +261,17 @@ impl UdpChat {
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
+                    FrontEvent::Ping(recepient) => {
+                        debug!("Ping {recepient:?}");
+                        self.sender.send(UdpMessage::enter(&self.name), recepient);
+                    }
                     FrontEvent::Enter => {
                         debug!("I'm still Alive");
-                        self.sender.front_tx.send(BackEvent::Pulse).ok();
                         self.sender
                             .send(UdpMessage::enter(&self.name), Recepients::All);
                     }
                     FrontEvent::Greating => {
                         debug!("I'm Alive");
-                        self.sender.front_tx.send(BackEvent::Pulse).ok();
                         self.sender
                             .send(UdpMessage::greating(&self.name), Recepients::All);
                     }

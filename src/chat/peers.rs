@@ -44,11 +44,7 @@ impl PeersMap {
             .unwrap_or(ip.to_string())
     }
     pub fn check_alive(&mut self, now: SystemTime) {
-        self.0.values_mut().for_each(|p| {
-            p.online = !now
-                .duration_since(p.last_time)
-                .is_ok_and(|t| t > TIMEOUT_ALIVE)
-        })
+        self.0.values_mut().for_each(|p| p.check_alive(now))
     }
 }
 pub struct Peer {
@@ -100,5 +96,10 @@ impl Peer {
     }
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
+    }
+    pub fn check_alive(&mut self, now: SystemTime) {
+        self.online = now
+            .duration_since(self.last_time)
+            .is_ok_and(|t| t < TIMEOUT_ALIVE)
     }
 }

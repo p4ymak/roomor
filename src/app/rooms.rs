@@ -2,13 +2,14 @@ use crate::chat::{
     limit_text,
     message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
     peers::{Peer, PeersMap},
-    Content, Recepients, TextMessage,
+    ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
 use eframe::{
     egui,
     egui::{Rounding, Stroke},
     emath::Align2,
 };
+use flume::Sender;
 use std::{collections::BTreeMap, net::Ipv4Addr, time::SystemTime};
 use timediff::TimeDiff;
 
@@ -43,7 +44,7 @@ impl Rooms {
             .expect("Public Exists")
     }
 
-    pub fn get_mut_peer(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
+    pub fn get_mut_private(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
         self.chats
             .entry(Recepients::One(ip))
             .or_insert(ChatHistory::new(Recepients::One(ip)))
@@ -79,13 +80,15 @@ impl Rooms {
         if self.peers.peer_joined(ip, name.as_ref()) {
             let msg = TextMessage::in_enter(ip, name.unwrap_or(ip.to_string()));
             self.get_mut_public().history.push(msg.clone());
-            self.get_mut_peer(ip).history.push(msg);
+            self.get_mut_private(ip).history.push(msg);
         }
     }
 
     pub fn peer_left(&mut self, ip: Ipv4Addr) {
         self.get_mut_public().history.push(TextMessage::in_exit(ip));
-        self.get_mut_peer(ip).history.push(TextMessage::in_exit(ip));
+        self.get_mut_private(ip)
+            .history
+            .push(TextMessage::in_exit(ip));
         self.peers.peer_exited(ip);
     }
 
@@ -141,7 +144,7 @@ impl Rooms {
             });
     }
 
-    pub fn draw_list(&mut self, ui: &mut egui::Ui) {
+    pub fn draw_list(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
         draw_list_entry(
             ui,
             &mut self.active_chat,
@@ -149,6 +152,7 @@ impl Rooms {
             &self.peers,
             Recepients::Peers,
             self.side_panel_opened,
+            tx,
         );
 
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -160,6 +164,7 @@ impl Rooms {
                     &self.peers,
                     *recepient,
                     self.side_panel_opened,
+                    tx,
                 );
             }
             ui.label("");
@@ -177,43 +182,47 @@ impl Rooms {
         }
     }
 
-    pub fn list_go_up(&mut self) {
-        if self.active_chat == Recepients::Peers {
-            self.active_chat = self.order.last().cloned().unwrap_or_default();
+    pub fn list_go_up(&mut self, tx: &Sender<ChatEvent>) {
+        let active = if self.active_chat == Recepients::Peers {
+            self.order.last().cloned().unwrap_or_default()
         } else {
             let active_id = self
                 .order
                 .iter()
                 .position(|k| k == &self.active_chat)
                 .unwrap_or_default();
-
-            self.active_chat = match active_id {
+            match active_id {
                 0 => Recepients::Peers,
                 _ => self
                     .order
                     .get(active_id.saturating_sub(1))
                     .unwrap_or(&Recepients::Peers)
                     .to_owned(),
-            };
-        }
-        self.get_mut_active().unread = 0;
+            }
+        };
+        self.set_active(active, tx);
     }
 
-    pub fn list_go_down(&mut self) {
-        if self.active_chat == Recepients::Peers {
-            self.active_chat = self.order.first().cloned().unwrap_or_default();
+    pub fn list_go_down(&mut self, tx: &Sender<ChatEvent>) {
+        let active = if self.active_chat == Recepients::Peers {
+            self.order.first().cloned().unwrap_or_default()
         } else {
             let active_id = self
                 .order
                 .iter()
                 .position(|k| k == &self.active_chat)
                 .unwrap_or_default();
-            self.active_chat = self
-                .order
+            self.order
                 .get(active_id.saturating_add(1))
                 .unwrap_or(&Recepients::Peers)
-                .to_owned();
-        }
+                .to_owned()
+        };
+        self.set_active(active, tx);
+    }
+
+    fn set_active(&mut self, recepient: Recepients, tx: &Sender<ChatEvent>) {
+        self.active_chat = recepient;
+        tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
         self.get_mut_active().unread = 0;
     }
 }
@@ -380,6 +389,7 @@ fn draw_list_entry(
     peers: &PeersMap,
     recepient: Recepients,
     side_panel_opened: bool,
+    tx: &Sender<ChatEvent>,
 ) {
     let max_rect = ui.max_rect();
     let font_size = ui.text_style_height(&egui::TextStyle::Body);
@@ -410,6 +420,7 @@ fn draw_list_entry(
     if response.clicked() {
         *active_chat = recepient;
         *unread = 0;
+        tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
     }
 
     let rounding = Rounding {
