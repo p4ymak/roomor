@@ -60,7 +60,18 @@ impl Rooms {
         self.chats.get(&self.active_chat).expect("Active Exists")
     }
 
+    pub fn is_able_to_send(&self) -> bool {
+        let recepients = self.get_active().recepients;
+        match recepients {
+            Recepients::One(ip) => self.peers.0.get(&ip).is_some_and(|p| p.is_online()),
+            _ => self.peers.0.values().any(|p| p.is_online()),
+        }
+    }
+
     pub fn compose_message(&mut self) -> Option<TextMessage> {
+        if !self.is_able_to_send() {
+            return None;
+        }
         let chat = self.get_mut_active();
         let trimmed = chat.input.trim().to_string();
         (!trimmed.is_empty()).then_some(
@@ -145,27 +156,29 @@ impl Rooms {
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
-        draw_list_entry(
-            ui,
-            &mut self.active_chat,
-            &mut self.chats,
-            &self.peers,
-            Recepients::Peers,
-            self.side_panel_opened,
-            tx,
-        );
+        self.chats
+            .get_mut(&Recepients::Peers)
+            .expect("Public exists")
+            .draw_list_entry(
+                ui,
+                &mut self.active_chat,
+                &self.peers,
+                self.side_panel_opened,
+                tx,
+            );
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             for recepient in self.order.iter() {
-                draw_list_entry(
-                    ui,
-                    &mut self.active_chat,
-                    &mut self.chats,
-                    &self.peers,
-                    *recepient,
-                    self.side_panel_opened,
-                    tx,
-                );
+                self.chats
+                    .get_mut(recepient)
+                    .expect("Private Exists")
+                    .draw_list_entry(
+                        ui,
+                        &mut self.active_chat,
+                        &self.peers,
+                        self.side_panel_opened,
+                        tx,
+                    );
             }
             ui.label("");
         });
@@ -253,9 +266,9 @@ impl ChatHistory {
         }
     }
 
-    pub fn draw_input(&mut self, ui: &mut egui::Ui) {
-        ui.style_mut().visuals.clip_rect_margin = 0.0;
-
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, is_able_to_send: bool) {
+        ui.visuals_mut().clip_rect_margin = 0.0;
+        ui.set_enabled(is_able_to_send);
         self.emoji_mode = self.input.starts_with(' ');
         let limit = match self.emoji_mode {
             true => MAX_EMOJI_SIZE,
@@ -282,6 +295,121 @@ impl ChatHistory {
                 .desired_width(ui.available_rect_before_wrap().width()),
         )
         .request_focus();
+    }
+
+    fn draw_list_entry(
+        &mut self,
+        ui: &mut egui::Ui,
+        active_chat: &mut Recepients,
+        peers: &PeersMap,
+        side_panel_opened: bool,
+        tx: &Sender<ChatEvent>,
+    ) {
+        let max_rect = ui.max_rect();
+        let font_size = ui.text_style_height(&egui::TextStyle::Body);
+        let font_id = egui::FontId::proportional(font_size);
+
+        let (response, painter) = ui.allocate_painter(
+            egui::Vec2::new(
+                max_rect.width(),
+                ui.text_style_height(&egui::TextStyle::Body) * 1.5,
+            ),
+            egui::Sense::click(),
+        );
+
+        let is_active = *active_chat == self.recepients;
+        let active_fg = ui.visuals().widgets.hovered.fg_stroke;
+        let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
+        let stroke_width = stroke_width(ui);
+        let stroke = if response.hovered() {
+            Stroke::new(stroke_width * 2.0, active_fg.color)
+        } else if is_active {
+            Stroke::new(stroke_width * 2.0, inactive_fg.color)
+        } else {
+            Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
+        };
+
+        if response.clicked() {
+            *active_chat = self.recepients;
+            self.unread = 0;
+            tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
+                .ok();
+        }
+
+        let rounding = Rounding {
+            nw: rounding(ui) * 2.0,
+            ne: 0.0,
+            sw: rounding(ui) * 2.0,
+            se: 0.0,
+        };
+
+        painter.rect_stroke(painter.clip_rect(), rounding, stroke);
+        let (name, color) = match self.recepients {
+            Recepients::One(ip) => {
+                let peer = peers.0.get(&ip).expect("Peer exists");
+                (
+                    peers.get_display_name(ip),
+                    if peer.is_exited() {
+                        ui.visuals().weak_text_color()
+                    } else if peer.is_online() {
+                        ui.visuals().strong_text_color()
+                    } else {
+                        ui.visuals().text_color()
+                    },
+                )
+            }
+            _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
+        };
+
+        painter.text(
+            painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
+            Align2::LEFT_CENTER,
+            name.clone(),
+            font_id.clone(),
+            color,
+        );
+        if self.unread > 0 {
+            // painter.text(
+            //     painter.clip_rect().right_center() - egui::Vec2::new(font_id.size, 0.0),
+            //     Align2::RIGHT_CENTER,
+            //     format!("[{}]", unread),
+            //     font_id,
+            //     ui.style().visuals.widgets.inactive.text_color(),
+            // );
+            painter.vline(
+                painter.clip_rect().right(),
+                painter.clip_rect().y_range(),
+                Stroke::new(stroke_width * 4.0, active_fg.color),
+            );
+        }
+
+        // Hover
+        let mut hover_lines = vec![];
+        if !side_panel_opened {
+            hover_lines.push(name);
+        }
+        if self.unread > 0 {
+            hover_lines.push(format!("Unread: {}", self.unread));
+        }
+        if let Some(msg) = self.history.last() {
+            if let Some(ago) = pretty_ago(msg.time()) {
+                hover_lines.push(format!("Last message {}", ago));
+            }
+        }
+        if let Recepients::One(ip) = self.recepients {
+            let peer = peers.0.get(&ip).expect("Peer exists");
+            if let Some(ago) = pretty_ago(peer.last_time()) {
+                hover_lines.push(format!("Last seen {}", ago));
+            }
+            hover_lines.push(format!("{ip}"));
+        }
+        if !hover_lines.is_empty() {
+            response.on_hover_ui_at_pointer(|ui| {
+                for line in hover_lines {
+                    ui.label(line);
+                }
+            });
+        }
     }
 }
 
@@ -379,125 +507,6 @@ impl TextMessage {
             }
             _ => (),
         }
-    }
-}
-
-fn draw_list_entry(
-    ui: &mut egui::Ui,
-    active_chat: &mut Recepients,
-    chats: &mut BTreeMap<Recepients, ChatHistory>,
-    peers: &PeersMap,
-    recepient: Recepients,
-    side_panel_opened: bool,
-    tx: &Sender<ChatEvent>,
-) {
-    let max_rect = ui.max_rect();
-    let font_size = ui.text_style_height(&egui::TextStyle::Body);
-    let font_id = egui::FontId::proportional(font_size);
-
-    let (response, painter) = ui.allocate_painter(
-        egui::Vec2::new(
-            max_rect.width(),
-            ui.text_style_height(&egui::TextStyle::Body) * 1.5,
-        ),
-        egui::Sense::click(),
-    );
-
-    let is_active = *active_chat == recepient;
-    let active_fg = ui.visuals().widgets.hovered.fg_stroke;
-    let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
-    let stroke_width = stroke_width(ui);
-    let stroke = if response.hovered() {
-        Stroke::new(stroke_width * 2.0, active_fg.color)
-    } else if is_active {
-        Stroke::new(stroke_width * 2.0, inactive_fg.color)
-    } else {
-        Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
-    };
-
-    let unread = &mut chats.get_mut(&recepient).expect("Chat exists").unread;
-
-    if response.clicked() {
-        *active_chat = recepient;
-        *unread = 0;
-        tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
-    }
-
-    let rounding = Rounding {
-        nw: rounding(ui) * 2.0,
-        ne: 0.0,
-        sw: rounding(ui) * 2.0,
-        se: 0.0,
-    };
-
-    let unread = *unread;
-
-    painter.rect_stroke(painter.clip_rect(), rounding, stroke);
-    let (name, color) = match recepient {
-        Recepients::One(ip) => {
-            let peer = peers.0.get(&ip).expect("Peer exists");
-            (
-                peers.get_display_name(ip),
-                if peer.is_exited() {
-                    ui.visuals().weak_text_color()
-                } else if peer.is_online() {
-                    ui.visuals().strong_text_color()
-                } else {
-                    ui.visuals().text_color()
-                },
-            )
-        }
-        _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
-    };
-
-    painter.text(
-        painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
-        Align2::LEFT_CENTER,
-        name.clone(),
-        font_id.clone(),
-        color,
-    );
-    if unread > 0 {
-        // painter.text(
-        //     painter.clip_rect().right_center() - egui::Vec2::new(font_id.size, 0.0),
-        //     Align2::RIGHT_CENTER,
-        //     format!("[{}]", unread),
-        //     font_id,
-        //     ui.style().visuals.widgets.inactive.text_color(),
-        // );
-        painter.vline(
-            painter.clip_rect().right(),
-            painter.clip_rect().y_range(),
-            Stroke::new(stroke_width * 4.0, active_fg.color),
-        );
-    }
-
-    // Hover
-    let mut hover_lines = vec![];
-    if !side_panel_opened {
-        hover_lines.push(name);
-    }
-    if unread > 0 {
-        hover_lines.push(format!("Unread: {}", unread));
-    }
-    if let Some(msg) = chats.get(&recepient).and_then(|c| c.history.last()) {
-        if let Some(ago) = pretty_ago(msg.time()) {
-            hover_lines.push(format!("Last message {}", ago));
-        }
-    }
-    if let Recepients::One(ip) = recepient {
-        let peer = peers.0.get(&ip).expect("Peer exists");
-        if let Some(ago) = pretty_ago(peer.last_time()) {
-            hover_lines.push(format!("Last seen {}", ago));
-        }
-        hover_lines.push(format!("{ip}"));
-    }
-    if !hover_lines.is_empty() {
-        response.on_hover_ui_at_pointer(|ui| {
-            for line in hover_lines {
-                ui.label(line);
-            }
-        });
     }
 }
 

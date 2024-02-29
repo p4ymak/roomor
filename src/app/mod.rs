@@ -122,7 +122,7 @@ impl Roomor {
                 self.last_time = now;
             }
             if delta > TIMEOUT_ALIVE {
-                debug!("Front Alive Enter");
+                debug!("Front Alive Ping");
                 self.back_tx
                     .send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                     .ok();
@@ -284,7 +284,8 @@ impl Roomor {
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                self.rooms.get_mut_active().draw_input(ui);
+                let is_able_to_send = self.rooms.is_able_to_send();
+                self.rooms.get_mut_active().draw_input(ui, is_able_to_send);
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
@@ -436,12 +437,13 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_ALIVE {
+                debug!("Pulse");
                 if delta > TIMEOUT_ALIVE + TIMEOUT_CHECK {
-                    debug!("Pulse Enter");
-                    tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
+                    tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                        .ok();
                 } else {
-                    debug!("Pulse Greating");
-                    tx.send(ChatEvent::Front(FrontEvent::Greating)).ok();
+                    tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::Peers)))
+                        .ok();
                 }
                 last_time = now;
             }

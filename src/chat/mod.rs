@@ -52,8 +52,7 @@ pub enum BackEvent {
 #[derive(Debug)]
 pub enum FrontEvent {
     Ping(Recepients),
-    Enter,
-    Greating,
+    Greating(Recepients),
     Exit,
     Message(TextMessage),
 }
@@ -261,19 +260,14 @@ impl UdpChat {
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
-                    FrontEvent::Ping(recepient) => {
-                        debug!("Ping {recepient:?}");
-                        self.sender.send(UdpMessage::enter(&self.name), recepient);
+                    FrontEvent::Ping(recepients) => {
+                        debug!("Ping {recepients:?}");
+                        self.sender.send(UdpMessage::enter(&self.name), recepients);
                     }
-                    FrontEvent::Enter => {
-                        debug!("I'm still Alive");
+                    FrontEvent::Greating(recepients) => {
+                        debug!("Greating {recepients:?}");
                         self.sender
-                            .send(UdpMessage::enter(&self.name), Recepients::All);
-                    }
-                    FrontEvent::Greating => {
-                        debug!("I'm Alive");
-                        self.sender
-                            .send(UdpMessage::greating(&self.name), Recepients::All);
+                            .send(UdpMessage::greating(&self.name), recepients);
                     }
                     FrontEvent::Exit => {
                         debug!("I'm Exit");
