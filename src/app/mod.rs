@@ -49,11 +49,11 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.keep_alive();
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
+            self.keep_alive();
             self.read_events();
             self.draw(ctx);
         }
@@ -170,7 +170,6 @@ impl Roomor {
                         TextMessage::logo().draw(ui, None);
                     });
                     ui.label("");
-                    ui.label("");
                     ui.group(|ui| {
                         self.rooms.get_mut_active().font_multiply(ui);
                         ui.heading("Name");
@@ -192,7 +191,7 @@ impl Roomor {
                     ui.label("");
                     ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
                     ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
-                    ui.hyperlink_to("by Roman Chumak", "https://www.p4ymak.su");
+                    ui.hyperlink_to("by Roman Chumak", "http://www.p4ymak.su");
                     ui.hyperlink_to("Source Code", "https://www.github.com/p4ymak/roomor");
                 });
             });
