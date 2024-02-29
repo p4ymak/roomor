@@ -14,6 +14,7 @@ pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
 
 pub struct NetWorker {
+    pub name: String,
     pub socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
     pub port: u16,
@@ -25,6 +26,7 @@ pub struct NetWorker {
 impl NetWorker {
     pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         NetWorker {
+            name: String::new(),
             socket: None,
             ip,
             port: 4444,
@@ -87,17 +89,20 @@ impl NetWorker {
                 let new_comer = self.peers.peer_joined(ip, user_name.clone());
                 self.front_tx.send(event).ok();
                 if new_comer {
-                    let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
-                    ctx.notify(&notification_text);
-                } else {
-                    ctx.request_repaint();
+                    self.send(UdpMessage::greating(&self.name), Recepients::One(ip));
+                    // let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
+                    // ctx.notify(&notification_text);
+                    // } else {
+                    // ctx.request_repaint();
                 }
+                ctx.request_repaint();
             }
             BackEvent::PeerLeft(ip) => {
-                let notification_text = format!("{} left..", self.peers.get_display_name(ip));
+                // let notification_text = format!("{} left..", self.peers.get_display_name(ip));
                 self.peers.remove(&ip);
                 self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
-                ctx.notify(&notification_text);
+                // ctx.notify(&notification_text);
+                ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
                 let text = msg.get_text();

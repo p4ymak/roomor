@@ -207,6 +207,7 @@ impl UdpChat {
     ) -> Result<(), Box<dyn Error + 'static>> {
         self.name = name.to_string();
         self.sender.port = port;
+        self.sender.name = name.to_string();
         self.sender.connect(mask)?;
         self.listen();
         Ok(())

@@ -14,6 +14,7 @@ use eframe::{
 };
 use flume::{Receiver, Sender};
 use ipnet::Ipv4Net;
+use log::debug;
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
@@ -116,9 +117,12 @@ impl Roomor {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(self.last_time) {
             if delta > TIMEOUT_CHECK {
+                debug!("Front Check Peers");
                 self.rooms.peers.check_alive(now);
+                self.last_time = now;
             }
-            if delta > TIMEOUT_ALIVE * 2 {
+            if delta > TIMEOUT_ALIVE {
+                debug!("Front Alive Enter");
                 self.back_tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
                 self.last_time = now;
             }
@@ -352,7 +356,9 @@ impl Roomor {
                         handle.join().unwrap();
                     }
                     *self = Roomor {
+                        name: std::mem::take(&mut self.name),
                         rooms: std::mem::take(&mut self.rooms),
+                        pulse_handle: std::mem::take(&mut self.pulse_handle),
                         notification_sound: std::mem::take(&mut self.notification_sound),
                         notification_d_bus: std::mem::take(&mut self.notification_d_bus),
                         ..Default::default()
@@ -429,9 +435,11 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_ALIVE {
-                if delta > TIMEOUT_ALIVE * 2 {
+                if delta > TIMEOUT_ALIVE + TIMEOUT_CHECK {
+                    debug!("Pulse Enter");
                     tx.send(ChatEvent::Front(FrontEvent::Enter)).ok();
                 } else {
+                    debug!("Pulse Greating");
                     tx.send(ChatEvent::Front(FrontEvent::Greating)).ok();
                 }
                 last_time = now;
