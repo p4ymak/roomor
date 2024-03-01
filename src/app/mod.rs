@@ -281,8 +281,7 @@ impl Roomor {
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                let is_able_to_send = self.rooms.is_able_to_send();
-                self.rooms.get_mut_active().draw_input(ui, is_able_to_send);
+                self.rooms.draw_input(ui, &self.back_tx);
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)

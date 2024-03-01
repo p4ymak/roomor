@@ -4,7 +4,7 @@ use std::{
     time::SystemTime,
 };
 
-use super::networker::TIMEOUT_ALIVE;
+use super::{networker::TIMEOUT_ALIVE, Recepients};
 
 #[derive(Default)]
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
@@ -22,16 +22,14 @@ impl PeersMap {
             if name.is_some() {
                 peer.set_name(name);
             }
-            new_one = peer.exited;
-            peer.exited = false;
-            peer.set_online(true);
+            new_one = peer.is_offline();
+            peer.set_presence(Presence::Online);
         }
         new_one
     }
     pub fn peer_exited(&mut self, ip: Ipv4Addr) {
         self.0.entry(ip).and_modify(|p| {
-            p.online = false;
-            p.exited = true;
+            p.presence = Presence::Offline;
         });
     }
     pub fn remove(&mut self, ip: &Ipv4Addr) {
@@ -46,12 +44,34 @@ impl PeersMap {
     pub fn check_alive(&mut self, now: SystemTime) {
         self.0.values_mut().for_each(|p| p.check_alive(now))
     }
+    pub fn online_status(&self, recepients: Recepients) -> Presence {
+        match recepients {
+            Recepients::One(ip) => self.0.get(&ip).map(|p| p.status()).unwrap_or_default(),
+            _ => {
+                if self.0.values().any(|p| p.is_online()) {
+                    Presence::Online
+                } else if self.0.values().all(|p| p.is_offline()) {
+                    Presence::Offline
+                } else {
+                    Presence::Unknown
+                }
+            }
+        }
+    }
 }
+
+#[derive(Debug, Default, PartialEq, Copy, Clone)]
+pub enum Presence {
+    Online,
+    #[default]
+    Unknown,
+    Offline,
+}
+
 pub struct Peer {
     ip: Ipv4Addr,
     name: Option<String>,
-    online: bool,
-    exited: bool,
+    presence: Presence,
     last_time: SystemTime,
 }
 impl Peer {
@@ -59,8 +79,7 @@ impl Peer {
         Peer {
             ip,
             name: name.map(|n| n.into()),
-            online: true,
-            exited: false,
+            presence: Presence::Online,
             last_time: SystemTime::now(),
         }
     }
@@ -76,17 +95,21 @@ impl Peer {
     pub fn name(&self) -> Option<&String> {
         self.name.as_ref()
     }
+    pub fn status(&self) -> Presence {
+        self.presence
+    }
     pub fn is_online(&self) -> bool {
-        self.online
+        self.presence == Presence::Online
     }
-    pub fn is_exited(&self) -> bool {
-        self.exited
+    pub fn is_offline(&self) -> bool {
+        self.presence == Presence::Offline
     }
+
     pub fn set_name(&mut self, name: Option<impl Into<String>>) {
         self.name = name.map(|n| n.into());
     }
-    pub fn set_online(&mut self, online: bool) {
-        self.online = online;
+    pub fn set_presence(&mut self, presence: Presence) {
+        self.presence = presence;
     }
     pub fn last_time(&self) -> SystemTime {
         self.last_time
@@ -98,8 +121,16 @@ impl Peer {
         self.ip
     }
     pub fn check_alive(&mut self, now: SystemTime) {
-        self.online = now
+        if self.presence == Presence::Offline {
+            return;
+        }
+        self.presence = if now
             .duration_since(self.last_time)
             .is_ok_and(|t| t < TIMEOUT_ALIVE)
+        {
+            Presence::Online
+        } else {
+            Presence::Unknown
+        }
     }
 }

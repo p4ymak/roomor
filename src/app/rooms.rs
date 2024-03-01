@@ -1,7 +1,7 @@
 use crate::chat::{
     limit_text,
     message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
-    peers::{Peer, PeersMap},
+    peers::{Peer, PeersMap, Presence},
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
 use eframe::{
@@ -61,8 +61,7 @@ impl Rooms {
     }
 
     pub fn is_able_to_send(&self) -> bool {
-        let recepients = self.get_active().recepients;
-        match recepients {
+        match self.active_chat {
             Recepients::One(ip) => self.peers.0.get(&ip).is_some_and(|p| p.is_online()),
             _ => self.peers.0.values().any(|p| p.is_online()),
         }
@@ -169,7 +168,7 @@ impl Rooms {
         {
             self.set_active(Recepients::Peers, tx);
         }
-
+        ui.label("");
         egui::ScrollArea::vertical().show(ui, |ui| {
             let mut clicked = None;
             for recepient in self.order.iter() {
@@ -194,6 +193,10 @@ impl Rooms {
         });
     }
 
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
+        let status = self.peers.online_status(self.active_chat);
+        self.get_mut_active().draw_input(ui, status, tx);
+    }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
         let side_ico = if self.side_panel_opened { "" } else { "" };
         let side_ico = egui::RichText::new(side_ico).monospace();
@@ -248,17 +251,27 @@ impl Rooms {
         match recepient {
             Recepients::One(ip) => {
                 if let Some(peer) = self.peers.0.get_mut(&ip) {
-                    peer.set_online(false);
+                    if !peer.is_offline() {
+                        peer.set_presence(Presence::Unknown);
+                    }
                 }
             }
-            _ => self.peers.0.values_mut().for_each(|p| p.set_online(false)),
+            _ => self.peers.0.values_mut().for_each(|p| {
+                if !p.is_offline() {
+                    p.set_presence(Presence::Unknown);
+                }
+            }),
         };
         tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
         self.get_mut_active().unread = 0;
     }
 
     pub fn update_peers_online(&mut self, tx: &Sender<ChatEvent>) {
-        self.peers.0.values_mut().for_each(|p| p.set_online(false));
+        self.peers.0.values_mut().for_each(|p| {
+            if !p.is_offline() {
+                p.set_presence(Presence::Unknown);
+            }
+        });
         tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::Peers)))
             .ok();
     }
@@ -290,15 +303,19 @@ impl ChatHistory {
         }
     }
 
-    pub fn draw_input(&mut self, ui: &mut egui::Ui, is_able_to_send: bool) {
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence, tx: &Sender<ChatEvent>) {
         ui.visuals_mut().clip_rect_margin = 0.0;
-        ui.set_enabled(is_able_to_send);
+        if status != Presence::Online {
+            ui.visuals_mut().override_text_color =
+                Some(ui.visuals().widgets.noninteractive.text_color());
+        }
         self.emoji_mode = self.input.starts_with(' ');
         let limit = match self.emoji_mode {
             true => MAX_EMOJI_SIZE,
             false => MAX_TEXT_SIZE,
         };
         limit_text(&mut self.input, limit);
+
         self.font_multiply(ui);
 
         let y = ui.max_rect().min.y;
@@ -311,14 +328,22 @@ impl ChatHistory {
                 ui.style().visuals.widgets.inactive.fg_stroke,
             );
         }
-        ui.add(
+        let text_input = ui.add(
             egui::TextEdit::multiline(&mut self.input)
                 .frame(false)
                 .cursor_at_end(true)
                 .desired_rows(if self.emoji_mode { 1 } else { 4 })
-                .desired_width(ui.available_rect_before_wrap().width()),
-        )
-        .request_focus();
+                .desired_width(ui.available_rect_before_wrap().width())
+                .cursor_at_end(true),
+        );
+        text_input.request_focus();
+        if text_input.changed() {
+            self.input = self.input.replace('\n', "");
+            if status == Presence::Unknown {
+                tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
+                    .ok();
+            }
+        }
     }
 
     fn draw_list_entry(
@@ -333,7 +358,7 @@ impl ChatHistory {
                 if let Some(peer) = peers.0.get(&ip) {
                     (
                         peers.get_display_name(ip),
-                        if peer.is_exited() {
+                        if peer.is_offline() {
                             ui.visuals().weak_text_color()
                         } else if peer.is_online() {
                             ui.visuals().strong_text_color()
@@ -438,7 +463,7 @@ impl ChatHistory {
 impl Peer {
     fn rich_name(&self) -> egui::RichText {
         let mut label = egui::RichText::new(self.display_name());
-        if self.is_exited() {
+        if self.is_offline() {
             label = label.weak();
         } else if self.is_online() {
             label = label.strong();
