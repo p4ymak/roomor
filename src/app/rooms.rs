@@ -73,7 +73,7 @@ impl Rooms {
             return None;
         }
         let chat = self.get_mut_active();
-        let trimmed = chat.input.trim().to_string();
+        let trimmed = chat.input.trim().replace('\n', "").to_string();
         (!trimmed.is_empty()).then_some(
             // && self.peers.values().any(|p| p.is_online()) {
             {
@@ -257,8 +257,10 @@ impl Rooms {
         self.get_mut_active().unread = 0;
     }
 
-    pub fn update_active(&mut self, tx: &Sender<ChatEvent>) {
-        self.set_active(self.active_chat, tx);
+    pub fn update_peers_online(&mut self, tx: &Sender<ChatEvent>) {
+        self.peers.0.values_mut().for_each(|p| p.set_online(false));
+        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::Peers)))
+            .ok();
     }
 }
 

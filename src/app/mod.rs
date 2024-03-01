@@ -123,10 +123,7 @@ impl Roomor {
             }
             if delta > TIMEOUT_ALIVE {
                 debug!("Front Alive Ping");
-                self.rooms.update_active(&self.back_tx);
-                // self.back_tx
-                //     .send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
-                //     .ok();
+                self.rooms.update_peers_online(&self.back_tx);
                 self.last_time = now;
             }
         }
@@ -437,8 +434,8 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_ALIVE {
-                debug!("Pulse");
                 if delta > TIMEOUT_ALIVE + TIMEOUT_CHECK {
+                    debug!("Pulse");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
                     // } else {
