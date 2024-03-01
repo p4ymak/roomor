@@ -49,19 +49,25 @@ impl NetWorker {
     pub fn send(&mut self, message: UdpMessage, mut addrs: Recepients) {
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
-            if self.peers.0.is_empty() {
+            if addrs == Recepients::Peers && self.peers.0.is_empty() {
                 addrs = Recepients::All;
             }
+
             match addrs {
-                Recepients::All => self
-                    .ipnet
-                    .hosts()
-                    .map(|r| {
-                        socket
-                            .send_to(&bytes, SocketAddrV4::new(r, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
+                Recepients::All => {
+                    // socket
+                    //     .send_to(&bytes, SocketAddrV4::new(Ipv4Addr::BROADCAST, self.port))
+                    //     .is_ok()
+                    // }
+                    self.ipnet
+                        .hosts()
+                        .map(|r| {
+                            socket
+                                .send_to(&bytes, SocketAddrV4::new(r, self.port))
+                                .is_ok()
+                        })
+                        .all(|r| r)
+                }
                 Recepients::Peers => self
                     .peers
                     .0

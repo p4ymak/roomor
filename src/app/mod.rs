@@ -441,7 +441,7 @@ fn pulse(tx: Sender<ChatEvent>) {
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
                 } else {
-                    tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::Peers)))
+                    tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::All)))
                         .ok();
                 }
                 last_time = now;

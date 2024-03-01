@@ -156,7 +156,8 @@ impl Rooms {
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
-        self.chats
+        if self
+            .chats
             .get_mut(&Recepients::Peers)
             .expect("Public exists")
             .draw_list_entry(
@@ -164,12 +165,16 @@ impl Rooms {
                 &mut self.active_chat,
                 &self.peers,
                 self.side_panel_opened,
-                tx,
-            );
+            )
+        {
+            self.set_active(Recepients::Peers, tx);
+        }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
+            let mut clicked = None;
             for recepient in self.order.iter() {
-                self.chats
+                if self
+                    .chats
                     .get_mut(recepient)
                     .expect("Private Exists")
                     .draw_list_entry(
@@ -177,8 +182,13 @@ impl Rooms {
                         &mut self.active_chat,
                         &self.peers,
                         self.side_panel_opened,
-                        tx,
-                    );
+                    )
+                {
+                    clicked = Some(recepient);
+                }
+            }
+            if let Some(recepient) = clicked {
+                self.set_active(*recepient, tx);
             }
             ui.label("");
         });
@@ -235,6 +245,14 @@ impl Rooms {
 
     fn set_active(&mut self, recepient: Recepients, tx: &Sender<ChatEvent>) {
         self.active_chat = recepient;
+        match recepient {
+            Recepients::One(ip) => {
+                if let Some(peer) = self.peers.0.get_mut(&ip) {
+                    peer.set_online(false);
+                }
+            }
+            _ => self.peers.0.values_mut().for_each(|p| p.set_online(false)),
+        };
         tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
         self.get_mut_active().unread = 0;
     }
@@ -303,8 +321,7 @@ impl ChatHistory {
         active_chat: &mut Recepients,
         peers: &PeersMap,
         side_panel_opened: bool,
-        tx: &Sender<ChatEvent>,
-    ) {
+    ) -> bool {
         let max_rect = ui.max_rect();
         let font_size = ui.text_style_height(&egui::TextStyle::Body);
         let font_id = egui::FontId::proportional(font_size);
@@ -328,13 +345,7 @@ impl ChatHistory {
         } else {
             Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
         };
-
-        if response.clicked() {
-            *active_chat = self.recepients;
-            self.unread = 0;
-            tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
-                .ok();
-        }
+        let clicked = response.clicked();
 
         let rounding = Rounding {
             nw: rounding(ui) * 2.0,
@@ -410,6 +421,7 @@ impl ChatHistory {
                 }
             });
         }
+        clicked
     }
 }
 

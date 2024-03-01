@@ -252,7 +252,6 @@ impl UdpChat {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
-
                         let message = UdpMessage::from_message(&msg);
                         self.history.insert(message.id, message.clone());
                         self.sender
@@ -357,6 +356,7 @@ pub fn utf8_truncate(input: &mut String, maxsize: usize) {
         input.truncate(utf8_maxsize);
     }
 }
+
 pub fn limit_text(text: &mut String, limit: usize) {
     *text = text.trim_end_matches('\n').to_string();
     utf8_truncate(text, limit);
