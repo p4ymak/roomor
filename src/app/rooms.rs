@@ -326,6 +326,26 @@ impl ChatHistory {
         peers: &PeersMap,
         side_panel_opened: bool,
     ) -> bool {
+        let (name, color) = match self.recepients {
+            Recepients::One(ip) => {
+                if let Some(peer) = peers.0.get(&ip) {
+                    (
+                        peers.get_display_name(ip),
+                        if peer.is_exited() {
+                            ui.visuals().weak_text_color()
+                        } else if peer.is_online() {
+                            ui.visuals().strong_text_color()
+                        } else {
+                            ui.visuals().text_color()
+                        },
+                    )
+                } else {
+                    return false;
+                }
+            }
+            _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
+        };
+
         let max_rect = ui.max_rect();
         let font_size = ui.text_style_height(&egui::TextStyle::Body);
         let font_id = egui::FontId::proportional(font_size);
@@ -359,22 +379,6 @@ impl ChatHistory {
         };
 
         painter.rect_stroke(painter.clip_rect(), rounding, stroke);
-        let (name, color) = match self.recepients {
-            Recepients::One(ip) => {
-                let peer = peers.0.get(&ip).expect("Peer exists");
-                (
-                    peers.get_display_name(ip),
-                    if peer.is_exited() {
-                        ui.visuals().weak_text_color()
-                    } else if peer.is_online() {
-                        ui.visuals().strong_text_color()
-                    } else {
-                        ui.visuals().text_color()
-                    },
-                )
-            }
-            _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
-        };
 
         painter.text(
             painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
