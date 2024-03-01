@@ -256,6 +256,10 @@ impl Rooms {
         tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
         self.get_mut_active().unread = 0;
     }
+
+    pub fn update_active(&mut self, tx: &Sender<ChatEvent>) {
+        self.set_active(self.active_chat, tx);
+    }
 }
 
 pub struct ChatHistory {
