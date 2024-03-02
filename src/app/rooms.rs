@@ -272,7 +272,7 @@ impl Rooms {
                 p.set_presence(Presence::Unknown);
             }
         });
-        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::Peers)))
+        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
             .ok();
     }
 }

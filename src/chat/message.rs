@@ -15,7 +15,7 @@ pub enum Command {
     Enter,
     Greating,
     Text,
-    Icon,
+    File,
     AskToRepeat,
     Repeat,
     Exit,
@@ -50,8 +50,7 @@ impl fmt::Display for UdpMessage {
             self.checksum,
             self.command,
             match self.command {
-                Command::Text | Command::Icon | Command::Error | Command::Repeat =>
-                    string_from_be_u8(&self.data),
+                Command::Text | Command::Error | Command::Repeat => string_from_be_u8(&self.data),
                 Command::AskToRepeat => u32::from_be_bytes(
                     (0..4)
                         .map(|i| *self.data.get(i).unwrap_or(&0))
@@ -114,18 +113,13 @@ impl UdpMessage {
     }
     pub fn from_message(msg: &TextMessage) -> Self {
         let (command, text) = match &msg.content {
-            super::Content::Enter(name) => (Command::Enter, name.as_str()),
-            super::Content::Text(text) => (Command::Text, text.as_str()),
-            super::Content::Icon(icon) => (Command::Icon, icon.as_str()),
-            super::Content::Exit => (Command::Exit, ""),
-            super::Content::Empty => (Command::Error, ""),
+            super::Content::Enter(name) => (Command::Enter, name.to_string()),
+            super::Content::Text(text) => (Command::Text, text.to_string()),
+            super::Content::Icon(icon) => (Command::Text, format!(" {icon}")),
+            super::Content::Exit => (Command::Exit, String::new()),
+            super::Content::Empty => (Command::Error, String::new()),
         };
-        let data = be_u8_from_str(
-            text.chars()
-                .filter(|c| !c.is_control())
-                .collect::<String>()
-                .as_ref(),
-        );
+        let data = be_u8_from_str(&text);
         UdpMessage::new(command, data, msg.public)
     }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {

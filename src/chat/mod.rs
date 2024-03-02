@@ -110,8 +110,16 @@ impl TextMessage {
             id: msg.id,
             content: match msg.command {
                 Command::Enter => Content::Enter(msg.read_text()),
-                Command::Text => Content::Text(msg.read_text()),
-                Command::Icon => Content::Icon(msg.read_text()),
+                Command::Text => {
+                    let mut text = msg.read_text();
+                    let is_icon = text.starts_with(' ');
+                    text = text.trim().to_string();
+                    if is_icon {
+                        Content::Icon(text)
+                    } else {
+                        Content::Text(text)
+                    }
+                }
                 Command::Exit => Content::Exit,
                 _ => Content::Empty,
             },
@@ -300,7 +308,7 @@ impl UdpChat {
                         Command::Exit => {
                             self.sender.handle_event(BackEvent::PeerLeft(r_ip), ctx);
                         }
-                        Command::Text | Command::Icon | Command::Repeat => {
+                        Command::Text | Command::Repeat => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }
@@ -315,6 +323,7 @@ impl UdpChat {
                                 Recepients::One(r_ip),
                             );
                         }
+
                         Command::AskToRepeat => {
                             self.sender.incoming(r_ip, &self.name);
                             let id: u32 = u32::from_be_bytes(
@@ -334,6 +343,7 @@ impl UdpChat {
                                 self.sender.send(message, Recepients::One(r_ip));
                             }
                         }
+                        Command::File => todo!(),
                     }
                 }
             }

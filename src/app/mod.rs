@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK, TIMEOUT_SECOND},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
@@ -237,13 +237,14 @@ impl Roomor {
                     h.separator();
                     let summary = h.add(
                         egui::Label::new(format!(
-                            "Online: {}",
+                            "Online: {} / {}",
                             self.rooms
                                 .peers
                                 .0
                                 .values()
                                 .filter(|p| p.is_online())
-                                .count()
+                                .count(),
+                            self.rooms.peers.0.len()
                         ))
                         .wrap(false),
                     );
@@ -429,17 +430,14 @@ fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
 fn pulse(tx: Sender<ChatEvent>) {
     let mut last_time = SystemTime::now();
     loop {
-        sleep(TIMEOUT_ALIVE);
+        sleep(TIMEOUT_CHECK);
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
-            if delta > TIMEOUT_ALIVE {
-                if delta > TIMEOUT_ALIVE + TIMEOUT_CHECK {
+            if delta > TIMEOUT_CHECK {
+                if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
                     debug!("Pulse");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
-                    // } else {
-                    //     tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::All)))
-                    //         .ok();
                 }
                 last_time = now;
             }

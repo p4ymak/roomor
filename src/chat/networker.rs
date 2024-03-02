@@ -12,6 +12,7 @@ use std::{
 
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
+pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
 pub struct NetWorker {
     pub name: String,
