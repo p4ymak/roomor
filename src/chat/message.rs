@@ -176,5 +176,5 @@ pub fn string_from_be_u8(bytes: &[u8]) -> String {
 }
 
 fn be_u8_from_str(text: &str) -> Vec<u8> {
-    text.trim().as_bytes().to_owned()
+    text.as_bytes().to_owned()
 }
