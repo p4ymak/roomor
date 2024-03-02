@@ -2,7 +2,7 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use std::{fmt, time::SystemTime};
 
-use super::TextMessage;
+use super::{Content, TextMessage};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_TEXT_SIZE: usize = 116;
@@ -81,24 +81,6 @@ impl UdpMessage {
         }
     }
 
-    pub fn _retry_text(id: u32, text: &str) -> Self {
-        let data = be_u8_from_str(
-            text.to_owned()
-                .chars()
-                .filter(|c| !c.is_control())
-                .collect::<String>()
-                .as_ref(),
-        );
-        let checksum = CRC.checksum(&data);
-        UdpMessage {
-            id,
-            checksum,
-            command: Command::Repeat,
-            data,
-            public: true,
-        }
-    }
-
     pub fn enter(name: &str) -> Self {
         UdpMessage::new(Command::Enter, be_u8_from_str(name), true)
     }
@@ -112,26 +94,28 @@ impl UdpMessage {
         UdpMessage::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
     }
     pub fn from_message(msg: &TextMessage) -> Self {
-        let (command, text) = match &msg.content {
-            super::Content::Enter(name) => (Command::Enter, name.to_string()),
-            super::Content::Text(text) => (Command::Text, text.to_string()),
-            super::Content::Icon(icon) => (Command::Text, format!(" {icon}")),
-            super::Content::Exit => (Command::Exit, String::new()),
-            super::Content::Empty => (Command::Error, String::new()),
+        let (command, data) = match &msg.content {
+            Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
+            Content::Text(text) => (Command::Text, be_u8_from_str(text)),
+            Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!(" {icon}"))),
+            Content::Exit => (Command::Exit, vec![]),
+            Content::Empty => (Command::Error, vec![]),
+            Content::FileLink(_) => todo!(),
+            Content::FileData(_) => todo!(),
+            Content::FileEnding(_) => todo!(),
         };
-        let data = be_u8_from_str(&text);
         UdpMessage::new(command, data, msg.public)
     }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
+        let command = Command::from_code(u8::from_be_bytes([*bytes.first()?]));
+        let public = bytes.get(1)?.count_ones() > 0;
         let id = u32::from_be_bytes([
-            *bytes.first()?,
-            *bytes.get(1)?,
             *bytes.get(2)?,
             *bytes.get(3)?,
+            *bytes.get(4)?,
+            *bytes.get(5)?,
         ]);
-        let checksum = u16::from_be_bytes([*bytes.get(4)?, *bytes.get(5)?]);
-        let command = Command::from_code(u8::from_be_bytes([*bytes.get(6)?]));
-        let public = bytes.get(7)?.count_ones() > 0;
+        let checksum = u16::from_be_bytes([*bytes.get(6)?, *bytes.get(7)?]);
         let data = match bytes.len() {
             0..=8 => [].to_vec(),
             _ => bytes[8..].to_owned(),
@@ -157,10 +141,10 @@ impl UdpMessage {
 
     pub fn to_be_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::<u8>::new();
-        bytes.extend(self.id.to_be_bytes());
-        bytes.extend(self.checksum.to_be_bytes());
         bytes.extend(self.command.to_code().to_be_bytes());
         bytes.extend([self.public as u8]);
+        bytes.extend(self.id.to_be_bytes());
+        bytes.extend(self.checksum.to_be_bytes());
         bytes.extend(self.data.to_owned());
 
         bytes

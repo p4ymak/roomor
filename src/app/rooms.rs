@@ -508,7 +508,7 @@ impl TextMessage {
                                     h.label(peer.rich_name())
                                         .on_hover_text_at_pointer(peer.ip().to_string());
                                     match self.content() {
-                                        Content::Enter(_) => {
+                                        Content::Ping(_) => {
                                             h.label("joined..");
                                         }
                                         Content::Exit => {

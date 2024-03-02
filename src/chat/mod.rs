@@ -11,6 +11,7 @@ use std::{
     collections::BTreeMap,
     error::Error,
     net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
     sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -35,10 +36,40 @@ impl Recepients {
 }
 
 #[derive(Debug, Clone)]
+pub enum FileStatus {
+    Link,
+    InProgress,
+    Ready,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileLink {
+    id: Id,
+    name: String,
+    path: PathBuf,
+    size: u32,
+    progress: f32,
+    status: FileStatus,
+}
+#[derive(Debug, Clone)]
+pub struct FileData {
+    id: Id,
+    data: Vec<u8>,
+}
+#[derive(Debug, Clone)]
+pub struct FileEnding {
+    id: Id,
+    checksum: u32,
+}
+
+#[derive(Debug, Clone)]
 pub enum Content {
-    Enter(String),
+    Ping(String),
     Text(String),
     Icon(String),
+    FileLink(FileLink),
+    FileData(FileData),
+    FileEnding(FileEnding),
     Exit,
     Empty,
 }
@@ -109,7 +140,7 @@ impl TextMessage {
             ip,
             id: msg.id,
             content: match msg.command {
-                Command::Enter => Content::Enter(msg.read_text()),
+                Command::Enter => Content::Ping(msg.read_text()),
                 Command::Text => {
                     let mut text = msg.read_text();
                     let is_icon = text.starts_with(' ');
@@ -139,7 +170,7 @@ impl TextMessage {
             public: true,
             ip,
             id: 0,
-            content: Content::Enter(name),
+            content: Content::Ping(name),
         }
     }
 
