@@ -1,9 +1,14 @@
+pub mod file;
 pub mod message;
 pub mod networker;
 pub mod notifier;
 pub mod peers;
 
-use self::{networker::NetWorker, notifier::Repaintable};
+use self::{
+    file::{FileData, FileEnding, FileLink},
+    networker::NetWorker,
+    notifier::Repaintable,
+};
 use flume::{Receiver, Sender};
 use log::debug;
 use message::{Command, Id, UdpMessage};
@@ -11,7 +16,6 @@ use std::{
     collections::BTreeMap,
     error::Error,
     net::{Ipv4Addr, SocketAddr},
-    path::PathBuf,
     sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -33,33 +37,6 @@ impl Recepients {
             Recepients::Peers
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum FileStatus {
-    Link,
-    InProgress,
-    Ready,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileLink {
-    id: Id,
-    name: String,
-    path: PathBuf,
-    size: u32,
-    progress: f32,
-    status: FileStatus,
-}
-#[derive(Debug, Clone)]
-pub struct FileData {
-    id: Id,
-    data: Vec<u8>,
-}
-#[derive(Debug, Clone)]
-pub struct FileEnding {
-    id: Id,
-    checksum: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -203,9 +180,6 @@ impl TextMessage {
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
-    // pub fn id(&self) -> Id {
-    //     self.id
-    // }
     pub fn content(&self) -> &Content {
         &self.content
     }
@@ -292,7 +266,9 @@ impl UdpChat {
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
                         let message = UdpMessage::from_message(&msg);
-                        self.history.insert(message.id, message.clone());
+                        if message.command == Command::Text {
+                            self.history.insert(message.id, message.clone());
+                        }
                         self.sender
                             .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();

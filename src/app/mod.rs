@@ -18,6 +18,7 @@ use log::debug;
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
+    path::Path,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
     time::SystemTime,
@@ -129,10 +130,18 @@ impl Roomor {
         }
     }
 
-    fn dispatch(&mut self) {
+    fn dispatch_text(&mut self) {
         if let Some(msg) = self.rooms.compose_message() {
             self.back_tx
                 .send(ChatEvent::Front(FrontEvent::Message(msg)))
+                .ok();
+        }
+    }
+
+    fn dispatch_file(&mut self, path: &Path) {
+        if let Some(link) = self.rooms.compose_file(path) {
+            self.back_tx
+                .send(ChatEvent::Front(FrontEvent::Message(link)))
                 .ok();
         }
     }
@@ -277,6 +286,18 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
+        ctx.input(|i| {
+            if !i.raw.hovered_files.is_empty() {
+                debug!("HOVERED");
+            }
+            if !i.raw.dropped_files.is_empty() {
+                debug!("DROPPED");
+            }
+            if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
+                debug!("Dropped file '{path:?}'");
+                self.dispatch_file(&path);
+            }
+        });
         let mut font_size = 10.0;
         egui::TopBottomPanel::bottom("text intput")
             .resizable(false)
@@ -299,6 +320,19 @@ impl Roomor {
                 self.rooms.draw_list(ui, &self.back_tx);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.interact(
+                ui.available_rect_before_wrap(),
+                egui::Id::new("context menu"),
+                Sense::click(),
+            )
+            .context_menu(|ui| {
+                if ui.button("Send File..").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        self.dispatch_file(&path);
+                    }
+                }
+            });
+
             self.rooms.draw_history(ui);
         });
     }
@@ -341,13 +375,12 @@ impl Roomor {
                             self.init_chat(ctx);
                         }
                     } else {
-                        self.dispatch();
+                        self.dispatch_text();
                     }
                 }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
-                    modifiers: egui::Modifiers::SHIFT,
                     ..
                 } => {
                     self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
@@ -364,12 +397,13 @@ impl Roomor {
                     };
                 }
                 Event::Key {
-                    key: egui::Key::Escape,
+                    key: egui::Key::Tab,
                     pressed: true,
                     ..
                 } => {
                     self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
                 }
+
                 Event::Key {
                     key: egui::Key::ArrowUp,
                     pressed: true,
@@ -380,6 +414,21 @@ impl Roomor {
                     pressed: true,
                     ..
                 } => self.rooms.list_go_down(&self.back_tx),
+
+                Event::Key {
+                    key: egui::Key::O,
+                    modifiers: egui::Modifiers::CTRL,
+                    pressed: true,
+                    ..
+                } => {
+                    debug!("open file");
+
+                    if self.chat_init.is_none() {
+                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                            self.dispatch_file(&path);
+                        }
+                    }
+                }
                 _ => (),
             })
         })

@@ -67,10 +67,7 @@ impl fmt::Display for UdpMessage {
 
 impl UdpMessage {
     pub fn new(command: Command, data: Vec<u8>, public: bool) -> Self {
-        let id = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("System Time")
-            .as_secs() as u32;
+        let id = new_id();
         let checksum = CRC.checksum(&data);
         UdpMessage {
             id,
@@ -100,7 +97,7 @@ impl UdpMessage {
             Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!(" {icon}"))),
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
-            Content::FileLink(_) => todo!(),
+            Content::FileLink(link) => (Command::Text, be_u8_from_str(&link.to_text())),
             Content::FileData(_) => todo!(),
             Content::FileEnding(_) => todo!(),
         };
@@ -161,4 +158,11 @@ pub fn string_from_be_u8(bytes: &[u8]) -> String {
 
 fn be_u8_from_str(text: &str) -> Vec<u8> {
     text.as_bytes().to_owned()
+}
+
+pub fn new_id() -> Id {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("System Time")
+        .as_secs() as u32
 }

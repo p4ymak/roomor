@@ -1,4 +1,5 @@
 use crate::chat::{
+    file::{FileLink, FileStatus},
     limit_text,
     message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
     peers::{Peer, PeersMap, Presence},
@@ -10,7 +11,7 @@ use eframe::{
     emath::Align2,
 };
 use flume::Sender;
-use std::{collections::BTreeMap, net::Ipv4Addr, time::SystemTime};
+use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
 use timediff::TimeDiff;
 
 pub const FONT_SCALE: f32 = 1.5;
@@ -84,6 +85,16 @@ impl Rooms {
                 }
             },
         )
+    }
+    pub fn compose_file(&mut self, path: &Path) -> Option<TextMessage> {
+        // FIXME
+        // if !self.is_able_to_send() {
+        //     return None;
+        // }
+        Some(TextMessage::out_message(
+            Content::FileLink(FileLink::new(path)?),
+            self.active_chat,
+        ))
     }
 
     pub fn peer_joined(&mut self, ip: Ipv4Addr, name: Option<String>) {
@@ -376,6 +387,17 @@ impl ChatHistory {
         let max_rect = ui.max_rect();
         let font_size = ui.text_style_height(&egui::TextStyle::Body);
         let font_id = egui::FontId::proportional(font_size);
+        // let response = ui.interact(
+        //     egui::Rect {
+        //         min: max_rect.min,
+        //         max: egui::Pos2::new(
+        //             max_rect.width(),
+        //             ui.text_style_height(&egui::TextStyle::Body) * 1.5,
+        //         ),
+        //     },
+        //     egui::Id::new(name.to_string()),
+        //     egui::Sense::click(),
+        // );
 
         let (response, painter) = ui.allocate_painter(
             egui::Vec2::new(
@@ -404,6 +426,12 @@ impl ChatHistory {
             sw: rounding(ui) * 2.0,
             se: 0.0,
         };
+        // egui::Frame::default()
+        //     .stroke(stroke)
+        //     .rounding(rounding)
+        //     .show(ui, |ui| {
+        //         ui.heading(egui::RichText::new(name.clone()).color(color));
+        //     });
 
         painter.rect_stroke(painter.clip_rect(), rounding, stroke);
 
@@ -474,16 +502,10 @@ impl Peer {
 
 impl TextMessage {
     pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>) {
-        let (direction, _fill_color) = if self.is_incoming() {
-            (
-                egui::Direction::LeftToRight,
-                egui::Color32::from_rgb(42, 42, 42),
-            )
+        let direction = if self.is_incoming() {
+            egui::Direction::LeftToRight
         } else {
-            (
-                egui::Direction::RightToLeft,
-                egui::Color32::from_rgb(70, 70, 70),
-            )
+            egui::Direction::RightToLeft
         };
         ui.with_layout(
             egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
@@ -503,8 +525,8 @@ impl TextMessage {
                     ))
                     .show(line, |g| {
                         if let Some(peer) = incoming {
-                            g.vertical(|g| {
-                                g.horizontal(|h| {
+                            g.vertical(|v| {
+                                v.horizontal(|h| {
                                     h.label(peer.rich_name())
                                         .on_hover_text_at_pointer(peer.ip().to_string());
                                     match self.content() {
@@ -517,7 +539,7 @@ impl TextMessage {
                                         _ => (),
                                     }
                                 });
-                                self.draw_text(g);
+                                self.draw_text(v);
                             });
                         } else {
                             self.draw_text(g);
@@ -551,6 +573,35 @@ impl TextMessage {
                     font_id.size *= FONT_SCALE * EMOJI_SCALE;
                 }
                 ui.label(content);
+            }
+            Content::FileLink(link) => {
+                ui.horizontal(|h| {
+                    h.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                                font_id.size *= FONT_SCALE * EMOJI_SCALE;
+                            }
+                            ui.label("🖹");
+                        });
+                        // ui.heading(&link.name);
+                        // ui.label(human_bytes(link.size as f64));
+
+                        match link.status {
+                            FileStatus::Link => if ui.link("Download").clicked() {},
+                            FileStatus::InProgress => {
+                                ui.add(egui::ProgressBar::new(
+                                    link.progress.load(std::sync::atomic::Ordering::Relaxed) as f32
+                                        / 100.0,
+                                ));
+                            }
+                            FileStatus::Ready => {
+                                // if ui.link("Open").clicked() {
+                                // opener::open(&link.path).ok();
+                                // }
+                            }
+                        };
+                    });
+                });
             }
             _ => (),
         }
