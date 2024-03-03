@@ -12,7 +12,6 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use log::debug;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
 use timediff::TimeDiff;
 
@@ -124,16 +123,13 @@ impl Rooms {
             .entry(recepients)
             .or_insert(ChatHistory::new(recepients));
         if matches!(msg.content(), Content::Seen) {
-            debug!("looking for {}", msg.id());
             if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
-                debug!("found msg!! {}", msg.id());
                 match recepients {
                     Recepients::One(_) => found.seen_private(),
-                    _ => found.seen_public(msg.ip()),
+                    _ => found.seen_public_by(msg.ip()),
                 }
             }
         } else {
-            debug!("msg id {}", msg.id());
             target_chat.history.push(msg);
             if recepients != self.active_chat {
                 target_chat.unread += 1;

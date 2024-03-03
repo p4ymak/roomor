@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     fs::File,
     path::{Path, PathBuf},

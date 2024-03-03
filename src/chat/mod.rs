@@ -40,6 +40,7 @@ impl Recepients {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Content {
     Ping(String),
@@ -201,7 +202,7 @@ impl TextMessage {
     pub fn seen_private(&mut self) {
         self.seen = Some(Seen::One);
     }
-    pub fn seen_public(&mut self, ip: Ipv4Addr) {
+    pub fn seen_public_by(&mut self, ip: Ipv4Addr) {
         if let Some(Seen::Many(peers)) = &mut self.seen {
             peers.push(ip);
         } else {
