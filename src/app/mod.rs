@@ -491,10 +491,6 @@ fn pulse(tx: Sender<ChatEvent>) {
                     debug!("Pulse Ping");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
-                } else {
-                    debug!("Pulse Greating");
-                    tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::All)))
-                        .ok();
                 }
                 last_time = now;
             }

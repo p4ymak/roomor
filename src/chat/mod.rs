@@ -64,7 +64,7 @@ pub enum BackEvent {
 #[derive(Debug)]
 pub enum FrontEvent {
     Ping(Recepients),
-    Greating(Recepients),
+    // Greating(Recepients),
     Exit,
     Message(TextMessage),
 }
@@ -318,11 +318,11 @@ impl UdpChat {
                         debug!("Ping {recepients:?}");
                         self.sender.send(UdpMessage::enter(&self.name), recepients);
                     }
-                    FrontEvent::Greating(recepients) => {
-                        debug!("Greating {recepients:?}");
-                        self.sender
-                            .send(UdpMessage::greating(&self.name), recepients);
-                    }
+                    // FrontEvent::Greating(recepients) => {
+                    //     debug!("Greating {recepients:?}");
+                    //     self.sender
+                    //         .send(UdpMessage::greating(&self.name), recepients);
+                    // }
                     FrontEvent::Exit => {
                         debug!("I'm Exit");
                         self.sender.send(UdpMessage::exit(), Recepients::Peers);
