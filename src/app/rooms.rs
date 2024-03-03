@@ -359,7 +359,6 @@ impl ChatHistory {
         let text_input = ui.add(
             egui::TextEdit::multiline(&mut self.input)
                 .frame(false)
-                .cursor_at_end(true)
                 .desired_rows(if self.emoji_mode { 1 } else { 4 })
                 .desired_width(ui.available_rect_before_wrap().width())
                 .cursor_at_end(true),
