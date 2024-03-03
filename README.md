@@ -8,9 +8,9 @@ Minimalistic offline chat over local network.
 ## Navigation
 **Arrows Up/Down** - Navigate through Chats List
 
-**Esc** - Open/Close Chats List
+**Tab** - Open/Close Chats List
 
-**Shift Esc** - Return to Welcome Screen
+**Esc** - Return to Welcome Screen
 
 Message text starts with **Space** enables emoji mode. 
 
