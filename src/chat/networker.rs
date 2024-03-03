@@ -1,4 +1,6 @@
-use super::{message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Recepients};
+use super::{
+    message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Content, Recepients,
+};
 use flume::Sender;
 use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
 use log::debug;
@@ -112,11 +114,13 @@ impl NetWorker {
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
-                let text = msg.get_text();
-                let name = self.peers.get_display_name(msg.ip());
-                let notification_text = format!("{name}: {text}");
+                if !matches!(msg.content, Content::Seen) {
+                    let text = msg.get_text();
+                    let name = self.peers.get_display_name(msg.ip());
+                    let notification_text = format!("{name}: {text}");
+                    ctx.notify(&notification_text);
+                }
                 self.front_tx.send(BackEvent::Message(msg)).ok();
-                ctx.notify(&notification_text);
             }
         }
     }

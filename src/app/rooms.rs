@@ -11,6 +11,7 @@ use eframe::{
     emath::Align2,
 };
 use flume::Sender;
+use human_bytes::human_bytes;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
 use timediff::TimeDiff;
 
@@ -18,16 +19,17 @@ pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 pub const PUBLIC: &str = "Everyone";
 
-#[derive(Default)]
 pub struct Rooms {
     active_chat: Recepients,
     pub peers: PeersMap,
     order: Vec<Recepients>,
     chats: BTreeMap<Recepients, ChatHistory>,
     pub side_panel_opened: bool,
+    pub back_tx: Sender<ChatEvent>,
 }
+
 impl Rooms {
-    pub fn new() -> Self {
+    pub fn new(back_tx: Sender<ChatEvent>) -> Self {
         let mut chats = BTreeMap::new();
         chats.insert(Recepients::Peers, ChatHistory::new(Recepients::Peers));
         Rooms {
@@ -36,6 +38,7 @@ impl Rooms {
             order: vec![],
             chats,
             side_panel_opened: true,
+            back_tx,
         }
     }
 
@@ -119,9 +122,15 @@ impl Rooms {
             .chats
             .entry(recepients)
             .or_insert(ChatHistory::new(recepients));
-        target_chat.history.push(msg);
-        if recepients != self.active_chat {
-            target_chat.unread += 1;
+        if matches!(msg.content(), Content::Seen) {
+            if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
+                found.seen();
+            }
+        } else {
+            target_chat.history.push(msg);
+            if recepients != self.active_chat {
+                target_chat.unread += 1;
+            }
         }
     }
 
@@ -165,7 +174,7 @@ impl Rooms {
             });
     }
 
-    pub fn draw_list(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
+    pub fn draw_list(&mut self, ui: &mut egui::Ui) {
         if self
             .chats
             .get_mut(&Recepients::Peers)
@@ -177,7 +186,7 @@ impl Rooms {
                 self.side_panel_opened,
             )
         {
-            self.set_active(Recepients::Peers, tx);
+            self.set_active(Recepients::Peers);
         }
         ui.label("");
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -198,15 +207,18 @@ impl Rooms {
                 }
             }
             if let Some(recepient) = clicked {
-                self.set_active(*recepient, tx);
+                self.set_active(*recepient);
             }
             ui.label("");
         });
     }
 
-    pub fn draw_input(&mut self, ui: &mut egui::Ui, tx: &Sender<ChatEvent>) {
+    pub fn draw_input(&mut self, ui: &mut egui::Ui) {
         let status = self.peers.online_status(self.active_chat);
-        self.get_mut_active().draw_input(ui, status, tx);
+        self.chats
+            .get_mut(&self.active_chat)
+            .expect("Active Exists")
+            .draw_input(ui, status, &self.back_tx);
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
         let side_ico = if self.side_panel_opened { "" } else { "" };
@@ -219,7 +231,7 @@ impl Rooms {
         }
     }
 
-    pub fn list_go_up(&mut self, tx: &Sender<ChatEvent>) {
+    pub fn list_go_up(&mut self) {
         let active = if self.active_chat == Recepients::Peers {
             self.order.last().cloned().unwrap_or_default()
         } else {
@@ -237,10 +249,10 @@ impl Rooms {
                     .to_owned(),
             }
         };
-        self.set_active(active, tx);
+        self.set_active(active);
     }
 
-    pub fn list_go_down(&mut self, tx: &Sender<ChatEvent>) {
+    pub fn list_go_down(&mut self) {
         let active = if self.active_chat == Recepients::Peers {
             self.order.first().cloned().unwrap_or_default()
         } else {
@@ -254,10 +266,10 @@ impl Rooms {
                 .unwrap_or(&Recepients::Peers)
                 .to_owned()
         };
-        self.set_active(active, tx);
+        self.set_active(active);
     }
 
-    fn set_active(&mut self, recepient: Recepients, tx: &Sender<ChatEvent>) {
+    fn set_active(&mut self, recepient: Recepients) {
         self.active_chat = recepient;
         match recepient {
             Recepients::One(ip) => {
@@ -273,7 +285,9 @@ impl Rooms {
                 }
             }),
         };
-        tx.send(ChatEvent::Front(FrontEvent::Ping(recepient))).ok();
+        self.back_tx
+            .send(ChatEvent::Front(FrontEvent::Ping(recepient)))
+            .ok();
         self.get_mut_active().unread = 0;
     }
 
@@ -512,10 +526,12 @@ impl TextMessage {
                 .with_main_wrap(true),
             |line| {
                 let mut rounding = Rounding::same(rounding(line) * FONT_SCALE);
-                if self.is_incoming() {
-                    rounding.sw = 0.0;
-                } else {
-                    rounding.se = 0.0;
+                if self.is_seen() {
+                    if self.is_incoming() {
+                        rounding.sw = 0.0;
+                    } else {
+                        rounding.se = 0.0;
+                    }
                 }
                 egui::Frame::group(line.style())
                     .rounding(rounding)
@@ -575,16 +591,16 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
-                ui.horizontal(|h| {
-                    h.vertical(|ui| {
-                        ui.horizontal(|ui| {
+                ui.vertical_centered(|h| {
+                    h.vertical_centered(|ui| {
+                        ui.vertical_centered(|ui| {
                             for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                                 font_id.size *= FONT_SCALE * EMOJI_SCALE;
                             }
                             ui.label("🖹");
                         });
-                        // ui.heading(&link.name);
-                        // ui.label(human_bytes(link.size as f64));
+                        ui.heading(&link.name);
+                        ui.label(human_bytes(link.size as f64));
 
                         match link.status {
                             FileStatus::Link => if ui.link("Download").clicked() {},
@@ -595,9 +611,9 @@ impl TextMessage {
                                 ));
                             }
                             FileStatus::Ready => {
-                                // if ui.link("Open").clicked() {
-                                // opener::open(&link.path).ok();
-                                // }
+                                if ui.link("Open").clicked() {
+                                    opener::open(&link.path).ok();
+                                }
                             }
                         };
                     });

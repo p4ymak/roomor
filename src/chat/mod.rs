@@ -48,6 +48,7 @@ pub enum Content {
     FileData(FileData),
     FileEnding(FileEnding),
     Exit,
+    Seen,
     Empty,
 }
 #[derive(Debug)]
@@ -96,6 +97,7 @@ pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,
     content: Content,
+    seen: bool,
 }
 impl TextMessage {
     pub fn logo() -> Self {
@@ -106,6 +108,7 @@ impl TextMessage {
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
             content: Content::Icon(String::from("RMЯ")),
+            seen: true,
         }
     }
 
@@ -129,8 +132,10 @@ impl TextMessage {
                     }
                 }
                 Command::Exit => Content::Exit,
+                Command::Seen => Content::Seen,
                 _ => Content::Empty,
             },
+            seen: false,
         }
     }
     pub fn is_public(&self) -> bool {
@@ -148,6 +153,7 @@ impl TextMessage {
             ip,
             id: 0,
             content: Content::Ping(name),
+            seen: true,
         }
     }
 
@@ -164,8 +170,10 @@ impl TextMessage {
             ip,
             id: 0,
             content,
+            seen: false,
         }
     }
+
     pub fn in_exit(ip: Ipv4Addr) -> Self {
         TextMessage {
             timestamp: SystemTime::now(),
@@ -174,11 +182,21 @@ impl TextMessage {
             ip,
             id: 0,
             content: Content::Exit,
+            seen: true,
         }
     }
 
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
+    }
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn seen(&mut self) {
+        self.seen = true;
+    }
+    pub fn is_seen(&self) -> bool {
+        self.seen
     }
     pub fn content(&self) -> &Content {
         &self.content
@@ -317,8 +335,11 @@ impl UdpChat {
                         }
                         Command::Text | Command::Repeat => {
                             self.sender.incoming(r_ip, &self.name);
+                            self.sender
+                                .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip));
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }
+                        Command::Seen => self.sender.handle_event(BackEvent::Message(txt_msg), ctx),
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.send(

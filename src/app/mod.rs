@@ -35,6 +35,7 @@ pub struct Roomor {
     chat_handle: Option<JoinHandle<()>>,
     pulse_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
+
     _audio: Option<OutputStream>,
     audio_handle: Option<OutputStreamHandle>,
     notification_sound: Arc<AtomicBool>,
@@ -96,7 +97,7 @@ impl Default for Roomor {
             chat_init: Some(chat),
             chat_handle: None,
             pulse_handle: None,
-            rooms: Rooms::new(),
+            rooms: Rooms::new(back_tx.clone()),
             _audio,
             audio_handle: audio_handler,
             notification_sound,
@@ -303,7 +304,7 @@ impl Roomor {
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                self.rooms.draw_input(ui, &self.back_tx);
+                self.rooms.draw_input(ui);
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
@@ -311,13 +312,13 @@ impl Roomor {
             .default_width(font_size * 8.0)
             .resizable(true)
             .show_animated(ctx, self.rooms.side_panel_opened, |ui| {
-                self.rooms.draw_list(ui, &self.back_tx);
+                self.rooms.draw_list(ui);
             });
         egui::SidePanel::left("Chats List Light")
             .exact_width(font_size)
             .resizable(false)
             .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
-                self.rooms.draw_list(ui, &self.back_tx);
+                self.rooms.draw_list(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.interact(
@@ -383,18 +384,7 @@ impl Roomor {
                     pressed: true,
                     ..
                 } => {
-                    self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
-                    if let Some(handle) = self.chat_handle.take() {
-                        handle.join().unwrap();
-                    }
-                    *self = Roomor {
-                        name: std::mem::take(&mut self.name),
-                        rooms: std::mem::take(&mut self.rooms),
-                        pulse_handle: std::mem::take(&mut self.pulse_handle),
-                        notification_sound: std::mem::take(&mut self.notification_sound),
-                        notification_d_bus: std::mem::take(&mut self.notification_d_bus),
-                        ..Default::default()
-                    };
+                    self.exit();
                 }
                 Event::Key {
                     key: egui::Key::Tab,
@@ -408,12 +398,12 @@ impl Roomor {
                     key: egui::Key::ArrowUp,
                     pressed: true,
                     ..
-                } => self.rooms.list_go_up(&self.back_tx),
+                } => self.rooms.list_go_up(),
                 Event::Key {
                     key: egui::Key::ArrowDown,
                     pressed: true,
                     ..
-                } => self.rooms.list_go_down(&self.back_tx),
+                } => self.rooms.list_go_down(),
 
                 Event::Key {
                     key: egui::Key::O,
@@ -432,6 +422,19 @@ impl Roomor {
                 _ => (),
             })
         })
+    }
+    fn exit(&mut self) {
+        self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
+        if let Some(handle) = self.chat_handle.take() {
+            handle.join().unwrap();
+        }
+        let (front_tx, back_rx) = flume::unbounded();
+        let chat = UdpChat::new(self.ip, front_tx);
+        let back_tx = chat.tx();
+        self.chat_init = Some(chat);
+        self.back_tx = back_tx.clone();
+        self.back_rx = back_rx;
+        self.rooms.back_tx = back_tx;
     }
 }
 

@@ -19,6 +19,7 @@ pub enum Command {
     AskToRepeat,
     Repeat,
     Exit,
+    Seen,
     Error,
 }
 impl Command {
@@ -90,6 +91,15 @@ impl UdpMessage {
     pub fn ask_name() -> Self {
         UdpMessage::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
     }
+    pub fn seen(msg: &TextMessage) -> Self {
+        UdpMessage {
+            id: msg.id,
+            checksum: 0,
+            command: Command::Seen,
+            public: msg.public,
+            data: vec![],
+        }
+    }
     pub fn from_message(msg: &TextMessage) -> Self {
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
@@ -100,6 +110,7 @@ impl UdpMessage {
             Content::FileLink(link) => (Command::Text, be_u8_from_str(&link.to_text())),
             Content::FileData(_) => todo!(),
             Content::FileEnding(_) => todo!(),
+            Content::Seen => (Command::Seen, vec![]),
         };
         UdpMessage::new(command, data, msg.public)
     }
