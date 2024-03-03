@@ -6,6 +6,7 @@ pub mod peers;
 
 use self::{
     file::{FileData, FileEnding, FileLink},
+    message::new_id,
     networker::NetWorker,
     notifier::Repaintable,
 };
@@ -87,6 +88,11 @@ impl Drop for UdpChat {
         }
     }
 }
+#[derive(Debug, Clone)]
+pub enum Seen {
+    One,
+    Many(Vec<Ipv4Addr>),
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -97,7 +103,7 @@ pub struct TextMessage {
     ip: Ipv4Addr,
     id: Id,
     content: Content,
-    seen: bool,
+    seen: Option<Seen>,
 }
 impl TextMessage {
     pub fn logo() -> Self {
@@ -108,7 +114,7 @@ impl TextMessage {
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
             content: Content::Icon(String::from("RMЯ")),
-            seen: true,
+            seen: Some(Seen::One),
         }
     }
 
@@ -135,7 +141,7 @@ impl TextMessage {
                 Command::Seen => Content::Seen,
                 _ => Content::Empty,
             },
-            seen: false,
+            seen: incoming.then_some(Seen::One),
         }
     }
     pub fn is_public(&self) -> bool {
@@ -153,7 +159,7 @@ impl TextMessage {
             ip,
             id: 0,
             content: Content::Ping(name),
-            seen: true,
+            seen: Some(Seen::One),
         }
     }
 
@@ -168,9 +174,9 @@ impl TextMessage {
             incoming: false,
             public,
             ip,
-            id: 0,
+            id: new_id(),
             content,
-            seen: false,
+            seen: None,
         }
     }
 
@@ -182,7 +188,7 @@ impl TextMessage {
             ip,
             id: 0,
             content: Content::Exit,
-            seen: true,
+            seen: Some(Seen::One),
         }
     }
 
@@ -192,11 +198,25 @@ impl TextMessage {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn seen(&mut self) {
-        self.seen = true;
+    pub fn seen_private(&mut self) {
+        self.seen = Some(Seen::One);
+    }
+    pub fn seen_public(&mut self, ip: Ipv4Addr) {
+        if let Some(Seen::Many(peers)) = &mut self.seen {
+            peers.push(ip);
+        } else {
+            self.seen = Some(Seen::Many(vec![ip]));
+        }
     }
     pub fn is_seen(&self) -> bool {
-        self.seen
+        self.seen.is_some()
+    }
+    pub fn is_seen_by(&self) -> &[Ipv4Addr] {
+        if let Some(Seen::Many(peers)) = &self.seen {
+            peers
+        } else {
+            &[]
+        }
     }
     pub fn content(&self) -> &Content {
         &self.content

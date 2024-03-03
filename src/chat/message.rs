@@ -112,7 +112,14 @@ impl UdpMessage {
             Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
-        UdpMessage::new(command, data, msg.public)
+        let checksum = CRC.checksum(&data);
+        UdpMessage {
+            id: msg.id,
+            checksum,
+            command,
+            public: msg.public,
+            data,
+        }
     }
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
         let command = Command::from_code(u8::from_be_bytes([*bytes.first()?]));

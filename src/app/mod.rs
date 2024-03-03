@@ -175,7 +175,7 @@ impl Roomor {
                             font_id.size = size;
                         }
 
-                        TextMessage::logo().draw(ui, None);
+                        TextMessage::logo().draw(ui, None, &self.rooms.peers);
                     });
                     ui.label("");
                     ui.group(|ui| {

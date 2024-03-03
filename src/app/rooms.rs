@@ -12,6 +12,7 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
+use log::debug;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
 use timediff::TimeDiff;
 
@@ -123,10 +124,16 @@ impl Rooms {
             .entry(recepients)
             .or_insert(ChatHistory::new(recepients));
         if matches!(msg.content(), Content::Seen) {
+            debug!("looking for {}", msg.id());
             if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
-                found.seen();
+                debug!("found msg!! {}", msg.id());
+                match recepients {
+                    Recepients::One(_) => found.seen_private(),
+                    _ => found.seen_public(msg.ip()),
+                }
             }
         } else {
+            debug!("msg id {}", msg.id());
             target_chat.history.push(msg);
             if recepients != self.active_chat {
                 target_chat.unread += 1;
@@ -169,7 +176,7 @@ impl Rooms {
                         .is_incoming()
                         .then_some(self.peers.0.get(&m.ip()))
                         .flatten();
-                    m.draw(ui, peer);
+                    m.draw(ui, peer, &self.peers);
                 });
             });
     }
@@ -515,7 +522,7 @@ impl Peer {
 }
 
 impl TextMessage {
-    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>) {
+    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, peers: &PeersMap) {
         let direction = if self.is_incoming() {
             egui::Direction::LeftToRight
         } else {
@@ -562,7 +569,19 @@ impl TextMessage {
                         }
                     })
                     .response
-                    .on_hover_text_at_pointer(pretty_ago(self.time()).unwrap_or_default());
+                    .on_hover_ui_at_pointer(|ui| {
+                        ui.label(pretty_ago(self.time()).unwrap_or_default());
+                        let seen_by = self.is_seen_by();
+                        if !seen_by.is_empty() {
+                            ui.label("");
+                            ui.label("Received by:");
+                            for ip in seen_by.iter() {
+                                if let Some(peer) = peers.0.get(ip) {
+                                    ui.label(peer.rich_name());
+                                }
+                            }
+                        }
+                    });
             },
         );
     }
