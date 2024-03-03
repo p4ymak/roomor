@@ -450,8 +450,6 @@ impl ChatHistory {
         //         ui.heading(egui::RichText::new(name.clone()).color(color));
         //     });
 
-        painter.rect_stroke(painter.clip_rect(), rounding, stroke);
-
         painter.text(
             painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
             Align2::LEFT_CENTER,
@@ -459,6 +457,8 @@ impl ChatHistory {
             font_id.clone(),
             color,
         );
+        painter.rect_stroke(painter.clip_rect(), rounding, stroke);
+
         if self.unread > 0 {
             // painter.text(
             //     painter.clip_rect().right_center() - egui::Vec2::new(font_id.size, 0.0),

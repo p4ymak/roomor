@@ -488,8 +488,12 @@ fn pulse(tx: Sender<ChatEvent>) {
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_CHECK {
                 if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
-                    debug!("Pulse");
+                    debug!("Pulse Ping");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                        .ok();
+                } else {
+                    debug!("Pulse Greating");
+                    tx.send(ChatEvent::Front(FrontEvent::Greating(Recepients::All)))
                         .ok();
                 }
                 last_time = now;
