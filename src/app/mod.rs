@@ -321,18 +321,19 @@ impl Roomor {
                 self.rooms.draw_list(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.interact(
-                ui.available_rect_before_wrap(),
-                egui::Id::new("context menu"),
-                Sense::click(),
-            )
-            .context_menu(|ui| {
-                if ui.button("Send File..").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_file() {
-                        self.dispatch_file(&path);
-                    }
-                }
-            });
+            // FIXME
+            // ui.interact(
+            //     ui.available_rect_before_wrap(),
+            //     egui::Id::new("context menu"),
+            //     Sense::click(),
+            // )
+            // .context_menu(|ui| {
+            //     if ui.button("Send File..").clicked() {
+            //         if let Some(path) = rfd::FileDialog::new().pick_file() {
+            //             self.dispatch_file(&path);
+            //         }
+            //     }
+            // });
 
             self.rooms.draw_history(ui);
         });

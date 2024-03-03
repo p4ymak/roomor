@@ -40,6 +40,7 @@ impl Recepients {
     }
 }
 
+// FIXME
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Content {
