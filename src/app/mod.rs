@@ -1,6 +1,6 @@
 mod rooms;
 
-use self::rooms::Rooms;
+use self::rooms::{Rooms, FONT_SCALE};
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
@@ -26,11 +26,73 @@ use std::{
 
 pub const ZOOM_STEP: f32 = 0.25;
 
-pub struct Roomor {
+pub struct UserSetup {
+    pub init: bool,
     name: String,
     ip: Ipv4Addr,
     port: u16,
     mask: u8,
+    pub error_message: Option<String>,
+}
+impl Default for UserSetup {
+    fn default() -> Self {
+        let (ip, error_message) = match get_my_ipv4() {
+            Some(ip) => (ip, None),
+            None => (
+                Ipv4Addr::UNSPECIFIED,
+                Some("Couldn't get local IP!".to_string()),
+            ),
+        };
+        UserSetup {
+            init: true,
+            name: whoami::username(),
+            ip,
+            port: 4444,
+            mask: 24,
+            error_message,
+        }
+    }
+}
+impl UserSetup {
+    pub fn ip(&self) -> Ipv4Addr {
+        self.ip
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+    pub fn mask(&self) -> u8 {
+        self.mask
+    }
+    pub fn draw_setup(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                font_id.size *= FONT_SCALE;
+            }
+            ui.heading("Name");
+            limit_text(&mut self.name, MAX_NAME_SIZE);
+            let name =
+                ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
+            if self.name.is_empty() || self.init {
+                name.request_focus();
+                self.init = false;
+            }
+            ui.heading("IPv4");
+            drag_ip(ui, &self.ip);
+            ui.heading("Port");
+            ui.add(egui::DragValue::new(&mut self.port));
+            ui.heading("Mask");
+            drag_mask(ui, &mut self.mask);
+        });
+        if let Some(err) = &self.error_message {
+            ui.heading(err);
+        }
+    }
+}
+pub struct Roomor {
+    user: UserSetup,
     chat_init: Option<UdpChat>,
     chat_handle: Option<JoinHandle<()>>,
     pulse_handle: Option<JoinHandle<()>>,
@@ -42,7 +104,6 @@ pub struct Roomor {
     notification_d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
-    error_message: Option<String>,
     last_time: SystemTime,
 }
 
@@ -79,21 +140,13 @@ impl Default for Roomor {
         let (front_tx, back_rx) = flume::unbounded();
         let notification_sound = Arc::new(AtomicBool::new(true));
         let notification_d_bus = Arc::new(AtomicBool::new(true));
-        let (ip, error_message) = match get_my_ipv4() {
-            Some(ip) => (ip, None),
-            None => (
-                Ipv4Addr::UNSPECIFIED,
-                Some("Couldn't get local IP!".to_string()),
-            ),
-        };
-        let chat = UdpChat::new(ip, front_tx);
+        let user = UserSetup::default();
+
+        let chat = UdpChat::new(user.ip(), front_tx);
         let back_tx = chat.tx();
 
         Roomor {
-            name: String::default(),
-            ip,
-            port: 4444,
-            mask: 24,
+            user,
             chat_init: Some(chat),
             chat_handle: None,
             pulse_handle: None,
@@ -104,7 +157,6 @@ impl Default for Roomor {
             notification_d_bus,
             back_tx,
             back_rx,
-            error_message,
             last_time: SystemTime::now(),
         }
     }
@@ -178,24 +230,7 @@ impl Roomor {
                         TextMessage::logo().draw(ui, None, &self.rooms.peers);
                     });
                     ui.label("");
-                    ui.group(|ui| {
-                        self.rooms.get_mut_active().font_multiply(ui);
-                        ui.heading("Name");
-                        limit_text(&mut self.name, MAX_NAME_SIZE);
-                        let name = ui.text_edit_singleline(&mut self.name);
-                        if self.name.is_empty() {
-                            name.request_focus();
-                        }
-                        ui.heading("IPv4");
-                        drag_ip(ui, &self.ip);
-                        ui.heading("Port");
-                        ui.add(egui::DragValue::new(&mut self.port));
-                        ui.heading("Mask");
-                        drag_mask(ui, &mut self.mask);
-                    });
-                    if let Some(err) = &self.error_message {
-                        ui.heading(err);
-                    }
+                    self.user.draw_setup(ui);
                     ui.label("");
                     ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
                     ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
@@ -214,7 +249,7 @@ impl Roomor {
                 self.notification_sound.clone(),
                 self.notification_d_bus.clone(),
             );
-            match init.prelude(&self.name, self.port, self.mask) {
+            match init.prelude(&self.user) {
                 Ok(_) => {
                     self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
                     self.pulse_handle = Some({
@@ -223,7 +258,7 @@ impl Roomor {
                     });
                 }
                 Err(err) => {
-                    self.error_message = Some(format!("{err}"));
+                    self.user.error_message = Some(format!("{err}"));
                     self.chat_init = Some(init);
                 }
             }
@@ -274,13 +309,9 @@ impl Roomor {
                         });
                     }
                     h.separator();
-                    if self.name.is_empty() {
-                        h.label(format!("{}:{}", self.ip, self.port));
-                    } else {
-                        h.label(&self.name).on_hover_ui_at_pointer(|h| {
-                            h.label(format!("{}:{}", self.ip, self.port));
-                        });
-                    }
+                    h.label(self.user.name()).on_hover_ui_at_pointer(|h| {
+                        h.label(format!("{}:{}", self.user.ip(), self.user.port()));
+                    });
                 }
             });
         });
@@ -373,7 +404,7 @@ impl Roomor {
                     ..
                 } => {
                     if self.chat_init.is_some() {
-                        if !self.name.trim().is_empty() {
+                        if !self.user.name().trim().is_empty() {
                             self.init_chat(ctx);
                         }
                     } else {
@@ -430,8 +461,9 @@ impl Roomor {
             handle.join().unwrap();
         }
         let (front_tx, back_rx) = flume::unbounded();
-        let chat = UdpChat::new(self.ip, front_tx);
+        let chat = UdpChat::new(self.user.ip(), front_tx);
         let back_tx = chat.tx();
+        self.user.init = true;
         self.chat_init = Some(chat);
         self.back_tx = back_tx.clone();
         self.back_rx = back_rx;

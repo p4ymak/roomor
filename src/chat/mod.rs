@@ -4,6 +4,8 @@ pub mod networker;
 pub mod notifier;
 pub mod peers;
 
+use crate::app::UserSetup;
+
 use self::{
     file::{FileData, FileEnding, FileLink},
     message::new_id,
@@ -251,16 +253,11 @@ impl UdpChat {
     pub fn tx(&self) -> Sender<ChatEvent> {
         self.tx.clone()
     }
-    pub fn prelude(
-        &mut self,
-        name: &str,
-        port: u16,
-        mask: u8,
-    ) -> Result<(), Box<dyn Error + 'static>> {
-        self.name = name.to_string();
-        self.sender.port = port;
-        self.sender.name = name.to_string();
-        self.sender.connect(mask)?;
+    pub fn prelude(&mut self, user: &UserSetup) -> Result<(), Box<dyn Error + 'static>> {
+        self.name = user.name().to_string();
+        self.sender.port = user.port();
+        self.sender.name = user.name().to_string();
+        self.sender.connect(user.mask())?;
         self.listen();
         Ok(())
     }
