@@ -9,7 +9,7 @@ use crate::app::UserSetup;
 use self::{
     file::{FileData, FileEnding, FileLink},
     message::new_id,
-    networker::NetWorker,
+    networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
 use flume::{Receiver, Sender};
@@ -77,12 +77,65 @@ pub enum ChatEvent {
     Incoming((Ipv4Addr, UdpMessage)),
 }
 
+#[derive(Default)]
+struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
+pub struct OutMessage {
+    ts: SystemTime,
+    msg: UdpMessage,
+}
+impl OutMessage {
+    pub fn new(msg: UdpMessage) -> Self {
+        OutMessage {
+            ts: SystemTime::UNIX_EPOCH,
+            msg,
+        }
+    }
+    pub fn id(&self) -> Id {
+        self.msg.id
+    }
+}
+impl Outbox {
+    fn add(&mut self, ip: Ipv4Addr, msg: UdpMessage) {
+        self.0
+            .entry(ip)
+            .and_modify(|h| h.push(OutMessage::new(msg.clone())))
+            .or_insert(vec![OutMessage::new(msg)]);
+    }
+    fn remove(&mut self, ip: Ipv4Addr, id: Id) {
+        self.0.entry(ip).and_modify(|h| h.retain(|m| m.id() != id));
+    }
+    fn get(&self, ip: Ipv4Addr, id: Id) -> Option<&UdpMessage> {
+        self.0
+            .get(&ip)
+            .and_then(|h| h.iter().find(|m| m.id() == id))
+            .map(|m| &m.msg)
+    }
+    fn undelivered(&mut self, ip: Ipv4Addr) -> Vec<&UdpMessage> {
+        let now = SystemTime::now();
+        if let Some(history) = self.0.get_mut(&ip) {
+            history
+                .iter_mut()
+                .filter_map(|msg| {
+                    now.duration_since(msg.ts)
+                        .is_ok_and(|t| t > TIMEOUT_CHECK)
+                        .then_some({
+                            msg.ts = now;
+                            &msg.msg
+                        })
+                })
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+}
+
 pub struct UdpChat {
     pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
     sender: NetWorker,
-    history: BTreeMap<Id, UdpMessage>,
+    outbox: Outbox,
     thread_handle: Option<JoinHandle<()>>,
 }
 impl Drop for UdpChat {
@@ -246,7 +299,7 @@ impl UdpChat {
             name: String::new(),
             tx,
             rx,
-            history: BTreeMap::<Id, UdpMessage>::new(),
+            outbox: Outbox::default(),
             thread_handle: None,
         }
     }
@@ -303,8 +356,8 @@ impl UdpChat {
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
                         let message = UdpMessage::from_message(&msg);
-                        if message.command == Command::Text {
-                            self.history.insert(message.id, message.clone());
+                        if message.command == Command::Text && !msg.is_public() {
+                            self.outbox.add(msg.ip(), message.clone());
                         }
                         self.sender
                             .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
@@ -347,6 +400,9 @@ impl UdpChat {
                                 self.sender
                                     .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
                             }
+                            for undelivered in self.outbox.undelivered(r_ip) {
+                                self.sender.send(undelivered.clone(), Recepients::One(r_ip))
+                            }
                         }
 
                         Command::Exit => {
@@ -358,7 +414,10 @@ impl UdpChat {
                                 .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip));
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }
-                        Command::Seen => self.sender.handle_event(BackEvent::Message(txt_msg), ctx),
+                        Command::Seen => {
+                            self.outbox.remove(r_ip, txt_msg.id());
+                            self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                        }
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.send(
@@ -384,7 +443,7 @@ impl UdpChat {
                             if id == 0 {
                                 self.sender
                                     .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
-                            } else if let Some(message) = self.history.get(&id) {
+                            } else if let Some(message) = self.outbox.get(r_ip, id) {
                                 let mut message = message.clone();
                                 message.command = Command::Repeat;
                                 self.sender.send(message, Recepients::One(r_ip));

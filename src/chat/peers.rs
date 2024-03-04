@@ -1,10 +1,11 @@
+use super::{networker::TIMEOUT_ALIVE, Recepients};
+use crate::app::PUBLIC;
+use eframe::egui;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     net::Ipv4Addr,
     time::SystemTime,
 };
-
-use super::{networker::TIMEOUT_ALIVE, Recepients};
 
 #[derive(Default)]
 pub struct PeersMap(pub BTreeMap<Ipv4Addr, Peer>);
@@ -44,6 +45,12 @@ impl PeersMap {
     pub fn check_alive(&mut self, now: SystemTime) {
         self.0.values_mut().for_each(|p| p.check_alive(now))
     }
+    pub fn any_online(&self) -> bool {
+        self.0.values().any(|p| p.is_online())
+    }
+    pub fn all_offline(&self) -> bool {
+        self.0.values().all(|p| p.is_offline())
+    }
     pub fn online_status(&self, recepients: Recepients) -> Presence {
         match recepients {
             Recepients::One(ip) => self.0.get(&ip).map(|p| p.status()).unwrap_or_default(),
@@ -57,6 +64,16 @@ impl PeersMap {
                 }
             }
         }
+    }
+
+    pub fn rich_public(&self) -> egui::RichText {
+        let mut label = egui::RichText::new(PUBLIC);
+        if self.0.values().any(|p| p.is_online()) {
+            label = label.strong()
+        } else if self.0.values().all(|p| p.is_online()) {
+            label = label.weak();
+        }
+        label
     }
 }
 

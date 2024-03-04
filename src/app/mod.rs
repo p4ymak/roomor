@@ -1,6 +1,6 @@
 mod rooms;
 
-use self::rooms::{Rooms, FONT_SCALE};
+use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
@@ -25,6 +25,9 @@ use std::{
 };
 
 pub const ZOOM_STEP: f32 = 0.25;
+pub const FONT_SCALE: f32 = 1.5;
+pub const EMOJI_SCALE: f32 = 4.0;
+pub const PUBLIC: &str = "Everyone";
 
 pub struct UserSetup {
     pub init: bool,

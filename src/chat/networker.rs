@@ -114,13 +114,16 @@ impl NetWorker {
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
-                if !matches!(msg.content, Content::Seen) {
+                if matches!(msg.content, Content::Seen) {
+                    self.front_tx.send(BackEvent::Message(msg)).ok();
+                    ctx.request_repaint();
+                } else {
                     let text = msg.get_text();
                     let name = self.peers.get_display_name(msg.ip());
                     let notification_text = format!("{name}: {text}");
+                    self.front_tx.send(BackEvent::Message(msg)).ok();
                     ctx.notify(&notification_text);
                 }
-                self.front_tx.send(BackEvent::Message(msg)).ok();
             }
         }
     }

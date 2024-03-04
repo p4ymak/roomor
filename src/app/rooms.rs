@@ -1,3 +1,4 @@
+use super::{EMOJI_SCALE, FONT_SCALE, PUBLIC};
 use crate::chat::{
     file::{FileLink, FileStatus},
     limit_text,
@@ -14,10 +15,6 @@ use flume::Sender;
 use human_bytes::human_bytes;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
 use timediff::TimeDiff;
-
-pub const FONT_SCALE: f32 = 1.5;
-pub const EMOJI_SCALE: f32 = 4.0;
-pub const PUBLIC: &str = "Everyone";
 
 pub struct Rooms {
     active_chat: Recepients,
@@ -66,7 +63,7 @@ impl Rooms {
 
     pub fn is_able_to_send(&self) -> bool {
         match self.active_chat {
-            Recepients::One(ip) => self.peers.0.get(&ip).is_some_and(|p| p.is_online()),
+            Recepients::One(_) => true, //self.peers.0.get(&ip).is_some_and(|p| !p.is_offline()),
             _ => self.peers.0.values().any(|p| p.is_online()),
         }
     }
@@ -157,7 +154,7 @@ impl Rooms {
             ui.vertical_centered(|ui| {
                 let name = match self.active_chat {
                     Recepients::One(ip) => self.peers.0.get(&ip).expect("Peer exists").rich_name(),
-                    _ => egui::RichText::new(PUBLIC).strong(),
+                    _ => self.peers.rich_public(),
                 };
                 ui.label(name);
             });
@@ -221,7 +218,7 @@ impl Rooms {
         self.chats
             .get_mut(&self.active_chat)
             .expect("Active Exists")
-            .draw_input(ui, status, &self.back_tx);
+            .draw_input(ui, status);
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
         let side_ico = if self.side_panel_opened { "" } else { "" };
@@ -274,23 +271,17 @@ impl Rooms {
 
     fn set_active(&mut self, recepient: Recepients) {
         self.active_chat = recepient;
-        match recepient {
-            Recepients::One(ip) => {
-                if let Some(peer) = self.peers.0.get_mut(&ip) {
-                    if !peer.is_offline() {
-                        peer.set_presence(Presence::Unknown);
-                    }
-                }
-            }
-            _ => self.peers.0.values_mut().for_each(|p| {
+        if let Recepients::Peers = recepient {
+            self.peers.0.values_mut().for_each(|p| {
                 if !p.is_offline() {
                     p.set_presence(Presence::Unknown);
                 }
-            }),
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Ping(recepient)))
+                    .ok();
+            })
         };
-        self.back_tx
-            .send(ChatEvent::Front(FrontEvent::Ping(recepient)))
-            .ok();
+
         self.get_mut_active().unread = 0;
     }
 
@@ -331,7 +322,7 @@ impl ChatHistory {
         }
     }
 
-    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence, tx: &Sender<ChatEvent>) {
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
         ui.visuals_mut().clip_rect_margin = 0.0;
         if status != Presence::Online {
             ui.visuals_mut().override_text_color =
@@ -366,10 +357,10 @@ impl ChatHistory {
         text_input.request_focus();
         if text_input.changed() {
             self.input = self.input.replace('\n', "");
-            if status == Presence::Unknown {
-                tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
-                    .ok();
-            }
+            // if status == Presence::Unknown {
+            //     tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
+            //         .ok();
+            // }
         }
     }
 
@@ -385,10 +376,10 @@ impl ChatHistory {
                 if let Some(peer) = peers.0.get(&ip) {
                     (
                         peers.get_display_name(ip),
-                        if peer.is_offline() {
-                            ui.visuals().weak_text_color()
-                        } else if peer.is_online() {
+                        if peer.is_online() {
                             ui.visuals().strong_text_color()
+                        } else if peer.is_offline() {
+                            ui.visuals().weak_text_color()
                         } else {
                             ui.visuals().text_color()
                         },
@@ -397,7 +388,15 @@ impl ChatHistory {
                     return false;
                 }
             }
-            _ => (PUBLIC.to_string(), ui.visuals().strong_text_color()),
+            _ => (PUBLIC.to_string(), {
+                if peers.any_online() {
+                    ui.visuals().strong_text_color()
+                } else if peers.all_offline() {
+                    ui.visuals().weak_text_color()
+                } else {
+                    ui.visuals().text_color()
+                }
+            }),
         };
 
         let max_rect = ui.max_rect();
