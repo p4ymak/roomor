@@ -417,6 +417,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
+                    modifiers: egui::Modifiers::SHIFT,
                     ..
                 } => {
                     self.exit();

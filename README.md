@@ -10,7 +10,7 @@ Minimalistic offline chat over local network.
 
 **Tab** - Open/Close Chats List
 
-**Esc** - Return to Welcome Screen
+**Shift + Esc** - Return to Welcome Screen
 
 Message text starts with **Space** enables emoji mode. 
 
