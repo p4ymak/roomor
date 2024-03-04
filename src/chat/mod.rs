@@ -415,6 +415,7 @@ impl UdpChat {
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }
                         Command::Seen => {
+                            self.sender.incoming(r_ip, &self.name);
                             self.outbox.remove(r_ip, txt_msg.id());
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                         }

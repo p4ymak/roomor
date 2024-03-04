@@ -324,7 +324,7 @@ impl ChatHistory {
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
         ui.visuals_mut().clip_rect_margin = 0.0;
-        if status != Presence::Online {
+        if self.recepients == Recepients::Peers && status != Presence::Online {
             ui.visuals_mut().override_text_color =
                 Some(ui.visuals().widgets.noninteractive.text_color());
         }
