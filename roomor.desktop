@@ -1,0 +1,9 @@
+[Desktop Entry]
+Encoding=UTF-8
+Comment=Minimalistic offline chat over local network.
+Exec=roomor
+Icon=/usr/share/icons/hicolor/128x128/apps/roomor.png
+Name=Roomor
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;
