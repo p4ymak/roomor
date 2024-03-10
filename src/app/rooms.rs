@@ -39,6 +39,10 @@ impl Rooms {
         }
     }
 
+    pub fn clear_history(&mut self) {
+        self.chats.values_mut().for_each(|h| h.clear_history());
+    }
+
     pub fn get_mut_public(&mut self) -> &mut ChatHistory {
         self.chats
             .get_mut(&Recepients::Peers)
@@ -500,6 +504,11 @@ impl ChatHistory {
             });
         }
         clicked
+    }
+
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+        self.unread = 0;
     }
 }
 

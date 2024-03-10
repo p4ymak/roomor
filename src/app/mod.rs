@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK, TIMEOUT_SECOND},
+    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
@@ -355,19 +355,22 @@ impl Roomor {
                 self.rooms.draw_list(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            // FIXME
-            // ui.interact(
-            //     ui.available_rect_before_wrap(),
-            //     egui::Id::new("context menu"),
-            //     Sense::click(),
-            // )
-            // .context_menu(|ui| {
-            //     if ui.button("Send File..").clicked() {
-            //         if let Some(path) = rfd::FileDialog::new().pick_file() {
-            //             self.dispatch_file(&path);
-            //         }
-            //     }
-            // });
+            ui.interact(
+                ui.available_rect_before_wrap(),
+                egui::Id::new("context menu"),
+                Sense::click(),
+            )
+            .context_menu(|ui| {
+                if ui.small_button("Clear History").clicked() {
+                    self.rooms.get_mut_active().clear_history();
+                    ui.close_menu();
+                }
+                // if ui.button("Send File..").clicked() {
+                //     if let Some(path) = rfd::FileDialog::new().pick_file() {
+                //         self.dispatch_file(&path);
+                //     }
+                // }
+            });
 
             self.rooms.draw_history(ui);
         });
@@ -395,6 +398,10 @@ impl Roomor {
                 h.separator();
                 egui::widgets::global_dark_light_mode_switch(h);
             });
+            ui.separator();
+            if ui.button("Clear History").clicked() {
+                self.rooms.clear_history();
+            }
         });
     }
 
@@ -523,7 +530,7 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_CHECK {
-                if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
+                if delta > TIMEOUT_CHECK * 2 {
                     debug!("Pulse Ping");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
