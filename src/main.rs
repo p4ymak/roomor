@@ -1,8 +1,12 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+
 mod app;
 mod chat;
 use app::Roomor;
+#[cfg(not(target_arch = "wasm32"))]
 use eframe::egui;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<(), eframe::Error> {
     #[cfg(debug_assertions)]
     {
@@ -34,4 +38,21 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native("Roomor", options, Box::new(|cc| Box::new(Roomor::new(cc))))
+}
+
+// When compiling to web using trunk:
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+    let web_options = eframe::WebOptions::default();
+    wasm_bindgen_futures::spawn_local(async {
+        eframe::WebRunner::new()
+            .start(
+                "the_canvas_id", // hardcode it
+                web_options,
+                Box::new(|cc| Box::new(Roomor::new(cc))),
+            )
+            .await
+            .expect("failed to start");
+    });
 }

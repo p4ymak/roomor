@@ -4,14 +4,14 @@ pub mod networker;
 pub mod notifier;
 pub mod peers;
 
-use crate::app::UserSetup;
-
 use self::{
     file::{FileData, FileEnding, FileLink},
     message::new_id,
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
+use crate::app::UserSetup;
+use chrono::{DateTime, Utc};
 use flume::{Receiver, Sender};
 use log::debug;
 use message::{Command, Id, UdpMessage};
@@ -21,7 +21,6 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
     thread::{self, JoinHandle},
-    time::SystemTime,
 };
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -80,13 +79,13 @@ pub enum ChatEvent {
 #[derive(Default)]
 struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
 pub struct OutMessage {
-    ts: SystemTime,
+    ts: DateTime<Utc>,
     msg: UdpMessage,
 }
 impl OutMessage {
     pub fn new(msg: UdpMessage) -> Self {
         OutMessage {
-            ts: SystemTime::UNIX_EPOCH,
+            ts: DateTime::UNIX_EPOCH,
             msg,
         }
     }
@@ -111,17 +110,15 @@ impl Outbox {
             .map(|m| &m.msg)
     }
     fn undelivered(&mut self, ip: Ipv4Addr) -> Vec<&UdpMessage> {
-        let now = SystemTime::now();
+        let now = Utc::now();
         if let Some(history) = self.0.get_mut(&ip) {
             history
                 .iter_mut()
                 .filter_map(|msg| {
-                    now.duration_since(msg.ts)
-                        .is_ok_and(|t| t > TIMEOUT_CHECK)
-                        .then_some({
-                            msg.ts = now;
-                            &msg.msg
-                        })
+                    (now.signed_duration_since(msg.ts) > TIMEOUT_CHECK).then_some({
+                        msg.ts = now;
+                        &msg.msg
+                    })
                 })
                 .collect()
         } else {
@@ -154,7 +151,7 @@ pub enum Seen {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TextMessage {
-    timestamp: SystemTime,
+    timestamp: DateTime<Utc>,
     incoming: bool,
     public: bool,
     ip: Ipv4Addr,
@@ -165,7 +162,7 @@ pub struct TextMessage {
 impl TextMessage {
     pub fn logo() -> Self {
         TextMessage {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             incoming: true,
             public: true,
             ip: Ipv4Addr::UNSPECIFIED,
@@ -177,7 +174,7 @@ impl TextMessage {
 
     pub fn from_message(ip: Ipv4Addr, msg: &UdpMessage, incoming: bool) -> Self {
         TextMessage {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             incoming,
             public: msg.public,
             ip,
@@ -210,7 +207,7 @@ impl TextMessage {
 
     pub fn in_enter(ip: Ipv4Addr, name: String) -> Self {
         TextMessage {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             incoming: true,
             public: true,
             ip,
@@ -227,7 +224,7 @@ impl TextMessage {
         };
 
         TextMessage {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             incoming: false,
             public,
             ip,
@@ -239,7 +236,7 @@ impl TextMessage {
 
     pub fn in_exit(ip: Ipv4Addr) -> Self {
         TextMessage {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now(),
             incoming: true,
             public: true,
             ip,
@@ -284,7 +281,7 @@ impl TextMessage {
             _ => "",
         }
     }
-    pub fn time(&self) -> SystemTime {
+    pub fn time(&self) -> DateTime<Utc> {
         self.timestamp
     }
 }

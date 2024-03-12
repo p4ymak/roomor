@@ -1,6 +1,7 @@
 use super::{
     message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Content, Recepients,
 };
+use chrono::{TimeDelta, Utc};
 use flume::Sender;
 use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
 use log::debug;
@@ -9,12 +10,11 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     str::FromStr,
     sync::Arc,
-    time::{Duration, SystemTime},
 };
 
-pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
-pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
-pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
+pub const TIMEOUT_ALIVE: TimeDelta = TimeDelta::seconds(60);
+pub const TIMEOUT_CHECK: TimeDelta = TimeDelta::seconds(10);
+pub const TIMEOUT_SECOND: TimeDelta = TimeDelta::seconds(1);
 
 pub struct NetWorker {
     pub name: String,
@@ -138,7 +138,7 @@ impl NetWorker {
                 self.send(UdpMessage::greating(my_name), Recepients::One(ip));
             }
             Some(peer) => {
-                peer.set_last_time(SystemTime::now());
+                peer.set_last_time(Utc::now());
                 if !peer.has_name() {
                     self.send(UdpMessage::ask_name(), Recepients::One(ip));
                 }

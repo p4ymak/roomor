@@ -1,6 +1,7 @@
+use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use std::{fmt, time::SystemTime};
+use std::fmt;
 
 use super::{Content, TextMessage};
 
@@ -179,8 +180,7 @@ fn be_u8_from_str(text: &str) -> Vec<u8> {
 }
 
 pub fn new_id() -> Id {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("System Time")
-        .as_secs() as u32
+    Utc::now()
+        .signed_duration_since(DateTime::UNIX_EPOCH)
+        .num_seconds() as u32
 }

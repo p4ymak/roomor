@@ -1,4 +1,5 @@
 use eframe::egui::Context;
+#[cfg(not(target_arch = "wasm32"))]
 use notify_rust::Notification;
 use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
@@ -68,6 +69,7 @@ impl Repaintable for Notifier {
         if self.play_audio.load(Ordering::Relaxed) {
             self.play_sound();
         }
+        #[cfg(not(target_arch = "wasm32"))]
         if self.d_bus.load(Ordering::Relaxed) {
             Notification::new().summary("Roomor").body(text).show().ok();
         }

@@ -13,7 +13,6 @@ resolver = "2"
 
 [dependencies]
 eframe = "0.26.2"
-rfd = "0.14.0"
 human_bytes = "0.4.3"
 opener = "0.6.1"
 
@@ -21,19 +20,47 @@ flume = "0.11.0"
 
 whoami = "1.4.1"
 ipnet = "2.9.0"
-chrono = "0.4.34"
+
 timediff = "0.2.3"
 
 enumn = "0.1.13"
 crc = "3.0.1"
 
-rodio = { version = "0.17.3", default-features = false }
-notify-rust = "4.10.0"
-
 image = "0.24.9"
 
 log = { version = "0.4", features = ["std"] }
+
+rodio = { version = "0.17.3", default-features = false }
+
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chrono = "0.4.34"
+rfd = "0.14.0"
+notify-rust = "4.10.0"
 env_logger = "0.10.2"
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", default-features = false, features = [
+  "js-sys",
+  "wasmbind",
+] }
+log = { version = "0.4", features = ["std"] }
+wasm-bindgen = "0.2.92"
+wasm-bindgen-futures = "0.4"
+web-sys = {version = "0.3", features = [
+  'AudioContext',
+  'AudioDestinationNode',
+  'AudioNode',
+  'AudioParam',
+  'GainNode',
+  'OscillatorNode',
+  'OscillatorType',
+]}
+
+
+
+
 
 [profile.release]
 opt-level = 3

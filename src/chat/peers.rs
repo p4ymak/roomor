@@ -1,10 +1,10 @@
 use super::{networker::TIMEOUT_ALIVE, Recepients};
 use crate::app::PUBLIC;
+use chrono::{DateTime, Utc};
 use eframe::egui;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     net::Ipv4Addr,
-    time::SystemTime,
 };
 
 #[derive(Default)]
@@ -19,7 +19,7 @@ impl PeersMap {
             vip.insert(Peer::new(ip, name));
             new_one = true;
         } else if let Some(peer) = self.0.get_mut(&ip) {
-            peer.set_last_time(SystemTime::now());
+            peer.set_last_time(Utc::now());
             if name.is_some() {
                 peer.set_name(name);
             }
@@ -42,7 +42,7 @@ impl PeersMap {
             .map(|r| r.display_name())
             .unwrap_or(ip.to_string())
     }
-    pub fn check_alive(&mut self, now: SystemTime) {
+    pub fn check_alive(&mut self, now: DateTime<Utc>) {
         self.0.values_mut().for_each(|p| p.check_alive(now))
     }
     pub fn any_online(&self) -> bool {
@@ -89,7 +89,7 @@ pub struct Peer {
     ip: Ipv4Addr,
     name: Option<String>,
     presence: Presence,
-    last_time: SystemTime,
+    last_time: DateTime<Utc>,
 }
 impl Peer {
     pub fn new(ip: Ipv4Addr, name: Option<impl Into<String>>) -> Self {
@@ -97,7 +97,7 @@ impl Peer {
             ip,
             name: name.map(|n| n.into()),
             presence: Presence::Online,
-            last_time: SystemTime::now(),
+            last_time: Utc::now(),
         }
     }
     pub fn has_name(&self) -> bool {
@@ -128,22 +128,21 @@ impl Peer {
     pub fn set_presence(&mut self, presence: Presence) {
         self.presence = presence;
     }
-    pub fn last_time(&self) -> SystemTime {
+    pub fn last_time(&self) -> DateTime<Utc> {
         self.last_time
     }
-    pub fn set_last_time(&mut self, time: SystemTime) {
+    pub fn set_last_time(&mut self, time: DateTime<Utc>) {
         self.last_time = time;
     }
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
     }
-    pub fn check_alive(&mut self, now: SystemTime) {
+    pub fn check_alive(&mut self, now: DateTime<Utc>) {
         if self.presence == Presence::Offline {
             return;
         }
-        self.presence = if now
-            .duration_since(self.last_time)
-            .is_ok_and(|t| t < TIMEOUT_ALIVE)
+        self.presence = if now.signed_duration_since(self.last_time) < TIMEOUT_ALIVE
+        // .is_ok_and(|t| t < TIMEOUT_ALIVE)
         {
             Presence::Online
         } else {

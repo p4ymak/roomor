@@ -6,6 +6,7 @@ use crate::chat::{
     peers::{Peer, PeersMap, Presence},
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
+use chrono::{DateTime, Utc};
 use eframe::{
     egui,
     egui::{Rounding, Stroke},
@@ -13,7 +14,7 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
+use std::{collections::BTreeMap, net::Ipv4Addr, path::Path};
 use timediff::TimeDiff;
 
 pub struct Rooms {
@@ -644,8 +645,8 @@ fn stroke_width(ui: &mut egui::Ui) -> f32 {
     ui.text_style_height(&egui::TextStyle::Body) * 0.1
 }
 
-pub fn pretty_ago(ts: SystemTime) -> Option<String> {
-    let delta = SystemTime::now().duration_since(ts).ok()?.as_secs();
+pub fn pretty_ago(ts: DateTime<Utc>) -> Option<String> {
+    let delta = Utc::now().signed_duration_since(ts).num_seconds();
     TimeDiff::to_diff(format!("{delta}s"))
         .locale(String::from("en-US"))
         .ok()?

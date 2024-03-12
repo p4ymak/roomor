@@ -8,6 +8,7 @@ use crate::chat::{
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
+use chrono::{DateTime, Utc};
 use eframe::{
     egui::{self, *},
     CreationContext,
@@ -21,7 +22,7 @@ use std::{
     path::Path,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
-    time::SystemTime,
+    time::Duration as DurationStd,
 };
 
 pub const ZOOM_STEP: f32 = 0.25;
@@ -107,7 +108,7 @@ pub struct Roomor {
     notification_d_bus: Arc<AtomicBool>,
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
-    last_time: SystemTime,
+    last_time: DateTime<Utc>,
 }
 
 impl eframe::App for Roomor {
@@ -160,7 +161,7 @@ impl Default for Roomor {
             notification_d_bus,
             back_tx,
             back_rx,
-            last_time: SystemTime::now(),
+            last_time: Utc::now(),
         }
     }
 }
@@ -171,18 +172,17 @@ impl Roomor {
     }
 
     fn keep_alive(&mut self) {
-        let now = SystemTime::now();
-        if let Ok(delta) = now.duration_since(self.last_time) {
-            if delta > TIMEOUT_CHECK {
-                debug!("Front Check Peers");
-                self.rooms.peers.check_alive(now);
-                self.last_time = now;
-            }
-            if delta > TIMEOUT_ALIVE {
-                debug!("Front Alive Ping");
-                self.rooms.update_peers_online(&self.back_tx);
-                self.last_time = now;
-            }
+        let now = Utc::now();
+        let delta = now.signed_duration_since(self.last_time);
+        if delta > TIMEOUT_CHECK {
+            debug!("Front Check Peers");
+            self.rooms.peers.check_alive(now);
+            self.last_time = now;
+        }
+        if delta > TIMEOUT_ALIVE {
+            debug!("Front Alive Ping");
+            self.rooms.update_peers_online(&self.back_tx);
+            self.last_time = now;
         }
     }
 
@@ -449,6 +449,7 @@ impl Roomor {
                 } => {
                     debug!("open file");
 
+                    #[cfg(not(target_arch = "wasm32"))]
                     if self.chat_init.is_none() {
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
                             self.dispatch_file(&path);
@@ -517,19 +518,20 @@ fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
 }
 
 fn pulse(tx: Sender<ChatEvent>) {
-    let mut last_time = SystemTime::now();
+    let mut last_time = Utc::now();
     loop {
-        sleep(TIMEOUT_CHECK);
-        let now = SystemTime::now();
-        if let Ok(delta) = now.duration_since(last_time) {
-            if delta > TIMEOUT_CHECK {
-                if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
-                    debug!("Pulse Ping");
-                    tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
-                        .ok();
-                }
-                last_time = now;
+        sleep(DurationStd::from_secs(
+            TIMEOUT_CHECK.num_seconds().unsigned_abs(),
+        ));
+        let now = Utc::now();
+        let delta = now.signed_duration_since(last_time);
+        if delta > TIMEOUT_CHECK {
+            if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
+                debug!("Pulse Ping");
+                tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                    .ok();
             }
+            last_time = now;
         }
     }
 }
