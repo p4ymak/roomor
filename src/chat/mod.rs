@@ -355,12 +355,15 @@ impl UdpChat {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
-                        let message = UdpMessage::from_message(&msg);
-                        if message.command == Command::Text && !msg.is_public() {
-                            self.outbox.add(msg.ip(), message.clone());
+                        let messages = UdpMessage::from_message(&msg);
+
+                        for message in messages {
+                            if message.command == Command::Text && !msg.is_public() {
+                                self.outbox.add(msg.ip(), message.clone());
+                            }
+                            self.sender
+                                .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
                         }
-                        self.sender
-                            .send(message, Recepients::from_ip(msg.ip, msg.is_public()));
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }

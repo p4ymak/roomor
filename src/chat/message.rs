@@ -8,6 +8,7 @@ pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_TEXT_SIZE: usize = 116;
 pub const MAX_EMOJI_SIZE: usize = 8;
 pub const MAX_NAME_SIZE: usize = 44;
+pub const DATA_LIMIT_BYTES: usize = 100;
 
 pub type Id = u32;
 pub type CheckSum = u16;
@@ -39,7 +40,16 @@ impl Command {
 pub enum Part {
     Single,
     Init(PartInit),
-    Part(RemainsCount),
+    Shard(RemainsCount),
+}
+impl Part {
+    fn to_code(&self) -> u8 {
+        match self {
+            Part::Single => 0,
+            Part::Init(_) => 1,
+            Part::Shard(_) => 3,
+        }
+    }
 }
 #[derive(Debug, Clone)]
 pub struct PartInit {
@@ -130,18 +140,18 @@ impl UdpMessage {
             Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
-        let checksum = CRC.checksum([]);
+        let checksum = 0; // FIXME
         let total_checksum = CRC.checksum(&data);
-        let chunks = data.chunks(128);
-        let mut remains = chunks.count() as u64;
-        let mut messages = vec![UdpMessage {
+        let mut remains = data.chunks(DATA_LIMIT_BYTES).count() as u64;
+        let chunks = data.chunks(DATA_LIMIT_BYTES);
+        vec![UdpMessage {
             id: msg.id,
             part: Part::Init(PartInit {
                 total_checksum,
                 remains,
             }),
             public: msg.public,
-            checksum: checksum,
+            checksum,
             command,
             data: vec![],
         }];
@@ -151,9 +161,8 @@ impl UdpMessage {
                 remains -= 1;
                 UdpMessage {
                     id: msg.id,
-                    remains,
+                    part: Part::Shard(remains),
                     checksum: CRC.checksum(chunk),
-                    total_checksum,
                     public: msg.public,
                     command,
                     data: chunk.to_vec(),
@@ -163,45 +172,64 @@ impl UdpMessage {
     }
 
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
-        let command = Command::from_code(u8::from_be_bytes([*bytes.first()?]));
-        let public = bytes.get(1)?.count_ones() > 0;
-        let id = u32::from_be_bytes([
-            *bytes.get(2)?,
-            *bytes.get(3)?,
-            *bytes.get(4)?,
-            *bytes.get(5)?,
-        ]);
-        let checksum = u16::from_be_bytes([*bytes.get(6)?, *bytes.get(7)?]);
-        let data = match bytes.len() {
-            0..=8 => [].to_vec(),
-            _ => bytes[8..].to_owned(),
+        let mut header = u8::from_be(*bytes.first()?);
+        let public = (header & 1) != 0;
+        header >>= 1;
+        let part_n = header & 3;
+        header >>= 2;
+        let command = Command::from_code(header);
+        let id = u32::from_be_bytes(bytes.get(1..=4)?.try_into().ok()?);
+        let checksum = u16::from_be_bytes(bytes.get(5..=6)?.try_into().ok()?);
+        let (part, data) = match part_n {
+            1 => (
+                Part::Init(PartInit {
+                    total_checksum: u16::from_be_bytes(bytes.get(7..=8)?.try_into().ok()?),
+                    remains: u64::from_be_bytes(bytes.get(9..=17)?.try_into().ok()?),
+                }),
+                bytes[18..].to_owned(),
+            ),
+            3 => (
+                Part::Shard(u64::from_be_bytes(bytes.get(7..=15)?.try_into().ok()?)),
+                bytes[15..].to_owned(),
+            ),
+            _ => (Part::Single, bytes[7..].to_owned()),
         };
-        if checksum == CRC.checksum(&data) || command == Command::Repeat {
-            Some(UdpMessage {
-                id,
-                checksum,
-                part,
-                command,
-                public,
-                data,
-            })
-        } else {
-            Some(UdpMessage {
-                id,
-                checksum,
-                command: Command::Error,
-                public,
-                data,
-            })
-        }
+        // if checksum == CRC.checksum(&data) || command == Command::Repeat {
+        Some(UdpMessage {
+            id,
+            checksum,
+            part,
+            command,
+            public,
+            data,
+        })
+        // } else {
+        //     Some(UdpMessage {
+        //         id,
+        //         checksum,
+        //         part,
+        //         command: Command::Error,
+        //         public,
+        //         data,
+        //     })
+        // }
     }
 
     pub fn to_be_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::<u8>::new();
-        bytes.extend(self.command.to_code().to_be_bytes());
-        bytes.extend([self.public as u8]);
+        let header = self.public as u8 | (self.part.to_code() << 1) | (self.command.to_code() << 3);
+
+        bytes.push(header.to_be());
         bytes.extend(self.id.to_be_bytes());
         bytes.extend(self.checksum.to_be_bytes());
+        match &self.part {
+            Part::Single => (),
+            Part::Init(init) => {
+                bytes.extend(init.total_checksum.to_be_bytes());
+                bytes.extend(init.remains.to_be_bytes());
+            }
+            Part::Shard(remains) => bytes.extend(remains.to_be_bytes()),
+        }
         bytes.extend(self.data.to_owned());
 
         bytes
