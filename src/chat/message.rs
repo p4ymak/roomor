@@ -144,6 +144,16 @@ impl UdpMessage {
         let total_checksum = CRC.checksum(&data);
         let mut remains = data.chunks(DATA_LIMIT_BYTES).count() as u64;
         let chunks = data.chunks(DATA_LIMIT_BYTES);
+        if data.len() < DATA_LIMIT_BYTES {
+            return vec![UdpMessage {
+                id: msg.id,
+                part: Part::Single,
+                public: msg.public,
+                checksum,
+                command,
+                data,
+            }];
+        }
         vec![UdpMessage {
             id: msg.id,
             part: Part::Init(PartInit {
