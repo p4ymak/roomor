@@ -422,7 +422,7 @@ impl UdpChat {
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
                             self.sender.send(
-                                UdpMessage::new(
+                                UdpMessage::new_single(
                                     Command::AskToRepeat,
                                     r_msg.id.to_be_bytes().to_vec(),
                                     r_msg.public,

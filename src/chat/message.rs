@@ -9,6 +9,10 @@ pub const MAX_TEXT_SIZE: usize = 116;
 pub const MAX_EMOJI_SIZE: usize = 8;
 pub const MAX_NAME_SIZE: usize = 44;
 
+pub type Id = u32;
+pub type CheckSum = u16;
+pub type RemainsCount = u64;
+
 #[derive(Debug, Eq, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
 pub enum Command {
@@ -31,14 +35,25 @@ impl Command {
     }
 }
 
-pub type Id = u32;
+#[derive(Debug, Clone)]
+pub enum Part {
+    Single,
+    Init(PartInit),
+    Part(RemainsCount),
+}
+#[derive(Debug, Clone)]
+pub struct PartInit {
+    total_checksum: CheckSum,
+    remains: RemainsCount,
+}
 
 #[derive(Debug, Clone)]
 pub struct UdpMessage {
     pub id: Id,
-    checksum: u16,
-    pub command: Command,
     pub public: bool,
+    pub part: Part,
+    checksum: CheckSum,
+    pub command: Command,
     pub data: Vec<u8>,
 }
 
@@ -67,12 +82,14 @@ impl fmt::Display for UdpMessage {
 }
 
 impl UdpMessage {
-    pub fn new(command: Command, data: Vec<u8>, public: bool) -> Self {
+    pub fn new_single(command: Command, data: Vec<u8>, public: bool) -> Self {
         let id = new_id();
-        let checksum = CRC.checksum(&data);
+        let total_checksum = CRC.checksum(&data);
+        let checksum = total_checksum;
         UdpMessage {
             id,
             checksum,
+            part: Part::Single,
             public,
             command,
             data,
@@ -80,27 +97,28 @@ impl UdpMessage {
     }
 
     pub fn enter(name: &str) -> Self {
-        UdpMessage::new(Command::Enter, be_u8_from_str(name), true)
+        UdpMessage::new_single(Command::Enter, be_u8_from_str(name), true)
     }
     pub fn greating(name: &str) -> Self {
-        UdpMessage::new(Command::Greating, be_u8_from_str(name), true)
+        UdpMessage::new_single(Command::Greating, be_u8_from_str(name), true)
     }
     pub fn exit() -> Self {
-        UdpMessage::new(Command::Exit, vec![], true)
+        UdpMessage::new_single(Command::Exit, vec![], true)
     }
     pub fn ask_name() -> Self {
-        UdpMessage::new(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
+        UdpMessage::new_single(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
     }
     pub fn seen(msg: &TextMessage) -> Self {
         UdpMessage {
             id: msg.id,
             checksum: 0,
+            part: Part::Single,
             command: Command::Seen,
             public: msg.public,
             data: vec![],
         }
     }
-    pub fn from_message(msg: &TextMessage) -> Self {
+    pub fn from_message(msg: &TextMessage) -> Vec<Self> {
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
             Content::Text(text) => (Command::Text, be_u8_from_str(text)),
@@ -112,15 +130,38 @@ impl UdpMessage {
             Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
-        let checksum = CRC.checksum(&data);
-        UdpMessage {
+        let checksum = CRC.checksum([]);
+        let total_checksum = CRC.checksum(&data);
+        let chunks = data.chunks(128);
+        let mut remains = chunks.count() as u64;
+        let mut messages = vec![UdpMessage {
             id: msg.id,
-            checksum,
-            command,
+            part: Part::Init(PartInit {
+                total_checksum,
+                remains,
+            }),
             public: msg.public,
-            data,
-        }
+            checksum: checksum,
+            command,
+            data: vec![],
+        }];
+        chunks
+            .into_iter()
+            .map(|chunk| {
+                remains -= 1;
+                UdpMessage {
+                    id: msg.id,
+                    remains,
+                    checksum: CRC.checksum(chunk),
+                    total_checksum,
+                    public: msg.public,
+                    command,
+                    data: chunk.to_vec(),
+                }
+            })
+            .collect()
     }
+
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
         let command = Command::from_code(u8::from_be_bytes([*bytes.first()?]));
         let public = bytes.get(1)?.count_ones() > 0;
@@ -139,6 +180,7 @@ impl UdpMessage {
             Some(UdpMessage {
                 id,
                 checksum,
+                part,
                 command,
                 public,
                 data,
