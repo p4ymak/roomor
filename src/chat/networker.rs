@@ -14,6 +14,7 @@ use std::{
 
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
+pub const IP_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 255, 255);
 // pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
 pub struct NetWorker {
@@ -42,10 +43,10 @@ impl NetWorker {
         self.ipnet = Ipv4Net::new(self.ip, mask)?;
         let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
         socket.set_broadcast(true)?;
-        socket.set_multicast_loop_v4(false)?;
+        socket.set_multicast_loop_v4(true)?;
+        socket.join_multicast_v4(&IP_MULTICAST, &Ipv4Addr::UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
-
         Ok(())
     }
 
@@ -58,19 +59,21 @@ impl NetWorker {
 
             match addrs {
                 Recepients::All => {
-                    // socket
-                    //     .send_to(&bytes, SocketAddrV4::new(Ipv4Addr::BROADCAST, self.port))
-                    //     .is_ok()
+                    socket
+                        .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST, self.port))
+                        .is_ok()
                     // }
-                    self.ipnet
-                        .hosts()
-                        .map(|r| {
-                            socket
-                                .send_to(&bytes, SocketAddrV4::new(r, self.port))
-                                .is_ok()
-                        })
-                        .all(|r| r)
+
+                    // self.ipnet
+                    //     .hosts()
+                    //     .map(|r| {
+                    //         socket
+                    //             .send_to(&bytes, SocketAddrV4::new(r, self.port))
+                    //             .is_ok()
+                    //     })
+                    //     .all(|r| r)
                 }
+
                 Recepients::Peers => self
                     .peers
                     .0

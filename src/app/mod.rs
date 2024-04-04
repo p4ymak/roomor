@@ -14,7 +14,7 @@ use eframe::{
 };
 use flume::{Receiver, Sender};
 use ipnet::Ipv4Net;
-use log::debug;
+use log::{debug, error};
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
@@ -262,6 +262,7 @@ impl Roomor {
                 }
                 Err(err) => {
                     self.user.error_message = Some(format!("{err}"));
+                    error!("{err}");
                     self.chat_init = Some(init);
                 }
             }
@@ -411,6 +412,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
+                    modifiers: Modifiers::NONE,
                     ..
                 } => {
                     if self.chat_init.is_some() {
@@ -424,7 +426,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
-                    modifiers: egui::Modifiers::SHIFT,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => {
                     self.exit();
@@ -432,6 +434,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Tab,
                     pressed: true,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => {
                     self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
@@ -440,11 +443,13 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::ArrowUp,
                     pressed: true,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => self.rooms.list_go_up(),
                 Event::Key {
                     key: egui::Key::ArrowDown,
                     pressed: true,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => self.rooms.list_go_down(),
 
