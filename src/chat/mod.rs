@@ -28,16 +28,14 @@ use std::{
 pub enum Recepients {
     One(Ipv4Addr),
     #[default]
-    Peers,
     All,
-    Myself,
 }
 impl Recepients {
     pub fn from_ip(ip: Ipv4Addr, public: bool) -> Self {
         if !public {
             Recepients::One(ip)
         } else {
-            Recepients::Peers
+            Recepients::All
         }
     }
 }
@@ -65,8 +63,7 @@ pub enum BackEvent {
 
 #[derive(Debug)]
 pub enum FrontEvent {
-    Ping(Recepients),
-    // Greating(Recepients),
+    Ping,
     Exit,
     Message(TextMessage),
 }
@@ -310,7 +307,7 @@ impl UdpChat {
         self.name = user.name().to_string();
         self.sender.port = user.port();
         self.sender.name = user.name().to_string();
-        self.sender.connect(user.mask())?;
+        self.sender.connect()?;
         self.listen();
         Ok(())
     }
@@ -333,7 +330,6 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-                        debug!("incoming from {ip}");
                         if let Some(message) =
                             UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
@@ -367,19 +363,15 @@ impl UdpChat {
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
-                    FrontEvent::Ping(recepients) => {
-                        debug!("Ping {recepients:?}");
-                        self.sender.send(UdpMessage::enter(&self.name), recepients);
+                    FrontEvent::Ping => {
+                        debug!("Ping");
+                        self.sender
+                            .send(UdpMessage::enter(&self.name), Recepients::All);
                     }
-                    // FrontEvent::Greating(recepients) => {
-                    //     debug!("Greating {recepients:?}");
-                    //     self.sender
-                    //         .send(UdpMessage::greating(&self.name), recepients);
-                    // }
                     FrontEvent::Exit => {
                         debug!("I'm Exit");
-                        self.sender.send(UdpMessage::exit(), Recepients::Peers);
-                        self.sender.send(UdpMessage::exit(), Recepients::Myself);
+                        self.sender.send(UdpMessage::exit(), Recepients::All);
+                        // self.sender.send(UdpMessage::exit(), Recepients::Myself);
                         break;
                     }
                 },

@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.2.5"
+version = "0.3.0"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -18,10 +18,8 @@ human_bytes = "0.4.3"
 opener = "0.6.1"
 
 flume = "0.11.0"
-futures = {version = "0.3.30", features = ["thread-pool"]}
 
 whoami = "1.4.1"
-ipnet = "2.9.0"
 chrono = "0.4.34"
 timediff = "0.2.3"
 

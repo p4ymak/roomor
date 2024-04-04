@@ -2,12 +2,10 @@ use super::{
     message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Content, Recepients,
 };
 use flume::Sender;
-use ipnet::{ipv4_mask_to_prefix, Ipv4Net};
 use log::debug;
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    str::FromStr,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -24,7 +22,6 @@ pub struct NetWorker {
     pub ip: Ipv4Addr,
     pub port: u16,
     pub peers: PeersMap,
-    ipnet: Ipv4Net,
     pub front_tx: Sender<BackEvent>,
 }
 
@@ -36,60 +33,28 @@ impl NetWorker {
             ip,
             port: 4444,
             peers: PeersMap::new(),
-            ipnet: Ipv4Net::default(),
             front_tx,
         }
     }
-    pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
-        self.ipnet = Ipv4Net::new(self.ip, mask)?;
+    pub fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.port))?;
         socket.set_broadcast(true)?;
-        socket.set_multicast_loop_v4(false)?;
+        socket.set_multicast_loop_v4(true)?;
         socket.join_multicast_v4(&IP_MULTICAST, &IP_UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
         Ok(())
     }
 
-    pub fn send(&mut self, message: UdpMessage, mut addrs: Recepients) {
+    pub fn send(&mut self, message: UdpMessage, addrs: Recepients) {
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
-            if addrs == Recepients::Peers && self.peers.0.is_empty() {
-                addrs = Recepients::All;
-            }
-
             match addrs {
-                Recepients::All => {
-                    socket
-                        .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST, self.port))
-                        .is_ok()
-                    // }
-
-                    // self.ipnet
-                    //     .hosts()
-                    //     .map(|r| {
-                    //         socket
-                    //             .send_to(&bytes, SocketAddrV4::new(r, self.port))
-                    //             .is_ok()
-                    //     })
-                    //     .all(|r| r)
-                }
-
-                Recepients::Peers => self
-                    .peers
-                    .0
-                    .keys()
-                    .map(|ip| {
-                        socket
-                            .send_to(&bytes, SocketAddrV4::new(*ip, self.port))
-                            .is_ok()
-                    })
-                    .all(|r| r),
+                Recepients::All => socket
+                    .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST, self.port))
+                    .is_ok(),
                 Recepients::One(ip) => socket
                     .send_to(&bytes, SocketAddrV4::new(ip, self.port))
-                    .is_ok(),
-                Recepients::Myself => socket
-                    .send_to(&bytes, SocketAddrV4::new(self.ip, self.port))
                     .is_ok(),
             };
             debug!("Sent '{:?}' to {addrs:?}", message.command);
@@ -166,12 +131,4 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
-}
-
-pub fn parse_netmask(s: &str) -> Option<u8> {
-    if let Ok(mask) = s.parse::<u8>() {
-        return Some(mask);
-    }
-    let ip = Ipv4Addr::from_str(s).ok()?;
-    ipv4_mask_to_prefix(ip).ok()
 }

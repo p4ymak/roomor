@@ -4,16 +4,15 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    networker::{get_my_ipv4, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
-    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
+    BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
 use eframe::{
     egui::{self, *},
     CreationContext,
 };
 use flume::{Receiver, Sender};
-use ipnet::Ipv4Net;
 use log::{debug, error};
 use rodio::{OutputStream, OutputStreamHandle};
 use std::{
@@ -34,7 +33,6 @@ pub struct UserSetup {
     name: String,
     ip: Ipv4Addr,
     port: u16,
-    mask: u8,
     pub error_message: Option<String>,
 }
 impl Default for UserSetup {
@@ -51,7 +49,6 @@ impl Default for UserSetup {
             name: whoami::username(),
             ip,
             port: 4444,
-            mask: 24,
             error_message,
         }
     }
@@ -65,9 +62,6 @@ impl UserSetup {
     }
     pub fn port(&self) -> u16 {
         self.port
-    }
-    pub fn mask(&self) -> u8 {
-        self.mask
     }
     pub fn draw_setup(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
@@ -86,8 +80,8 @@ impl UserSetup {
             drag_ip(ui, &self.ip);
             ui.heading("Port");
             ui.add(egui::DragValue::new(&mut self.port));
-            ui.heading("Mask");
-            drag_mask(ui, &mut self.mask);
+            // ui.heading("Mask");
+            // drag_mask(ui, &mut self.mask);
         });
         if let Some(err) = &self.error_message {
             ui.heading(err);
@@ -504,18 +498,18 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: 
     }
 }
 
-fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
-    ui.add(
-        egui::DragValue::new(mask)
-            .speed(1)
-            .custom_formatter(|m, _| {
-                let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
-                let mask = net.netmask().octets();
-                format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
-            })
-            .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
-    );
-}
+// fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
+//     ui.add(
+//         egui::DragValue::new(mask)
+//             .speed(1)
+//             .custom_formatter(|m, _| {
+//                 let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
+//                 let mask = net.netmask().octets();
+//                 format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
+//             })
+//             .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
+//     );
+// }
 fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
     ui.add_enabled(
         false,
@@ -537,8 +531,7 @@ fn pulse(tx: Sender<ChatEvent>) {
             if delta > TIMEOUT_CHECK {
                 if delta > TIMEOUT_CHECK * 2 {
                     debug!("Pulse Ping");
-                    tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
-                        .ok();
+                    tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
                 }
                 last_time = now;
             }

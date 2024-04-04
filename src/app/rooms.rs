@@ -28,9 +28,9 @@ pub struct Rooms {
 impl Rooms {
     pub fn new(back_tx: Sender<ChatEvent>) -> Self {
         let mut chats = BTreeMap::new();
-        chats.insert(Recepients::Peers, ChatHistory::new(Recepients::Peers));
+        chats.insert(Recepients::All, ChatHistory::new(Recepients::All));
         Rooms {
-            active_chat: Recepients::Peers,
+            active_chat: Recepients::All,
             peers: PeersMap::new(),
             order: vec![],
             chats,
@@ -44,9 +44,7 @@ impl Rooms {
     }
 
     pub fn get_mut_public(&mut self) -> &mut ChatHistory {
-        self.chats
-            .get_mut(&Recepients::Peers)
-            .expect("Public Exists")
+        self.chats.get_mut(&Recepients::All).expect("Public Exists")
     }
 
     pub fn get_mut_private(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
@@ -142,7 +140,7 @@ impl Rooms {
         let mut order = self
             .chats
             .values()
-            .filter(|v| v.recepients != Recepients::Peers)
+            .filter(|v| v.recepients != Recepients::All)
             .filter_map(|c| c.history.last().map(|m| (m.time(), c.recepients)))
             .collect::<Vec<_>>();
         order.sort_by(|a, b| b.0.cmp(&a.0));
@@ -181,7 +179,7 @@ impl Rooms {
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
         if self
             .chats
-            .get_mut(&Recepients::Peers)
+            .get_mut(&Recepients::All)
             .expect("Public exists")
             .draw_list_entry(
                 ui,
@@ -190,7 +188,7 @@ impl Rooms {
                 self.side_panel_opened,
             )
         {
-            self.set_active(Recepients::Peers);
+            self.set_active(Recepients::All);
         }
         ui.label("");
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -236,7 +234,7 @@ impl Rooms {
     }
 
     pub fn list_go_up(&mut self) {
-        let active = if self.active_chat == Recepients::Peers {
+        let active = if self.active_chat == Recepients::All {
             self.order.last().cloned().unwrap_or_default()
         } else {
             let active_id = self
@@ -245,11 +243,11 @@ impl Rooms {
                 .position(|k| k == &self.active_chat)
                 .unwrap_or_default();
             match active_id {
-                0 => Recepients::Peers,
+                0 => Recepients::All,
                 _ => self
                     .order
                     .get(active_id.saturating_sub(1))
-                    .unwrap_or(&Recepients::Peers)
+                    .unwrap_or(&Recepients::All)
                     .to_owned(),
             }
         };
@@ -257,7 +255,7 @@ impl Rooms {
     }
 
     pub fn list_go_down(&mut self) {
-        let active = if self.active_chat == Recepients::Peers {
+        let active = if self.active_chat == Recepients::All {
             self.order.first().cloned().unwrap_or_default()
         } else {
             let active_id = self
@@ -267,7 +265,7 @@ impl Rooms {
                 .unwrap_or_default();
             self.order
                 .get(active_id.saturating_add(1))
-                .unwrap_or(&Recepients::Peers)
+                .unwrap_or(&Recepients::All)
                 .to_owned()
         };
         self.set_active(active);
@@ -275,14 +273,12 @@ impl Rooms {
 
     fn set_active(&mut self, recepient: Recepients) {
         self.active_chat = recepient;
-        if let Recepients::Peers = recepient {
+        if let Recepients::All = recepient {
             self.peers.0.values_mut().for_each(|p| {
                 if !p.is_offline() {
                     p.set_presence(Presence::Unknown);
                 }
-                self.back_tx
-                    .send(ChatEvent::Front(FrontEvent::Ping(recepient)))
-                    .ok();
+                self.back_tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
             })
         };
 
@@ -295,8 +291,7 @@ impl Rooms {
                 p.set_presence(Presence::Unknown);
             }
         });
-        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
-            .ok();
+        tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
     }
 }
 
@@ -328,7 +323,7 @@ impl ChatHistory {
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
         ui.visuals_mut().clip_rect_margin = 0.0;
-        if self.recepients == Recepients::Peers && status != Presence::Online {
+        if self.recepients == Recepients::All && status != Presence::Online {
             ui.visuals_mut().override_text_color =
                 Some(ui.visuals().widgets.noninteractive.text_color());
         }
