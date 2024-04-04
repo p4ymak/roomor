@@ -41,9 +41,9 @@ impl NetWorker {
     }
     pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
         self.ipnet = Ipv4Net::new(self.ip, mask)?;
-        let socket = UdpSocket::bind(SocketAddrV4::new(self.ip, self.port))?;
+        let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.port))?;
         socket.set_broadcast(true)?;
-        socket.set_multicast_loop_v4(false)?;
+        socket.set_multicast_loop_v4(true)?;
         socket.join_multicast_v4(&IP_MULTICAST, &Ipv4Addr::UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
@@ -60,7 +60,7 @@ impl NetWorker {
             match addrs {
                 Recepients::All => {
                     socket
-                        .send_to(&bytes, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.port))
+                        .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST, self.port))
                         .is_ok()
                     // }
 
