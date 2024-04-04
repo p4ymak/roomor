@@ -14,7 +14,8 @@ use std::{
 
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
-pub const IP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 69);
+pub const IP_MULTICAST: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
+pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 // pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
 pub struct NetWorker {
@@ -41,10 +42,10 @@ impl NetWorker {
     }
     pub fn connect(&mut self, mask: u8) -> Result<(), Box<dyn Error + 'static>> {
         self.ipnet = Ipv4Net::new(self.ip, mask)?;
-        let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.port))?;
+        let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.port))?;
         socket.set_broadcast(true)?;
-        socket.set_multicast_loop_v4(true)?;
-        socket.join_multicast_v4(&IP_MULTICAST, &Ipv4Addr::UNSPECIFIED)?;
+        socket.set_multicast_loop_v4(false)?;
+        socket.join_multicast_v4(&IP_MULTICAST, &IP_UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
         Ok(())
