@@ -333,7 +333,7 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-
+                        debug!("incoming from {ip}");
                         if let Some(message) =
                             UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
