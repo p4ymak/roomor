@@ -141,7 +141,7 @@ impl Rooms {
             .chats
             .values()
             .filter(|v| v.recepients != Recepients::All)
-            .filter_map(|c| c.history.last().map(|m| (m.time(), c.recepients)))
+            .map(|c| (c.history.last().map(|m| m.time()), c.recepients))
             .collect::<Vec<_>>();
         order.sort_by(|a, b| b.0.cmp(&a.0));
         self.order = order.into_iter().map(|o| o.1).collect();

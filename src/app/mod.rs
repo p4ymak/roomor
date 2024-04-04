@@ -396,6 +396,11 @@ impl Roomor {
             ui.separator();
             if ui.button("Clear History").clicked() {
                 self.rooms.clear_history();
+                ui.close_menu();
+            }
+            if ui.button("Exit").clicked() {
+                self.exit();
+                ui.close_menu();
             }
         });
     }
