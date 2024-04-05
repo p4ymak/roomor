@@ -6,7 +6,7 @@ use crate::chat::{
     message::MAX_NAME_SIZE,
     networker::{get_my_ipv4, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
-    BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
+    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
 use eframe::{
     egui::{self, *},
@@ -536,7 +536,8 @@ fn pulse(tx: Sender<ChatEvent>) {
             if delta > TIMEOUT_CHECK {
                 if delta > TIMEOUT_CHECK * 2 {
                     debug!("Pulse Ping");
-                    tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
+                    tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                        .ok();
                 }
                 last_time = now;
             }

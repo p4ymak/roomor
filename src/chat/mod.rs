@@ -63,7 +63,7 @@ pub enum BackEvent {
 
 #[derive(Debug)]
 pub enum FrontEvent {
-    Ping,
+    Ping(Recepients),
     Exit,
     Message(TextMessage),
 }
@@ -363,10 +363,9 @@ impl UdpChat {
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
-                    FrontEvent::Ping => {
-                        debug!("Ping");
-                        self.sender
-                            .send(UdpMessage::enter(&self.name), Recepients::All);
+                    FrontEvent::Ping(recepients) => {
+                        debug!("Ping {recepients:?}");
+                        self.sender.send(UdpMessage::enter(&self.name), recepients);
                     }
                     FrontEvent::Exit => {
                         debug!("I'm Exit");

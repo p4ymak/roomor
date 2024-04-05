@@ -271,16 +271,18 @@ impl Rooms {
         self.set_active(active);
     }
 
-    fn set_active(&mut self, recepient: Recepients) {
-        self.active_chat = recepient;
-        if let Recepients::All = recepient {
+    fn set_active(&mut self, recepients: Recepients) {
+        self.active_chat = recepients;
+        if let Recepients::All = recepients {
             self.peers.0.values_mut().for_each(|p| {
                 if !p.is_offline() {
                     p.set_presence(Presence::Unknown);
                 }
-                self.back_tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
-            })
-        };
+            });
+        }
+        self.back_tx
+            .send(ChatEvent::Front(FrontEvent::Ping(recepients)))
+            .ok();
 
         self.get_mut_active().unread = 0;
     }
@@ -291,7 +293,8 @@ impl Rooms {
                 p.set_presence(Presence::Unknown);
             }
         });
-        tx.send(ChatEvent::Front(FrontEvent::Ping)).ok();
+        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+            .ok();
     }
 }
 
