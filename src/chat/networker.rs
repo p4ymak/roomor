@@ -103,13 +103,12 @@ impl NetWorker {
             None => {
                 let noname: Option<&str> = None;
                 self.peers.peer_joined(ip, noname);
-                self.send(UdpMessage::ask_name(), Recepients::One(ip)); // FIXME
-                self.send(UdpMessage::greating(my_name), Recepients::One(ip));
+                self.send(UdpMessage::enter(my_name), Recepients::One(ip));
             }
             Some(peer) => {
                 peer.set_last_time(SystemTime::now());
                 if !peer.has_name() {
-                    self.send(UdpMessage::ask_name(), Recepients::One(ip));
+                    self.send(UdpMessage::enter(my_name), Recepients::One(ip));
                 }
             }
         };

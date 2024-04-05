@@ -48,7 +48,7 @@ strip = "debuginfo"
 name = "Roomor"
 identifier = "com.p4ymak.roomor"
 icon = ["icon/128x128.png"]
-version = "0.2.5"
+version = "0.3.0"
 short_description = "Minimalistic offline chat over local network."
 long_description = "Minimalistic offline chat over local network."
 deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]

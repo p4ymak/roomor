@@ -2,7 +2,7 @@ use super::{EMOJI_SCALE, FONT_SCALE, PUBLIC};
 use crate::chat::{
     file::{FileLink, FileStatus},
     limit_text,
-    message::{MAX_EMOJI_SIZE, MAX_TEXT_SIZE},
+    message::MAX_EMOJI_SIZE,
     peers::{Peer, PeersMap, Presence},
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
@@ -311,7 +311,7 @@ impl ChatHistory {
         ChatHistory {
             recepients,
             emoji_mode: false,
-            input: String::with_capacity(MAX_TEXT_SIZE),
+            input: String::new(),
             history: vec![],
             unread: 0,
         }
@@ -331,20 +331,18 @@ impl ChatHistory {
                 Some(ui.visuals().widgets.noninteractive.text_color());
         }
         self.emoji_mode = self.input.starts_with(' ');
-        let limit = match self.emoji_mode {
-            true => MAX_EMOJI_SIZE,
-            false => MAX_TEXT_SIZE,
-        };
-        limit_text(&mut self.input, limit);
 
+        if self.emoji_mode {
+            limit_text(&mut self.input, MAX_EMOJI_SIZE);
+        }
         self.font_multiply(ui);
 
         let y = ui.max_rect().min.y;
         let rect = ui.clip_rect();
         let len = self.input.len();
-        if len > 0 {
+        if len > 0 && self.emoji_mode {
             ui.painter().hline(
-                rect.min.x..=(rect.max.x * (len as f32 / limit as f32)),
+                rect.min.x..=(rect.max.x * (len as f32 / MAX_EMOJI_SIZE as f32)),
                 y,
                 ui.style().visuals.widgets.inactive.fg_stroke,
             );
@@ -357,13 +355,11 @@ impl ChatHistory {
                 .cursor_at_end(true),
         );
         text_input.request_focus();
-        if text_input.changed() {
-            self.input = self.input.replace('\n', "");
-            // if status == Presence::Unknown {
-            //     tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
-            //         .ok();
-            // }
-        }
+        // FIXME
+        // if text_input.changed() && status == Presence::Unknown {
+        //     tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
+        //         .ok();
+        // }
     }
 
     fn draw_list_entry(

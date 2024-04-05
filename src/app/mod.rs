@@ -329,11 +329,17 @@ impl Roomor {
             }
         });
         let mut font_size = 10.0;
+        let max_height = ctx.input(|i| i.screen_rect.height()) * 0.5;
         egui::TopBottomPanel::bottom("text intput")
+            .max_height(max_height)
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                self.rooms.draw_input(ui);
+                egui::ScrollArea::vertical()
+                    .min_scrolled_height(max_height)
+                    .show(ui, |ui| {
+                        self.rooms.draw_input(ui);
+                    });
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
