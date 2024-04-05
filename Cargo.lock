@@ -1169,18 +1169,16 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "ecolor"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c416b34b29e8f6b2492b5c80319cf9792d339550f0d75a54b53ed070045bbdeb"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "bytemuck",
 ]
 
 [[package]]
 name = "eframe"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86811b20df847cfa73637020ee78de780407110f49785df2dea6741146ea5aac"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "bytemuck",
  "cocoa",
@@ -1212,9 +1210,8 @@ dependencies = [
 
 [[package]]
 name = "egui"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8e20541e5d3da08cf817eb5c8a2bc4024f21aad7acf98de201442d6d76e0ecc"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "accesskit",
  "ahash",
@@ -1225,9 +1222,8 @@ dependencies = [
 
 [[package]]
 name = "egui-wgpu"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25d1c9a6f17f48a75148e7a3db7cc0221b7261db577281267301f83d79d0834a"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "bytemuck",
  "document-features",
@@ -1243,9 +1239,8 @@ dependencies = [
 
 [[package]]
 name = "egui-winit"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff4fc01bc3617dba9280475e9ab2382015e298f401d2318c2a1d78c419b6dffe"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "accesskit_winit",
  "arboard",
@@ -1260,9 +1255,8 @@ dependencies = [
 
 [[package]]
 name = "egui_glow"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743380a1c0f1dbb7bfe29663ce62b10785adda51105c9bb4e544e2f9955b4958"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "bytemuck",
  "egui",
@@ -1282,9 +1276,8 @@ checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
 
 [[package]]
 name = "emath"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e87799f56edee11422267e1764dd0bf3fe1734888e8d2d0924a67b85f4998fbe"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "bytemuck",
 ]
@@ -1342,9 +1335,8 @@ dependencies = [
 
 [[package]]
 name = "epaint"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "392eccd6d6b13fadccc268f4f61d9363775ec5711ffdece2a79006d676920bcf"
+version = "0.27.2"
+source = "git+https://github.com/emilk/egui?branch=master#78d95f430b09e3040d3f383fde8fea2ae1592afb"
 dependencies = [
  "ab_glyph",
  "ahash",
@@ -3658,6 +3650,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
+name = "wasite"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
+
+[[package]]
 name = "wasm-bindgen"
 version = "0.2.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3978,11 +3976,12 @@ dependencies = [
 
 [[package]]
 name = "whoami"
-version = "1.4.1"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22fc3756b8a9133049b26c7f61ab35416c130e8c09b660f5b3958b446f52cc50"
+checksum = "a44ab49fad634e88f55bf8f9bb3abd2f27d7204172a112c7c9987e01c1c94ea9"
 dependencies = [
- "wasm-bindgen",
+ "redox_syscall 0.4.1",
+ "wasite",
  "web-sys",
 ]
 

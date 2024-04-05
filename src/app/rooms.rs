@@ -75,7 +75,10 @@ impl Rooms {
             return None;
         }
         let chat = self.get_mut_active();
-        let trimmed = chat.input.trim().replace('\n', "").to_string();
+        let mut trimmed = chat.input.trim().to_string();
+        if chat.emoji_mode {
+            trimmed = trimmed.replace('\n', "");
+        }
         (!trimmed.is_empty()).then_some(
             // && self.peers.values().any(|p| p.is_online()) {
             {
@@ -337,10 +340,10 @@ impl ChatHistory {
         }
         self.font_multiply(ui);
 
-        let y = ui.max_rect().min.y;
-        let rect = ui.clip_rect();
         let len = self.input.len();
         if len > 0 && self.emoji_mode {
+            let y = ui.max_rect().min.y;
+            let rect = ui.clip_rect();
             ui.painter().hline(
                 rect.min.x..=(rect.max.x * (len as f32 / MAX_EMOJI_SIZE as f32)),
                 y,
