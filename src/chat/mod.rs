@@ -152,7 +152,7 @@ impl InMessage {
                             ip: self.sender,
                             id: self.id,
                             content: Content::Text(text),
-                            seen: None,
+                            seen: Some(Seen::One),
                         };
                         sender.send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
                         sender.handle_event(BackEvent::Message(txt_msg), ctx);

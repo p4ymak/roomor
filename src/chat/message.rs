@@ -1,9 +1,7 @@
+use super::{Content, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use log::debug;
 use std::{fmt, time::SystemTime};
-
-use super::{Content, TextMessage};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -159,7 +157,7 @@ impl UdpMessage {
                 data,
             }];
         }
-        let mut v = vec![UdpMessage {
+        let mut msgs = vec![UdpMessage {
             id: msg.id,
             part: Part::Init(PartInit {
                 total_checksum,
@@ -170,7 +168,7 @@ impl UdpMessage {
             command,
             data: vec![],
         }];
-        v.extend(chunks.into_iter().map(|chunk| {
+        msgs.extend(chunks.into_iter().map(|chunk| {
             count -= 1;
             UdpMessage {
                 id: msg.id,
@@ -181,7 +179,7 @@ impl UdpMessage {
                 data: chunk.to_vec(),
             }
         }));
-        v
+        msgs
     }
 
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
@@ -193,22 +191,21 @@ impl UdpMessage {
         let command = Command::from_code(header);
         let id = u32::from_be_bytes(bytes.get(1..=4)?.try_into().ok()?);
         let checksum = u16::from_be_bytes(bytes.get(5..=6)?.try_into().ok()?);
-        debug!("part {part_n}");
-
         let (part, data) = match part_n {
             1 => (
                 Part::Init(PartInit {
                     total_checksum: u16::from_be_bytes(bytes.get(7..=8)?.try_into().ok()?),
-                    count: u64::from_be_bytes(bytes.get(9..=17)?.try_into().ok()?),
+                    count: u64::from_be_bytes(bytes.get(9..=16)?.try_into().ok()?),
                 }),
-                bytes[18..].to_owned(),
+                bytes.get(17..)?.to_owned(),
             ),
             3 => (
-                Part::Shard(u64::from_be_bytes(bytes.get(7..=15)?.try_into().ok()?)),
-                bytes[16..].to_owned(),
+                Part::Shard(u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)),
+                bytes.get(15..)?.to_owned(),
             ),
             _ => (Part::Single, bytes[7..].to_owned()),
         };
+        // FIXME
         // if checksum == CRC.checksum(&data) || command == Command::Repeat {
         Some(UdpMessage {
             id,
