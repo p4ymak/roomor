@@ -53,7 +53,15 @@ impl Part {
 #[derive(Debug, Clone)]
 pub struct PartInit {
     total_checksum: CheckSum,
-    remains: RemainsCount,
+    count: RemainsCount,
+}
+impl PartInit {
+    pub fn checksum(&self) -> CheckSum {
+        self.total_checksum
+    }
+    pub fn count(&self) -> RemainsCount {
+        self.count
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -138,7 +146,7 @@ impl UdpMessage {
         };
         let checksum = 0; // FIXME
         let total_checksum = CRC.checksum(&data);
-        let mut remains = data.chunks(DATA_LIMIT_BYTES).count() as u64;
+        let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
         let chunks = data.chunks(DATA_LIMIT_BYTES);
         if data.len() < DATA_LIMIT_BYTES {
             return vec![UdpMessage {
@@ -154,7 +162,7 @@ impl UdpMessage {
             id: msg.id,
             part: Part::Init(PartInit {
                 total_checksum,
-                remains,
+                count,
             }),
             public: msg.public,
             checksum,
@@ -164,10 +172,10 @@ impl UdpMessage {
         chunks
             .into_iter()
             .map(|chunk| {
-                remains -= 1;
+                count -= 1;
                 UdpMessage {
                     id: msg.id,
-                    part: Part::Shard(remains),
+                    part: Part::Shard(count),
                     checksum: CRC.checksum(chunk),
                     public: msg.public,
                     command,
@@ -190,7 +198,7 @@ impl UdpMessage {
             1 => (
                 Part::Init(PartInit {
                     total_checksum: u16::from_be_bytes(bytes.get(7..=8)?.try_into().ok()?),
-                    remains: u64::from_be_bytes(bytes.get(9..=17)?.try_into().ok()?),
+                    count: u64::from_be_bytes(bytes.get(9..=17)?.try_into().ok()?),
                 }),
                 bytes[18..].to_owned(),
             ),
@@ -232,7 +240,7 @@ impl UdpMessage {
             Part::Single => (),
             Part::Init(init) => {
                 bytes.extend(init.total_checksum.to_be_bytes());
-                bytes.extend(init.remains.to_be_bytes());
+                bytes.extend(init.count.to_be_bytes());
             }
             Part::Shard(remains) => bytes.extend(remains.to_be_bytes()),
         }

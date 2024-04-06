@@ -77,11 +77,11 @@ impl UserSetup {
                 self.multicast = ip;
             } else {
                 self.multicast_str = self.multicast.to_string();
-                self.error_message = Some("Non-multicast IP. Set Previous.".to_string());
+                self.error_message = Some("Non-multicast IP. Got Previous.".to_string());
             }
         } else {
             self.multicast_str = self.multicast.to_string();
-            self.error_message = Some("Cant't parse IP. Set Previous.".to_string());
+            self.error_message = Some("Cant't parse IP. Got Previous.".to_string());
         }
     }
     pub fn draw_setup(&mut self, ui: &mut egui::Ui) {
@@ -106,6 +106,7 @@ impl UserSetup {
         }
     }
 }
+
 pub struct Roomor {
     user: UserSetup,
     chat_init: Option<UdpChat>,

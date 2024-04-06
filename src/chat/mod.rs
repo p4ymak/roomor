@@ -8,7 +8,7 @@ use crate::app::UserSetup;
 
 use self::{
     file::{FileData, FileEnding, FileLink},
-    message::new_id,
+    message::{new_id, CheckSum, Part, RemainsCount},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
@@ -76,6 +76,94 @@ pub enum ChatEvent {
 
 #[derive(Default)]
 struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
+#[derive(Default)]
+struct Inbox(BTreeMap<Id, InMessage>);
+
+pub struct InMessage {
+    ts: SystemTime,
+    id: Id,
+    sender: Ipv4Addr,
+    public: bool,
+    command: Command,
+    total_checksum: CheckSum,
+    count: RemainsCount,
+    shards: Vec<Option<Shard>>,
+}
+impl InMessage {
+    pub fn new(ip: Ipv4Addr, msg: UdpMessage) -> Option<Self> {
+        if let Part::Init(init) = msg.part {
+            Some(InMessage {
+                ts: SystemTime::now(),
+                id: msg.id,
+                sender: ip,
+                public: msg.public,
+                command: msg.command,
+                total_checksum: init.checksum(),
+                count: init.count(),
+                shards: vec![None; init.count() as usize],
+            })
+        } else {
+            None
+        }
+    }
+    pub fn insert(
+        &mut self,
+        remains: RemainsCount,
+        msg: UdpMessage,
+        sender: &mut NetWorker,
+        ctx: &impl Repaintable,
+    ) {
+        let pos = self.count - remains - 1;
+        if let Some(block) = self.shards.get_mut(pos as usize) {
+            if block.is_none() {
+                *block = Some(msg.data);
+            }
+        }
+        if remains == 0 {
+            self.combine(sender, ctx);
+        }
+    }
+    pub fn combine(&mut self, sender: &mut NetWorker, ctx: &impl Repaintable) {
+        let missed = self
+            .shards
+            .iter()
+            .rev()
+            .enumerate()
+            .filter(|s| s.1.is_none())
+            .map(|s| s.0)
+            .collect::<Vec<usize>>();
+        if missed.is_empty() {
+            let data = std::mem::take(&mut self.shards)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .collect::<Vec<u8>>();
+
+            match self.command {
+                Command::Text => {
+                    if let Ok(text) = String::from_utf8(data) {
+                        let txt_msg = TextMessage {
+                            timestamp: self.ts,
+                            incoming: true,
+                            public: self.public,
+                            ip: self.sender,
+                            id: self.id,
+                            content: Content::Text(text),
+                            seen: None,
+                        };
+                        sender.send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
+                        sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                    }
+                }
+                // Command::File => todo!(),
+                _ => (),
+            }
+        }
+    }
+}
+
+pub type Shard = Vec<u8>;
+
 pub struct OutMessage {
     ts: SystemTime,
     msg: UdpMessage,
@@ -133,6 +221,7 @@ pub struct UdpChat {
     rx: Receiver<ChatEvent>,
     sender: NetWorker,
     outbox: Outbox,
+    inbox: Inbox,
     thread_handle: Option<JoinHandle<()>>,
 }
 impl Drop for UdpChat {
@@ -277,7 +366,7 @@ impl TextMessage {
     }
     pub fn get_text(&self) -> &str {
         match &self.content {
-            Content::Text(text) | Content::Icon(text) => text,
+            Content::Text(text) | Content::Icon(text) => text, //FIXME shorten long text
             _ => "",
         }
     }
@@ -297,6 +386,7 @@ impl UdpChat {
             tx,
             rx,
             outbox: Outbox::default(),
+            inbox: Inbox::default(),
             thread_handle: None,
         }
     }
@@ -379,7 +469,7 @@ impl UdpChat {
                     if r_ip == self.sender.ip {
                         continue;
                     }
-                    let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
+
                     debug!("Received {:?} from {r_ip}", r_msg.command);
 
                     match r_msg.command {
@@ -402,13 +492,28 @@ impl UdpChat {
                         Command::Exit => {
                             self.sender.handle_event(BackEvent::PeerLeft(r_ip), ctx);
                         }
-                        Command::Text | Command::Repeat => {
-                            self.sender.incoming(r_ip, &self.name);
-                            self.sender
-                                .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip));
-                            self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
-                        }
+                        Command::Text | Command::Repeat => match r_msg.part {
+                            message::Part::Single => {
+                                let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
+                                self.sender.incoming(r_ip, &self.name); // FIXME
+                                self.sender
+                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip));
+                                self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                            }
+                            message::Part::Init(_) => {
+                                let r_id = r_msg.id;
+                                if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
+                                    self.inbox.0.insert(r_id, inmsg);
+                                }
+                            }
+                            message::Part::Shard(count) => {
+                                if let Some(inmsg) = self.inbox.0.get_mut(&r_msg.id) {
+                                    inmsg.insert(count, r_msg, &mut self.sender, ctx);
+                                }
+                            }
+                        },
                         Command::Seen => {
+                            let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                             self.sender.incoming(r_ip, &self.name);
                             self.outbox.remove(r_ip, txt_msg.id());
                             self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
