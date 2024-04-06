@@ -204,7 +204,7 @@ impl UdpMessage {
             ),
             3 => (
                 Part::Shard(u64::from_be_bytes(bytes.get(7..=15)?.try_into().ok()?)),
-                bytes[15..].to_owned(),
+                bytes[16..].to_owned(),
             ),
             _ => (Part::Single, bytes[7..].to_owned()),
         };

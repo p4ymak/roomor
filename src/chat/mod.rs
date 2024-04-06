@@ -91,6 +91,7 @@ pub struct InMessage {
 }
 impl InMessage {
     pub fn new(ip: Ipv4Addr, msg: UdpMessage) -> Option<Self> {
+        debug!("New Multipart");
         if let Part::Init(init) = msg.part {
             Some(InMessage {
                 ts: SystemTime::now(),
@@ -113,6 +114,7 @@ impl InMessage {
         sender: &mut NetWorker,
         ctx: &impl Repaintable,
     ) {
+        debug!("Got shard, {remains} remains.");
         let pos = self.count - remains - 1;
         if let Some(block) = self.shards.get_mut(pos as usize) {
             if block.is_none() {
@@ -124,6 +126,7 @@ impl InMessage {
         }
     }
     pub fn combine(&mut self, sender: &mut NetWorker, ctx: &impl Repaintable) {
+        debug!("Combining");
         let missed = self
             .shards
             .iter()
@@ -420,10 +423,12 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
+                        debug!("got from {ip}");
                         if let Some(message) =
                             UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
                             if ip != local_ip {
+                                debug!("msg from {ip}");
                                 receiver.send(ChatEvent::Incoming((ip, message))).ok();
                             } else if message.command == Command::Exit {
                                 break;
@@ -501,6 +506,7 @@ impl UdpChat {
                                 self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                             }
                             message::Part::Init(_) => {
+                                debug!("incomint PartInit");
                                 let r_id = r_msg.id;
                                 if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
                                     self.inbox.0.insert(r_id, inmsg);

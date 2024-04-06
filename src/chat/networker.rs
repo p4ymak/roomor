@@ -2,7 +2,7 @@ use super::{
     message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Content, Recepients,
 };
 use flume::Sender;
-use log::debug;
+use log::{debug, error};
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
@@ -49,15 +49,16 @@ impl NetWorker {
     pub fn send(&mut self, message: UdpMessage, addrs: Recepients) {
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
-            match addrs {
-                Recepients::All => socket
-                    .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, self.port))
-                    .is_ok(),
-                Recepients::One(ip) => socket
-                    .send_to(&bytes, SocketAddrV4::new(ip, self.port))
-                    .is_ok(),
+            let result = match addrs {
+                Recepients::All => {
+                    socket.send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, self.port))
+                }
+                Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, self.port)),
             };
-            debug!("Sent '{:?}' to {addrs:?}", message.command);
+            match result {
+                Ok(num) => debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
+                Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
+            };
         }
     }
 
