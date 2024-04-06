@@ -12,7 +12,7 @@ use std::{
 
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
-pub const IP_MULTICAST: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
+pub const IP_MULTICAST_DEFAULT: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
 pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 // pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
@@ -36,11 +36,11 @@ impl NetWorker {
             front_tx,
         }
     }
-    pub fn connect(&mut self) -> Result<(), Box<dyn Error + 'static>> {
+    pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.port))?;
         socket.set_broadcast(true)?;
         socket.set_multicast_loop_v4(true)?;
-        socket.join_multicast_v4(&IP_MULTICAST, &IP_UNSPECIFIED)?;
+        socket.join_multicast_v4(&multicast, &IP_UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
         self.socket = Some(Arc::new(socket));
         Ok(())
@@ -51,7 +51,7 @@ impl NetWorker {
         if let Some(socket) = &self.socket {
             match addrs {
                 Recepients::All => socket
-                    .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST, self.port))
+                    .send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, self.port))
                     .is_ok(),
                 Recepients::One(ip) => socket
                     .send_to(&bytes, SocketAddrV4::new(ip, self.port))

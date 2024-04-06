@@ -307,7 +307,7 @@ impl UdpChat {
         self.name = user.name().to_string();
         self.sender.port = user.port();
         self.sender.name = user.name().to_string();
-        self.sender.connect()?;
+        self.sender.connect(user.multicast())?;
         self.listen();
         Ok(())
     }

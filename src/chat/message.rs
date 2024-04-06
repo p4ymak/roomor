@@ -114,9 +114,6 @@ impl UdpMessage {
     pub fn exit() -> Self {
         UdpMessage::new_single(Command::Exit, vec![], true)
     }
-    pub fn ask_name() -> Self {
-        UdpMessage::new_single(Command::AskToRepeat, 0_u32.to_be_bytes().to_vec(), true)
-    }
     pub fn seen(msg: &TextMessage) -> Self {
         UdpMessage {
             id: msg.id,

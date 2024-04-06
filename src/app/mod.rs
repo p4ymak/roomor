@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
@@ -18,6 +18,7 @@ use rodio::{OutputStream, OutputStreamHandle};
 use std::{
     net::Ipv4Addr,
     path::Path,
+    str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
     time::SystemTime,
@@ -33,6 +34,8 @@ pub struct UserSetup {
     name: String,
     ip: Ipv4Addr,
     port: u16,
+    multicast: Ipv4Addr,
+    multicast_str: String,
     pub error_message: Option<String>,
 }
 impl Default for UserSetup {
@@ -49,6 +52,8 @@ impl Default for UserSetup {
             name: whoami::username(),
             ip,
             port: 4444,
+            multicast: IP_MULTICAST_DEFAULT,
+            multicast_str: format!("{}", IP_MULTICAST_DEFAULT),
             error_message,
         }
     }
@@ -63,25 +68,38 @@ impl UserSetup {
     pub fn port(&self) -> u16 {
         self.port
     }
+    pub fn multicast(&self) -> Ipv4Addr {
+        self.multicast
+    }
+    fn parse_multicast(&mut self) {
+        if let Ok(ip) = Ipv4Addr::from_str(&self.multicast_str) {
+            if ip.is_multicast() {
+                self.multicast = ip;
+            } else {
+                self.multicast_str = self.multicast.to_string();
+                self.error_message = Some("Non-multicast IP. Set Previous.".to_string());
+            }
+        } else {
+            self.multicast_str = self.multicast.to_string();
+            self.error_message = Some("Cant't parse IP. Set Previous.".to_string());
+        }
+    }
     pub fn draw_setup(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
-            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                font_id.size *= FONT_SCALE;
-            }
             ui.heading("Name");
             limit_text(&mut self.name, MAX_NAME_SIZE);
-            let name =
-                ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
-            if self.name.is_empty() || self.init {
-                name.request_focus();
-                self.init = false;
-            }
+            ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
             ui.heading("IPv4");
             drag_ip(ui, &self.ip);
             ui.heading("Port");
             ui.add(egui::DragValue::new(&mut self.port));
-            // ui.heading("Mask");
-            // drag_mask(ui, &mut self.mask);
+            ui.heading("Multicast IPv4");
+            let multicast = ui.add(
+                egui::TextEdit::singleline(&mut self.multicast_str).horizontal_align(Align::Center),
+            );
+            if multicast.lost_focus() {
+                self.parse_multicast();
+            }
         });
         if let Some(err) = &self.error_message {
             ui.heading(err);
@@ -227,7 +245,23 @@ impl Roomor {
                         TextMessage::logo().draw(ui, None, &self.rooms.peers);
                     });
                     ui.label("");
-                    self.user.draw_setup(ui);
+                    ui.vertical_centered_justified(|ui| {
+                        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                            font_id.size *= FONT_SCALE;
+                        }
+                        self.user.draw_setup(ui);
+                        let join_button = ui.add_enabled(
+                            !self.user.name().trim().is_empty(),
+                            egui::Button::new("Join"),
+                        );
+                        if self.user.init {
+                            join_button.request_focus();
+                            self.user.init = false;
+                        }
+                        if join_button.clicked() {
+                            self.init_chat(ctx);
+                        }
+                    });
                     ui.label("");
                     ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
                     ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
@@ -420,11 +454,7 @@ impl Roomor {
                     modifiers: Modifiers::NONE,
                     ..
                 } => {
-                    if self.chat_init.is_some() {
-                        if !self.user.name().trim().is_empty() {
-                            self.init_chat(ctx);
-                        }
-                    } else {
+                    if self.chat_init.is_none() {
                         self.dispatch_text();
                     }
                 }
