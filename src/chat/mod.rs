@@ -8,7 +8,7 @@ use crate::app::UserSetup;
 
 use self::{
     file::{FileData, FileEnding, FileLink},
-    message::{new_id, CheckSum, Part, RemainsCount},
+    message::{new_id, CheckSum, Part, RemainsCount, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
@@ -158,7 +158,7 @@ impl InMessage {
                         sender.handle_event(BackEvent::Message(txt_msg), ctx);
                     }
                 }
-                // Command::File => todo!(),
+                Command::File => todo!(),
                 _ => (),
             }
         }
@@ -312,7 +312,7 @@ impl TextMessage {
     pub fn out_message(content: Content, recipients: Recepients) -> Self {
         let (public, ip) = match recipients {
             Recepients::One(ip) => (false, ip),
-            _ => (true, Ipv4Addr::BROADCAST),
+            _ => (true, Ipv4Addr::BROADCAST), //FIXME ??
         };
 
         TextMessage {
@@ -367,10 +367,23 @@ impl TextMessage {
     pub fn content(&self) -> &Content {
         &self.content
     }
-    pub fn get_text(&self) -> &str {
+    pub fn get_text(&self) -> String {
         match &self.content {
-            Content::Text(text) | Content::Icon(text) => text, //FIXME shorten long text
-            _ => "",
+            Content::Text(text) => {
+                if text.chars().count() <= MAX_PREVIEW_CHARS {
+                    text.to_owned()
+                } else {
+                    let mut preview = text
+                        .as_str()
+                        .chars()
+                        .take(MAX_PREVIEW_CHARS)
+                        .collect::<String>();
+                    preview.push_str("..");
+                    preview
+                }
+            }
+            Content::Icon(icon) => icon.to_owned(),
+            _ => String::new(),
         }
     }
     pub fn time(&self) -> SystemTime {
@@ -423,12 +436,10 @@ impl UdpChat {
                         socket.recv_from(&mut buf)
                     {
                         let ip = *src_addr_v4.ip();
-                        debug!("got from {ip}");
                         if let Some(message) =
                             UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                         {
                             if ip != local_ip {
-                                debug!("msg from {ip}");
                                 receiver.send(ChatEvent::Incoming((ip, message))).ok();
                             } else if message.command == Command::Exit {
                                 break;
