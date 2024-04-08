@@ -437,6 +437,8 @@ impl UdpChat {
             .download_dir()
             .unwrap()
             .join("Roomor");
+        fs::create_dir_all(&downloads_path).ok(); // FIXME
+
         UdpChat {
             sender,
             name: String::new(),
