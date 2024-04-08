@@ -1,6 +1,7 @@
 use super::{networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
+use log::debug;
 use std::{
     error::Error,
     fmt, fs,
@@ -159,6 +160,7 @@ impl UdpMessage {
         if let Content::FileLink(link) = &msg.content {
             let file = fs::File::open(&link.path)?;
             let count = link.size / DATA_LIMIT_BYTES as u64;
+            debug!("Count {count}");
             let checksum = 0;
             let total_checksum = 0;
             let mut chunk = vec![];
@@ -178,7 +180,7 @@ impl UdpMessage {
             )?;
             let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
-            for remains in (count - 1)..=0 {
+            for remains in (0..count).rev() {
                 reader.read_exact(&mut chunk)?;
                 sender.send(
                     UdpMessage {
