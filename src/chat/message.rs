@@ -140,7 +140,13 @@ impl UdpMessage {
             Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!(" {icon}"))),
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
-            Content::FileLink(link) => (Command::Text, be_u8_from_str(&link.to_text())),
+            Content::FileLink(link) => (Command::File, {
+                let file = fs::read(&link.path);
+                match file {
+                    Ok(bytes) => bytes,
+                    Err(_) => return vec![],
+                }
+            }),
             Content::FileData(path) => (Command::File, {
                 let file = fs::read(path);
                 match file {

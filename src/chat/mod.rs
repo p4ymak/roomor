@@ -550,7 +550,7 @@ impl UdpChat {
                         Command::Exit => {
                             self.sender.handle_event(BackEvent::PeerLeft(r_ip), ctx);
                         }
-                        Command::Text | Command::Repeat => match r_msg.part {
+                        Command::Text | Command::File | Command::Repeat => match r_msg.part {
                             message::Part::Single => {
                                 let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                                 self.sender.incoming(r_ip, &self.name); // FIXME
@@ -613,8 +613,7 @@ impl UdpChat {
                                 message.command = Command::Repeat;
                                 self.sender.send(message, Recepients::One(r_ip));
                             }
-                        }
-                        Command::File => todo!(),
+                        } // Command::File => todo!(),
                     }
                 }
             }
