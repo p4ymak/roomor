@@ -158,10 +158,9 @@ impl UdpMessage {
         };
 
         if let Content::FileLink(link) = &msg.content {
-            let file = fs::File::open(&link.path)?;
+            let mut file = fs::File::open(&link.path)?;
             let count = link.size / DATA_LIMIT_BYTES as u64;
             debug!("Count {count}");
-            let checksum = 0;
             let total_checksum = 0;
             let mut chunk = vec![];
             sender.send(
@@ -172,20 +171,20 @@ impl UdpMessage {
                         count,
                     }),
                     public: msg.public,
-                    checksum,
+                    checksum: CRC.checksum(&data),
                     command,
                     data,
                 },
                 recepients,
             )?;
-            let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
+            // let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
-            for remains in (0..count).rev() {
-                reader.read_exact(&mut chunk)?;
+            for i in 0..count {
+                file.read_exact_at(&mut chunk, i * DATA_LIMIT_BYTES as u64)?;
                 sender.send(
                     UdpMessage {
                         id: msg.id,
-                        part: Part::Shard(remains),
+                        part: Part::Shard(count - i),
                         checksum: CRC.checksum(&chunk),
                         public: msg.public,
                         command,
