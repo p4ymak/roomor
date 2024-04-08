@@ -162,7 +162,7 @@ impl UdpMessage {
             let count = link.size / DATA_LIMIT_BYTES as u64;
             debug!("Count {count}");
             let total_checksum = 0;
-            let mut chunk = vec![];
+            let mut chunk = Vec::<u8>::with_capacity(DATA_LIMIT_BYTES);
             sender.send(
                 UdpMessage {
                     id: msg.id,
