@@ -77,7 +77,7 @@ pub enum ChatEvent {
 }
 
 #[derive(Default)]
-struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
+pub struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
 #[derive(Default)]
 struct Inbox(BTreeMap<Id, InMessage>);
 
@@ -171,7 +171,10 @@ impl InMessage {
                             content: Content::Text(text),
                             seen: Some(Seen::One),
                         };
-                        sender.send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
+                        sender
+                            .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                         sender.handle_event(BackEvent::Message(txt_msg), ctx);
                     }
                 }
@@ -192,7 +195,9 @@ impl InMessage {
                                     seen: Some(Seen::One),
                                 };
                                 sender
-                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
+                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                                 sender.handle_event(BackEvent::Message(txt_msg), ctx);
                             }
                         }
@@ -471,7 +476,9 @@ impl UdpChat {
 
     pub fn run(&mut self, ctx: &impl Repaintable) {
         self.sender
-            .send(UdpMessage::enter(&self.name), Recepients::All);
+            .send(UdpMessage::enter(&self.name), Recepients::All)
+            .inspect_err(|e| error!("{e}"))
+            .ok();
         self.receive(ctx);
     }
 
@@ -508,19 +515,27 @@ impl UdpChat {
                 ChatEvent::Front(front) => match front {
                     FrontEvent::Message(msg) => {
                         debug!("Sending: {}", msg.get_text());
-                        let messages =
-                            UdpMessage::send_message(&msg, &mut self.sender, &mut self.outbox);
+
+                        UdpMessage::send_message(&msg, &mut self.sender, &mut self.outbox)
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
 
                         self.sender.front_tx.send(BackEvent::Message(msg)).ok();
                         ctx.request_repaint();
                     }
                     FrontEvent::Ping(recepients) => {
                         debug!("Ping {recepients:?}");
-                        self.sender.send(UdpMessage::enter(&self.name), recepients);
+                        self.sender
+                            .send(UdpMessage::enter(&self.name), recepients)
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
                     FrontEvent::Exit => {
                         debug!("I'm Exit");
-                        self.sender.send(UdpMessage::exit(), Recepients::All);
+                        self.sender
+                            .send(UdpMessage::exit(), Recepients::All)
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                         // self.sender.send(UdpMessage::exit(), Recepients::Myself);
                         break;
                     }
@@ -543,10 +558,15 @@ impl UdpChat {
                             );
                             if r_msg.command == Command::Enter {
                                 self.sender
-                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
+                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                             }
                             for undelivered in self.outbox.undelivered(r_ip) {
-                                self.sender.send(undelivered.clone(), Recepients::One(r_ip));
+                                self.sender
+                                    .send(undelivered.clone(), Recepients::One(r_ip))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                             }
                         }
 
@@ -558,7 +578,9 @@ impl UdpChat {
                                 let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                                 self.sender.incoming(r_ip, &self.name); // FIXME
                                 self.sender
-                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip));
+                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                                 self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
                             }
                             message::Part::Init(_) => {
@@ -588,14 +610,17 @@ impl UdpChat {
                         }
                         Command::Error => {
                             self.sender.incoming(r_ip, &self.name);
-                            self.sender.send(
-                                UdpMessage::new_single(
-                                    Command::AskToRepeat,
-                                    r_msg.id.to_be_bytes().to_vec(),
-                                    r_msg.public,
-                                ),
-                                Recepients::One(r_ip),
-                            );
+                            self.sender
+                                .send(
+                                    UdpMessage::new_single(
+                                        Command::AskToRepeat,
+                                        r_msg.id.to_be_bytes().to_vec(),
+                                        r_msg.public,
+                                    ),
+                                    Recepients::One(r_ip),
+                                )
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
                         }
 
                         Command::AskToRepeat => {
@@ -610,11 +635,16 @@ impl UdpChat {
                             // Resend my Name
                             if id == 0 {
                                 self.sender
-                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip));
+                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                             } else if let Some(message) = self.outbox.get(r_ip, id) {
                                 let mut message = message.clone();
                                 message.command = Command::Repeat;
-                                self.sender.send(message, Recepients::One(r_ip));
+                                self.sender
+                                    .send(message, Recepients::One(r_ip))
+                                    .inspect_err(|e| error!("{e}"))
+                                    .ok();
                             }
                         } // Command::File => todo!(),
                     }

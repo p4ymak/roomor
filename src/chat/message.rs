@@ -4,7 +4,7 @@ use enumn::N;
 use std::{
     error::Error,
     fmt, fs,
-    io::{self, BufReader, Read},
+    io::{self, BufReader, Read, Seek},
     os::unix::fs::FileExt,
     time::SystemTime,
 };
@@ -158,10 +158,10 @@ impl UdpMessage {
 
         if let Content::FileLink(link) = &msg.content {
             let file = fs::File::open(&link.path)?;
-            let mut count = link.size / DATA_LIMIT_BYTES as u64;
+            let count = link.size / DATA_LIMIT_BYTES as u64;
             let checksum = 0;
             let total_checksum = 0;
-            let mut chunk = vec![0; DATA_LIMIT_BYTES];
+            let mut chunk = vec![];
             sender.send(
                 UdpMessage {
                     id: msg.id,
@@ -175,7 +175,7 @@ impl UdpMessage {
                     data,
                 },
                 recepients,
-            );
+            )?;
             let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
             for remains in (count - 1)..=0 {
