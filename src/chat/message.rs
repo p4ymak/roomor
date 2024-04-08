@@ -170,18 +170,15 @@ impl UdpMessage {
                 },
                 recepients,
             )?;
-            // let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
             for i in 1..=count {
-                let mut chunk = vec![0; DATA_LIMIT_BYTES];
-
-                file.read_exact(&mut chunk)?;
-                let data = std::mem::take(&mut chunk);
+                let mut data = vec![0; DATA_LIMIT_BYTES];
+                file.read_exact(&mut data)?;
                 sender.send(
                     UdpMessage {
                         id: msg.id,
                         part: Part::Shard(count - i),
-                        checksum: CRC.checksum(&chunk),
+                        checksum: CRC.checksum(&data),
                         public: msg.public,
                         command,
                         data,

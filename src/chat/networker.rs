@@ -71,7 +71,9 @@ impl NetWorker {
                 let new_comer = self.peers.peer_joined(ip, user_name.clone());
                 self.front_tx.send(event).ok();
                 if new_comer {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(ip));
+                    self.send(UdpMessage::greating(&self.name), Recepients::One(ip))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
                     // let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
                     // ctx.notify(&notification_text);
                     // } else {
@@ -107,12 +109,16 @@ impl NetWorker {
             None => {
                 let noname: Option<&str> = None;
                 self.peers.peer_joined(ip, noname);
-                self.send(UdpMessage::enter(my_name), Recepients::One(ip));
+                self.send(UdpMessage::enter(my_name), Recepients::One(ip))
+                    .inspect_err(|e| error!("{e}"))
+                    .ok();
             }
             Some(peer) => {
                 peer.set_last_time(SystemTime::now());
                 if !peer.has_name() {
-                    self.send(UdpMessage::enter(my_name), Recepients::One(ip));
+                    self.send(UdpMessage::enter(my_name), Recepients::One(ip))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
                 }
             }
         };
