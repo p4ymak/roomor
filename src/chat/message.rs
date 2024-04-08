@@ -180,7 +180,7 @@ impl UdpMessage {
             // let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
             for i in 1..=count {
-                file.read_exact_at(&mut chunk, i * DATA_LIMIT_BYTES as u64)?;
+                file.read_at(&mut chunk, i * DATA_LIMIT_BYTES as u64)?;
                 sender.send(
                     UdpMessage {
                         id: msg.id,
