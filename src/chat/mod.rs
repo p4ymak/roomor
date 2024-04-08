@@ -13,7 +13,7 @@ use self::{
 use crate::app::UserSetup;
 use directories::UserDirs;
 use flume::{Receiver, Sender};
-use log::debug;
+use log::{debug, error};
 use message::{Command, Id, UdpMessage};
 use std::{
     collections::BTreeMap,
@@ -94,7 +94,7 @@ pub struct InMessage {
 }
 impl InMessage {
     pub fn new(ip: Ipv4Addr, msg: UdpMessage) -> Option<Self> {
-        debug!("New Multipart");
+        debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
             let file_name = if let Command::File = msg.command {
                 String::from_utf8(msg.data).unwrap_or(format!("{:?}", SystemTime::now()))
@@ -177,25 +177,32 @@ impl InMessage {
                 }
                 Command::File => {
                     let path = downloads_path.join(&self.file_name);
-                    if fs::write(&path, data).is_ok() {
-                        if let Some(link) = FileLink::new(&path) {
-                            let txt_msg = TextMessage {
-                                timestamp: self.ts,
-                                incoming: true,
-                                public: self.public,
-                                ip: self.sender,
-                                id: self.id,
-                                content: Content::FileLink(link),
-                                seen: Some(Seen::One),
-                            };
-                            sender.send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
-                            sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                    debug!("Writing new file to {path:?}");
+                    match fs::write(&path, data) {
+                        Ok(_) => {
+                            if let Some(link) = FileLink::new(&path) {
+                                debug!("Creating link");
+                                let txt_msg = TextMessage {
+                                    timestamp: self.ts,
+                                    incoming: true,
+                                    public: self.public,
+                                    ip: self.sender,
+                                    id: self.id,
+                                    content: Content::FileLink(link),
+                                    seen: Some(Seen::One),
+                                };
+                                sender
+                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
+                                sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                            }
                         }
+                        Err(err) => error!("{err}"),
                     }
                 }
                 _ => (),
             }
         } else {
+            error!("Shards missing!");
             self.shards.clear(); // FIXME
         }
     }

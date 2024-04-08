@@ -161,22 +161,18 @@ impl UdpMessage {
         let total_checksum = CRC.checksum(&data);
         let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
         let chunks = data.chunks(DATA_LIMIT_BYTES);
-        if let Content::FileData(path) = &msg.content {
-            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                msgs.push(UdpMessage {
-                    id: msg.id,
-                    part: Part::Init(PartInit {
-                        total_checksum,
-                        count,
-                    }),
-                    public: msg.public,
-                    checksum,
-                    command,
-                    data: be_u8_from_str(file_name),
-                });
-            } else {
-                return vec![]; // FIXME
-            }
+        if let Content::FileLink(link) = &msg.content {
+            msgs.push(UdpMessage {
+                id: msg.id,
+                part: Part::Init(PartInit {
+                    total_checksum,
+                    count,
+                }),
+                public: msg.public,
+                checksum,
+                command,
+                data: be_u8_from_str(&link.name),
+            });
         } else if data.len() < DATA_LIMIT_BYTES {
             msgs.push(UdpMessage {
                 id: msg.id,
