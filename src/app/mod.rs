@@ -510,7 +510,7 @@ impl Roomor {
     fn exit(&mut self) {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
         if let Some(handle) = self.chat_handle.take() {
-            handle.join().unwrap();
+            handle.join().expect("can't join chat thread on exit");
         }
         let (front_tx, back_rx) = flume::unbounded();
         let chat = UdpChat::new(self.user.ip(), front_tx);

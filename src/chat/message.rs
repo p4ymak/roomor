@@ -1,7 +1,7 @@
 use super::{Content, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use std::{fmt, time::SystemTime};
+use std::{fmt, fs, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -133,6 +133,7 @@ impl UdpMessage {
         }
     }
     pub fn from_message(msg: &TextMessage) -> Vec<Self> {
+        let mut msgs = vec![];
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
             Content::Text(text) => (Command::Text, be_u8_from_str(text)),
@@ -140,7 +141,13 @@ impl UdpMessage {
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
             Content::FileLink(link) => (Command::Text, be_u8_from_str(&link.to_text())),
-            Content::FileData(_) => todo!(),
+            Content::FileData(path) => (Command::File, {
+                let file = fs::read(path);
+                match file {
+                    Ok(bytes) => bytes,
+                    Err(_) => return vec![],
+                }
+            }),
             Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
@@ -148,27 +155,45 @@ impl UdpMessage {
         let total_checksum = CRC.checksum(&data);
         let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
         let chunks = data.chunks(DATA_LIMIT_BYTES);
-        if data.len() < DATA_LIMIT_BYTES {
-            return vec![UdpMessage {
+        if let Content::FileData(path) = &msg.content {
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                msgs.push(UdpMessage {
+                    id: msg.id,
+                    part: Part::Init(PartInit {
+                        total_checksum,
+                        count,
+                    }),
+                    public: msg.public,
+                    checksum,
+                    command,
+                    data: be_u8_from_str(file_name),
+                });
+            } else {
+                return vec![]; // FIXME
+            }
+        } else if data.len() < DATA_LIMIT_BYTES {
+            msgs.push(UdpMessage {
                 id: msg.id,
                 part: Part::Single,
                 public: msg.public,
                 checksum,
                 command,
                 data,
-            }];
+            });
+            return msgs;
+        } else {
+            msgs.push(UdpMessage {
+                id: msg.id,
+                part: Part::Init(PartInit {
+                    total_checksum,
+                    count,
+                }),
+                public: msg.public,
+                checksum,
+                command,
+                data: vec![],
+            });
         }
-        let mut msgs = vec![UdpMessage {
-            id: msg.id,
-            part: Part::Init(PartInit {
-                total_checksum,
-                count,
-            }),
-            public: msg.public,
-            checksum,
-            command,
-            data: vec![],
-        }];
         msgs.extend(chunks.into_iter().map(|chunk| {
             count -= 1;
             UdpMessage {

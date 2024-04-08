@@ -4,21 +4,23 @@ pub mod networker;
 pub mod notifier;
 pub mod peers;
 
-use crate::app::UserSetup;
-
 use self::{
-    file::{FileData, FileEnding, FileLink},
+    file::{FileEnding, FileLink},
     message::{new_id, CheckSum, Part, RemainsCount, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
+use crate::app::UserSetup;
+use directories::UserDirs;
 use flume::{Receiver, Sender};
 use log::debug;
 use message::{Command, Id, UdpMessage};
 use std::{
     collections::BTreeMap,
     error::Error,
+    fs,
     net::{Ipv4Addr, SocketAddr},
+    path::{Path, PathBuf},
     sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -48,7 +50,7 @@ pub enum Content {
     Text(String),
     Icon(String),
     FileLink(FileLink),
-    FileData(FileData),
+    FileData(PathBuf),
     FileEnding(FileEnding),
     Exit,
     Seen,
@@ -85,7 +87,8 @@ pub struct InMessage {
     sender: Ipv4Addr,
     public: bool,
     command: Command,
-    total_checksum: CheckSum,
+    _total_checksum: CheckSum,
+    file_name: String,
     count: RemainsCount,
     shards: Vec<Option<Shard>>,
 }
@@ -93,13 +96,21 @@ impl InMessage {
     pub fn new(ip: Ipv4Addr, msg: UdpMessage) -> Option<Self> {
         debug!("New Multipart");
         if let Part::Init(init) = msg.part {
+            let file_name = if let Command::File = msg.command {
+                String::from_utf8(msg.data).unwrap_or(format!("{:?}", SystemTime::now()))
+            //FIXME
+            } else {
+                String::new()
+            };
+
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
                 sender: ip,
                 public: msg.public,
                 command: msg.command,
-                total_checksum: init.checksum(),
+                file_name,
+                _total_checksum: init.checksum(),
                 count: init.count(),
                 shards: vec![None; init.count() as usize],
             })
@@ -113,6 +124,7 @@ impl InMessage {
         msg: UdpMessage,
         sender: &mut NetWorker,
         ctx: &impl Repaintable,
+        downloads_path: &Path,
     ) {
         debug!("Got shard, {remains} remains.");
         let pos = self.count - remains - 1;
@@ -122,10 +134,15 @@ impl InMessage {
             }
         }
         if remains == 0 {
-            self.combine(sender, ctx);
+            self.combine(sender, downloads_path, ctx);
         }
     }
-    pub fn combine(&mut self, sender: &mut NetWorker, ctx: &impl Repaintable) {
+    pub fn combine(
+        &mut self,
+        sender: &mut NetWorker,
+        downloads_path: &Path,
+        ctx: &impl Repaintable,
+    ) {
         debug!("Combining");
         let missed = self
             .shards
@@ -158,9 +175,28 @@ impl InMessage {
                         sender.handle_event(BackEvent::Message(txt_msg), ctx);
                     }
                 }
-                Command::File => todo!(),
+                Command::File => {
+                    let path = downloads_path.join(&self.file_name);
+                    if fs::write(&path, data).is_ok() {
+                        if let Some(link) = FileLink::new(&path) {
+                            let txt_msg = TextMessage {
+                                timestamp: self.ts,
+                                incoming: true,
+                                public: self.public,
+                                ip: self.sender,
+                                id: self.id,
+                                content: Content::FileLink(link),
+                                seen: Some(Seen::One),
+                            };
+                            sender.send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender));
+                            sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                        }
+                    }
+                }
                 _ => (),
             }
+        } else {
+            self.shards.clear(); // FIXME
         }
     }
 }
@@ -225,6 +261,7 @@ pub struct UdpChat {
     sender: NetWorker,
     outbox: Outbox,
     inbox: Inbox,
+    downloads_path: PathBuf,
     thread_handle: Option<JoinHandle<()>>,
 }
 impl Drop for UdpChat {
@@ -395,7 +432,11 @@ impl UdpChat {
     pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         let sender = NetWorker::new(ip, front_tx);
-
+        let downloads_path = UserDirs::new()
+            .unwrap()
+            .download_dir()
+            .unwrap()
+            .join("Roomor");
         UdpChat {
             sender,
             name: String::new(),
@@ -404,6 +445,7 @@ impl UdpChat {
             outbox: Outbox::default(),
             inbox: Inbox::default(),
             thread_handle: None,
+            downloads_path,
         }
     }
     pub fn tx(&self) -> Sender<ChatEvent> {
@@ -525,7 +567,13 @@ impl UdpChat {
                             }
                             message::Part::Shard(count) => {
                                 if let Some(inmsg) = self.inbox.0.get_mut(&r_msg.id) {
-                                    inmsg.insert(count, r_msg, &mut self.sender, ctx);
+                                    inmsg.insert(
+                                        count,
+                                        r_msg,
+                                        &mut self.sender,
+                                        ctx,
+                                        &self.downloads_path,
+                                    );
                                 }
                             }
                         },
