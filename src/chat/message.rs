@@ -2,13 +2,7 @@ use super::{networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
-use std::{
-    error::Error,
-    fmt, fs,
-    io::{self, BufReader, Read, Seek},
-    os::unix::fs::FileExt,
-    time::SystemTime,
-};
+use std::{error::Error, fmt, fs, io::Read, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -162,7 +156,6 @@ impl UdpMessage {
             let count = link.size / DATA_LIMIT_BYTES as u64;
             debug!("Count {count}");
             let total_checksum = 0;
-            let mut chunk = Vec::<u8>::with_capacity(DATA_LIMIT_BYTES);
             sender.send(
                 UdpMessage {
                     id: msg.id,
@@ -180,7 +173,10 @@ impl UdpMessage {
             // let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
 
             for i in 1..=count {
+                let mut chunk = vec![0; DATA_LIMIT_BYTES];
+
                 file.read_exact(&mut chunk)?;
+                let data = std::mem::take(&mut chunk);
                 sender.send(
                     UdpMessage {
                         id: msg.id,
@@ -188,7 +184,7 @@ impl UdpMessage {
                         checksum: CRC.checksum(&chunk),
                         public: msg.public,
                         command,
-                        data: std::mem::take(&mut chunk),
+                        data,
                     },
                     recepients,
                 )?;
@@ -212,7 +208,7 @@ impl UdpMessage {
                 if message.command == Command::Text && !msg.is_public() {
                     outbox.add(msg.ip(), message.clone());
                 }
-                sender.send(message.clone(), recepients);
+                sender.send(message.clone(), recepients)?;
                 Ok(())
             } else {
                 let message = UdpMessage {
@@ -229,7 +225,7 @@ impl UdpMessage {
                 if message.command == Command::Text && !msg.is_public() {
                     outbox.add(msg.ip(), message.clone());
                 }
-                sender.send(message, recepients);
+                sender.send(message, recepients)?;
 
                 for chunk in chunks {
                     count -= 1;
@@ -243,7 +239,7 @@ impl UdpMessage {
                             data: chunk.to_vec(),
                         },
                         recepients,
-                    );
+                    )?;
                 }
                 Ok(())
             }
