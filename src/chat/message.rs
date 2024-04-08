@@ -1,7 +1,13 @@
-use super::{Content, TextMessage};
+use super::{networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use std::{fmt, fs, time::SystemTime};
+use std::{
+    error::Error,
+    fmt, fs,
+    io::{self, BufReader, Read},
+    os::unix::fs::FileExt,
+    time::SystemTime,
+};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -132,82 +138,115 @@ impl UdpMessage {
             data: vec![],
         }
     }
-    pub fn from_message(msg: &TextMessage) -> Vec<Self> {
-        let mut msgs = vec![];
+    pub fn send_message(
+        msg: &TextMessage,
+        sender: &mut NetWorker,
+        outbox: &mut Outbox,
+    ) -> Result<(), Box<dyn Error + 'static>> {
+        let recepients = Recepients::from_ip(msg.ip(), msg.public);
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
             Content::Text(text) => (Command::Text, be_u8_from_str(text)),
             Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!(" {icon}"))),
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
-            Content::FileLink(link) => (Command::File, {
-                let file = fs::read(&link.path);
-                match file {
-                    Ok(bytes) => bytes,
-                    Err(_) => return vec![],
-                }
-            }),
-            Content::FileData(path) => (Command::File, {
-                let file = fs::read(path);
-                match file {
-                    Ok(bytes) => bytes,
-                    Err(_) => return vec![],
-                }
-            }),
+            Content::FileLink(link) => (Command::File, be_u8_from_str(&link.name)),
+            Content::FileData(_) => todo!(),
             Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
-        let checksum = 0; // FIXME
-        let total_checksum = CRC.checksum(&data);
-        let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
-        let chunks = data.chunks(DATA_LIMIT_BYTES);
+
         if let Content::FileLink(link) = &msg.content {
-            msgs.push(UdpMessage {
-                id: msg.id,
-                part: Part::Init(PartInit {
-                    total_checksum,
-                    count,
-                }),
-                public: msg.public,
-                checksum,
-                command,
-                data: be_u8_from_str(&link.name),
-            });
-        } else if data.len() < DATA_LIMIT_BYTES {
-            msgs.push(UdpMessage {
-                id: msg.id,
-                part: Part::Single,
-                public: msg.public,
-                checksum,
-                command,
-                data,
-            });
-            return msgs;
-        } else {
-            msgs.push(UdpMessage {
-                id: msg.id,
-                part: Part::Init(PartInit {
-                    total_checksum,
-                    count,
-                }),
-                public: msg.public,
-                checksum,
-                command,
-                data: vec![],
-            });
-        }
-        msgs.extend(chunks.into_iter().map(|chunk| {
-            count -= 1;
-            UdpMessage {
-                id: msg.id,
-                part: Part::Shard(count),
-                checksum: CRC.checksum(chunk),
-                public: msg.public,
-                command,
-                data: chunk.to_vec(),
+            let file = fs::File::open(&link.path)?;
+            let mut count = link.size / DATA_LIMIT_BYTES as u64;
+            let checksum = 0;
+            let total_checksum = 0;
+            let mut chunk = vec![0; DATA_LIMIT_BYTES];
+            sender.send(
+                UdpMessage {
+                    id: msg.id,
+                    part: Part::Init(PartInit {
+                        total_checksum,
+                        count,
+                    }),
+                    public: msg.public,
+                    checksum,
+                    command,
+                    data,
+                },
+                recepients,
+            );
+            let mut reader = BufReader::with_capacity(DATA_LIMIT_BYTES, file);
+
+            for remains in (count - 1)..=0 {
+                reader.read_exact(&mut chunk)?;
+                sender.send(
+                    UdpMessage {
+                        id: msg.id,
+                        part: Part::Shard(remains),
+                        checksum: CRC.checksum(&chunk),
+                        public: msg.public,
+                        command,
+                        data: std::mem::take(&mut chunk),
+                    },
+                    recepients,
+                )?;
             }
-        }));
-        msgs
+
+            Ok(())
+        } else {
+            let checksum = 0; // FIXME
+            let total_checksum = CRC.checksum(&data);
+            let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
+            let chunks = data.chunks(DATA_LIMIT_BYTES);
+            if data.len() < DATA_LIMIT_BYTES {
+                let message = UdpMessage {
+                    id: msg.id,
+                    part: Part::Single,
+                    public: msg.public,
+                    checksum,
+                    command,
+                    data,
+                };
+                if message.command == Command::Text && !msg.is_public() {
+                    outbox.add(msg.ip(), message.clone());
+                }
+                sender.send(message.clone(), recepients);
+                Ok(())
+            } else {
+                let message = UdpMessage {
+                    id: msg.id,
+                    part: Part::Init(PartInit {
+                        total_checksum,
+                        count,
+                    }),
+                    public: msg.public,
+                    checksum,
+                    command,
+                    data: vec![],
+                };
+                if message.command == Command::Text && !msg.is_public() {
+                    outbox.add(msg.ip(), message.clone());
+                }
+                sender.send(message, recepients);
+
+                for chunk in chunks {
+                    count -= 1;
+                    sender.send(
+                        UdpMessage {
+                            id: msg.id,
+                            part: Part::Shard(count),
+                            checksum: CRC.checksum(chunk),
+                            public: msg.public,
+                            command,
+                            data: chunk.to_vec(),
+                        },
+                        recepients,
+                    );
+                }
+                Ok(())
+            }
+        }
     }
 
     pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {

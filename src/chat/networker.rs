@@ -46,7 +46,7 @@ impl NetWorker {
         Ok(())
     }
 
-    pub fn send(&mut self, message: UdpMessage, addrs: Recepients) {
+    pub fn send(&mut self, message: UdpMessage, addrs: Recepients) -> std::io::Result<usize> {
         let bytes = message.to_be_bytes();
         if let Some(socket) = &self.socket {
             let result = match addrs {
@@ -55,10 +55,13 @@ impl NetWorker {
                 }
                 Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, self.port)),
             };
-            match result {
+            match &result {
                 Ok(num) => debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
                 Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
             };
+            result
+        } else {
+            Ok(0)
         }
     }
 
