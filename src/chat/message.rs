@@ -133,6 +133,17 @@ impl UdpMessage {
             data: vec![],
         }
     }
+    pub fn ask_to_repeat(id: Id, part: Part) -> Self {
+        UdpMessage {
+            id,
+            public: false,
+            part,
+            checksum: 0,
+            command: Command::AskToRepeat,
+            data: vec![],
+        }
+    }
+
     pub fn send_message(
         msg: &TextMessage,
         sender: &mut NetWorker,
@@ -156,20 +167,31 @@ impl UdpMessage {
             let count = link.size / DATA_LIMIT_BYTES as u64;
             debug!("Count {count}");
             let total_checksum = 0;
-            sender.send(
-                UdpMessage {
-                    id: msg.id,
-                    part: Part::Init(PartInit {
-                        total_checksum,
-                        count,
-                    }),
-                    public: msg.public,
-                    checksum: CRC.checksum(&data),
-                    command,
-                    data,
-                },
-                recepients,
-            )?;
+            let message = UdpMessage {
+                id: msg.id,
+                part: Part::Init(PartInit {
+                    total_checksum,
+                    count,
+                }),
+                public: msg.public,
+                checksum: CRC.checksum(&data),
+                command,
+                data,
+            };
+            sender.send(message, recepients)?;
+
+            let message = UdpMessage {
+                id: msg.id,
+                part: Part::Init(PartInit {
+                    total_checksum,
+                    count,
+                }),
+                public: msg.public,
+                checksum: 0,
+                command,
+                data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
+            };
+            outbox.add(msg.ip(), message.clone());
 
             for i in 1..=count {
                 let mut data = vec![0; DATA_LIMIT_BYTES];

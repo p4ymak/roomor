@@ -208,6 +208,14 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
+            for shard in missed {
+                sender
+                    .send(
+                        UdpMessage::ask_to_repeat(self.id, Part::Shard(shard as u64)),
+                        Recepients::One(self.sender),
+                    )
+                    .ok();
+            }
             self.shards.clear(); // FIXME
         }
     }
