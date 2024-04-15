@@ -77,7 +77,10 @@ pub enum ChatEvent {
 }
 
 #[derive(Default)]
-pub struct Outbox(BTreeMap<Ipv4Addr, Vec<OutMessage>>);
+pub struct Outbox {
+    pub texts: BTreeMap<Ipv4Addr, Vec<OutMessage>>,
+    pub files: BTreeMap<Id, FileLink>,
+}
 #[derive(Default)]
 struct Inbox(BTreeMap<Id, InMessage>);
 
@@ -240,23 +243,25 @@ impl OutMessage {
 }
 impl Outbox {
     fn add(&mut self, ip: Ipv4Addr, msg: UdpMessage) {
-        self.0
+        self.texts
             .entry(ip)
             .and_modify(|h| h.push(OutMessage::new(msg.clone())))
             .or_insert(vec![OutMessage::new(msg)]);
     }
     fn remove(&mut self, ip: Ipv4Addr, id: Id) {
-        self.0.entry(ip).and_modify(|h| h.retain(|m| m.id() != id));
+        self.texts
+            .entry(ip)
+            .and_modify(|h| h.retain(|m| m.id() != id));
     }
     fn get(&self, ip: Ipv4Addr, id: Id) -> Option<&UdpMessage> {
-        self.0
+        self.texts
             .get(&ip)
             .and_then(|h| h.iter().find(|m| m.id() == id))
             .map(|m| &m.msg)
     }
     fn undelivered(&mut self, ip: Ipv4Addr) -> Vec<&UdpMessage> {
         let now = SystemTime::now();
-        if let Some(history) = self.0.get_mut(&ip) {
+        if let Some(history) = self.texts.get_mut(&ip) {
             history
                 .iter_mut()
                 .filter_map(|msg| {
