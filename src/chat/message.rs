@@ -191,7 +191,7 @@ impl UdpMessage {
                 command,
                 data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
             };
-            outbox.add(msg.ip(), message.clone());
+            outbox.add(msg.ip(), message);
 
             for i in 1..=count {
                 let mut data = vec![0; DATA_LIMIT_BYTES];
@@ -227,7 +227,7 @@ impl UdpMessage {
                 if message.command == Command::Text && !msg.is_public() {
                     outbox.add(msg.ip(), message.clone());
                 }
-                sender.send(message.clone(), recepients)?;
+                sender.send(message, recepients)?;
                 Ok(())
             } else {
                 let message = UdpMessage {

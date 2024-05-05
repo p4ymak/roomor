@@ -20,6 +20,7 @@ use std::{
     error::Error,
     fs,
     net::{Ipv4Addr, SocketAddr},
+    ops::ControlFlow,
     path::{Path, PathBuf},
     sync::Arc,
     thread::{self, JoinHandle},
@@ -82,7 +83,7 @@ pub struct Outbox {
     pub files: BTreeMap<Id, FileLink>,
 }
 #[derive(Default)]
-struct Inbox(BTreeMap<Id, InMessage>);
+pub struct Inbox(BTreeMap<Id, InMessage>);
 
 pub struct InMessage {
     ts: SystemTime,
@@ -125,7 +126,7 @@ impl InMessage {
         &mut self,
         remains: RemainsCount,
         msg: UdpMessage,
-        sender: &mut NetWorker,
+        networker: &mut NetWorker,
         ctx: &impl Repaintable,
         downloads_path: &Path,
     ) {
@@ -137,7 +138,7 @@ impl InMessage {
             }
         }
         if remains == 0 {
-            self.combine(sender, downloads_path, ctx);
+            self.combine(networker, downloads_path, ctx);
         }
     }
     pub fn combine(
@@ -178,7 +179,7 @@ impl InMessage {
                             .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
-                        sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                        sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
                     }
                 }
                 Command::File => {
@@ -201,7 +202,7 @@ impl InMessage {
                                     .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
                                     .inspect_err(|e| error!("{e}"))
                                     .ok();
-                                sender.handle_event(BackEvent::Message(txt_msg), ctx);
+                                sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
                             }
                         }
                         Err(err) => error!("{err}"),
@@ -283,7 +284,7 @@ pub struct UdpChat {
     pub name: String,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
-    sender: NetWorker,
+    networker: NetWorker,
     outbox: Outbox,
     inbox: Inbox,
     downloads_path: PathBuf,
@@ -465,7 +466,7 @@ impl UdpChat {
         fs::create_dir_all(&downloads_path).ok(); // FIXME
 
         UdpChat {
-            sender,
+            networker: sender,
             name: String::new(),
             tx,
             rx,
@@ -480,15 +481,15 @@ impl UdpChat {
     }
     pub fn prelude(&mut self, user: &UserSetup) -> Result<(), Box<dyn Error + 'static>> {
         self.name = user.name().to_string();
-        self.sender.port = user.port();
-        self.sender.name = user.name().to_string();
-        self.sender.connect(user.multicast())?;
+        self.networker.port = user.port();
+        self.networker.name = user.name().to_string();
+        self.networker.connect(user.multicast())?;
         self.listen();
         Ok(())
     }
 
     pub fn run(&mut self, ctx: &impl Repaintable) {
-        self.sender
+        self.networker
             .send(UdpMessage::enter(&self.name), Recepients::All)
             .inspect_err(|e| error!("{e}"))
             .ok();
@@ -496,8 +497,8 @@ impl UdpChat {
     }
 
     fn listen(&mut self) {
-        self.thread_handle = self.sender.socket.as_ref().map(|socket| {
-            let local_ip = self.sender.ip;
+        self.thread_handle = self.networker.socket.as_ref().map(|socket| {
+            let local_ip = self.networker.ip;
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
             thread::spawn(move || {
@@ -525,142 +526,24 @@ impl UdpChat {
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
             match event {
-                ChatEvent::Front(front) => match front {
-                    FrontEvent::Message(msg) => {
-                        debug!("Sending: {}", msg.get_text());
-
-                        UdpMessage::send_message(&msg, &mut self.sender, &mut self.outbox)
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-
-                        self.sender.front_tx.send(BackEvent::Message(msg)).ok();
-                        ctx.request_repaint();
+                ChatEvent::Front(front) => {
+                    match self
+                        .networker
+                        .handle_front_event(&mut self.outbox, ctx, front)
+                    {
+                        ControlFlow::Continue(_) => continue,
+                        ControlFlow::Break(_) => break,
                     }
-                    FrontEvent::Ping(recepients) => {
-                        debug!("Ping {recepients:?}");
-                        self.sender
-                            .send(UdpMessage::enter(&self.name), recepients)
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-                    }
-                    FrontEvent::Exit => {
-                        debug!("I'm Exit");
-                        self.sender
-                            .send(UdpMessage::exit(), Recepients::All)
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-                        // self.sender.send(UdpMessage::exit(), Recepients::Myself);
-                        break;
-                    }
-                },
-
+                }
                 ChatEvent::Incoming((r_ip, r_msg)) => {
-                    if r_ip == self.sender.ip {
-                        continue;
-                    }
-
-                    debug!("Received {:?} from {r_ip}", r_msg.command);
-
-                    match r_msg.command {
-                        Command::Enter | Command::Greating => {
-                            let user_name = String::from_utf8_lossy(&r_msg.data);
-
-                            self.sender.handle_event(
-                                BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
-                                ctx,
-                            );
-                            if r_msg.command == Command::Enter {
-                                self.sender
-                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                            }
-                            for undelivered in self.outbox.undelivered(r_ip) {
-                                self.sender
-                                    .send(undelivered.clone(), Recepients::One(r_ip))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                            }
-                        }
-
-                        Command::Exit => {
-                            self.sender.handle_event(BackEvent::PeerLeft(r_ip), ctx);
-                        }
-                        Command::Text | Command::File | Command::Repeat => match r_msg.part {
-                            message::Part::Single => {
-                                let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
-                                self.sender.incoming(r_ip, &self.name); // FIXME
-                                self.sender
-                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                                self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
-                            }
-                            message::Part::Init(_) => {
-                                debug!("incomint PartInit");
-                                let r_id = r_msg.id;
-                                if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
-                                    self.inbox.0.insert(r_id, inmsg);
-                                }
-                            }
-                            message::Part::Shard(count) => {
-                                if let Some(inmsg) = self.inbox.0.get_mut(&r_msg.id) {
-                                    inmsg.insert(
-                                        count,
-                                        r_msg,
-                                        &mut self.sender,
-                                        ctx,
-                                        &self.downloads_path,
-                                    );
-                                }
-                            }
-                        },
-                        Command::Seen => {
-                            let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
-                            self.sender.incoming(r_ip, &self.name);
-                            self.outbox.remove(r_ip, txt_msg.id());
-                            self.sender.handle_event(BackEvent::Message(txt_msg), ctx);
-                        }
-                        Command::Error => {
-                            self.sender.incoming(r_ip, &self.name);
-                            self.sender
-                                .send(
-                                    UdpMessage::new_single(
-                                        Command::AskToRepeat,
-                                        r_msg.id.to_be_bytes().to_vec(),
-                                        r_msg.public,
-                                    ),
-                                    Recepients::One(r_ip),
-                                )
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                        }
-
-                        Command::AskToRepeat => {
-                            self.sender.incoming(r_ip, &self.name);
-                            let id: u32 = u32::from_be_bytes(
-                                (0..4)
-                                    .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                                    .collect::<Vec<u8>>()
-                                    .try_into()
-                                    .unwrap_or_default(),
-                            );
-                            // Resend my Name
-                            if id == 0 {
-                                self.sender
-                                    .send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                            } else if let Some(message) = self.outbox.get(r_ip, id) {
-                                let mut message = message.clone();
-                                message.command = Command::Repeat;
-                                self.sender
-                                    .send(message, Recepients::One(r_ip))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                            }
-                        } // Command::File => todo!(),
-                    }
+                    self.networker.handle_message(
+                        &mut self.inbox,
+                        &mut self.outbox,
+                        ctx,
+                        r_ip,
+                        r_msg,
+                        &self.downloads_path,
+                    );
                 }
             }
         }
