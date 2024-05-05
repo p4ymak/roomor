@@ -94,6 +94,7 @@ pub struct InMessage {
     _total_checksum: CheckSum,
     file_name: String,
     count: RemainsCount,
+    terminal: RemainsCount,
     shards: Vec<Option<Shard>>,
 }
 impl InMessage {
@@ -116,6 +117,7 @@ impl InMessage {
                 file_name,
                 _total_checksum: init.checksum(),
                 count: init.count(),
+                terminal: 0,
                 shards: vec![None; init.count() as usize],
             })
         } else {
@@ -137,7 +139,7 @@ impl InMessage {
                 *block = Some(msg.data);
             }
         }
-        if remains == 0 {
+        if remains == self.terminal {
             self.combine(networker, downloads_path, ctx);
         }
     }
@@ -212,6 +214,7 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
+            self.terminal = missed.last().cloned().unwrap_or_default() as u64;
             for shard in missed {
                 sender
                     .send(
@@ -219,8 +222,9 @@ impl InMessage {
                         Recepients::One(self.sender),
                     )
                     .ok();
+                debug!("Asked to repeat shard #{shard:?}");
             }
-            self.shards.clear(); // FIXME
+            // self.shards.clear(); // FIXME
         }
     }
 }
