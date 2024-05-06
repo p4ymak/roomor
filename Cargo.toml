@@ -26,6 +26,7 @@ timediff = "0.2.3"
 
 enumn = "0.1.13"
 crc = "3.0.1"
+range_rover = "0.1.2"
 
 rodio = { version = "0.17.3", default-features = false }
 notify-rust = "4.10.0"

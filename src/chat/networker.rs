@@ -163,7 +163,6 @@ impl NetWorker {
         match r_msg.command {
             Command::Enter | Command::Greating => {
                 let user_name = String::from_utf8_lossy(&r_msg.data);
-
                 self.handle_back_event(
                     BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
                     ctx,
@@ -202,6 +201,12 @@ impl NetWorker {
                 message::Part::Shard(count) => {
                     if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
                         inmsg.insert(count, r_msg, self, ctx, downloads_path);
+                    }
+                }
+                message::Part::RepeatRange(range) => {
+                    if let Some(file_link) = outbox.files.get(&r_msg.id) {
+                        todo!();
+                        // file_link.send(range);
                     }
                 }
             },

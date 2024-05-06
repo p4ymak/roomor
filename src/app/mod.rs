@@ -401,11 +401,11 @@ impl Roomor {
                     self.rooms.get_mut_active().clear_history();
                     ui.close_menu();
                 }
-                // if ui.button("Send File..").clicked() {
-                //     if let Some(path) = rfd::FileDialog::new().pick_file() {
-                //         self.dispatch_file(&path);
-                //     }
-                // }
+                if ui.button("Send File..").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        self.dispatch_file(&path);
+                    }
+                }
             });
 
             self.rooms.draw_history(ui);

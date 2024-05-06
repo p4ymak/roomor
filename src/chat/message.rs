@@ -2,7 +2,7 @@ use super::{networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
-use std::{error::Error, fmt, fs, io::Read, time::SystemTime};
+use std::{error::Error, fmt, fs, io::Read, ops::RangeInclusive, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -12,7 +12,7 @@ pub const DATA_LIMIT_BYTES: usize = 100;
 
 pub type Id = u32;
 pub type CheckSum = u16;
-pub type RemainsCount = u64;
+pub type ShardCount = u64;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, N)]
 #[repr(u8)]
@@ -40,13 +40,15 @@ impl Command {
 pub enum Part {
     Single,
     Init(PartInit),
-    Shard(RemainsCount),
+    RepeatRange(RangeInclusive<ShardCount>),
+    Shard(ShardCount),
 }
 impl Part {
     fn to_code(&self) -> u8 {
         match self {
             Part::Single => 0,
             Part::Init(_) => 1,
+            Part::RepeatRange(_) => 2,
             Part::Shard(_) => 3,
         }
     }
@@ -54,13 +56,13 @@ impl Part {
 #[derive(Debug, Clone)]
 pub struct PartInit {
     total_checksum: CheckSum,
-    count: RemainsCount,
+    count: ShardCount,
 }
 impl PartInit {
     pub fn checksum(&self) -> CheckSum {
         self.total_checksum
     }
-    pub fn count(&self) -> RemainsCount {
+    pub fn count(&self) -> ShardCount {
         self.count
     }
 }
@@ -193,13 +195,13 @@ impl UdpMessage {
             };
             outbox.add(msg.ip(), message);
 
-            for i in 1..=count {
+            for i in 0..count {
                 let mut data = vec![0; DATA_LIMIT_BYTES];
                 file.read_exact(&mut data)?;
                 sender.send(
                     UdpMessage {
                         id: msg.id,
-                        part: Part::Shard(count - i),
+                        part: Part::Shard(i),
                         checksum: CRC.checksum(&data),
                         public: msg.public,
                         command,
@@ -213,7 +215,7 @@ impl UdpMessage {
         } else {
             let checksum = 0; // FIXME
             let total_checksum = CRC.checksum(&data);
-            let mut count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
+            let count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
             let chunks = data.chunks(DATA_LIMIT_BYTES);
             if data.len() < DATA_LIMIT_BYTES {
                 let message = UdpMessage {
@@ -246,12 +248,11 @@ impl UdpMessage {
                 }
                 sender.send(message, recepients)?;
 
-                for chunk in chunks {
-                    count -= 1;
+                for (i, chunk) in chunks.enumerate() {
                     sender.send(
                         UdpMessage {
                             id: msg.id,
-                            part: Part::Shard(count),
+                            part: Part::Shard(i as ShardCount),
                             checksum: CRC.checksum(chunk),
                             public: msg.public,
                             command,
@@ -282,11 +283,18 @@ impl UdpMessage {
                 }),
                 bytes.get(17..)?.to_owned(),
             ),
+            2 => (
+                Part::RepeatRange(
+                    u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)
+                        ..=u64::from_be_bytes(bytes.get(15..=22)?.try_into().ok()?),
+                ),
+                bytes.get(23..)?.to_owned(),
+            ),
             3 => (
                 Part::Shard(u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)),
                 bytes.get(15..)?.to_owned(),
             ),
-            _ => (Part::Single, bytes[7..].to_owned()),
+            _ => (Part::Single, bytes.get(7..)?.to_owned()),
         };
         // FIXME
         // if checksum == CRC.checksum(&data) || command == Command::Repeat {
@@ -322,6 +330,10 @@ impl UdpMessage {
             Part::Init(init) => {
                 bytes.extend(init.total_checksum.to_be_bytes());
                 bytes.extend(init.count.to_be_bytes());
+            }
+            Part::RepeatRange(range) => {
+                bytes.extend(range.start().to_be_bytes());
+                bytes.extend(range.end().to_be_bytes());
             }
             Part::Shard(remains) => bytes.extend(remains.to_be_bytes()),
         }

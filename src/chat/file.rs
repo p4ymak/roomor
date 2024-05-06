@@ -57,6 +57,7 @@ impl FileLink {
         })
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct FileData {
     id: Id,

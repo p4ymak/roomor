@@ -6,7 +6,7 @@ pub mod peers;
 
 use self::{
     file::{FileEnding, FileLink},
-    message::{new_id, CheckSum, Part, RemainsCount, MAX_PREVIEW_CHARS},
+    message::{new_id, CheckSum, Part, ShardCount, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
@@ -15,6 +15,7 @@ use directories::UserDirs;
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use message::{Command, Id, UdpMessage};
+use range_rover::range_rover;
 use std::{
     collections::BTreeMap,
     error::Error,
@@ -93,8 +94,8 @@ pub struct InMessage {
     command: Command,
     _total_checksum: CheckSum,
     file_name: String,
-    count: RemainsCount,
-    terminal: RemainsCount,
+    count: ShardCount,
+    terminal: ShardCount,
     shards: Vec<Option<Shard>>,
 }
 impl InMessage {
@@ -126,7 +127,7 @@ impl InMessage {
     }
     pub fn insert(
         &mut self,
-        remains: RemainsCount,
+        remains: ShardCount,
         msg: UdpMessage,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
@@ -150,14 +151,14 @@ impl InMessage {
         ctx: &impl Repaintable,
     ) {
         debug!("Combining");
-        let missed = self
-            .shards
-            .iter()
-            .rev()
-            .enumerate()
-            .filter(|s| s.1.is_none())
-            .map(|s| s.0)
-            .collect::<Vec<usize>>();
+        let missed = range_rover(
+            self.shards
+                .iter()
+                .enumerate()
+                .filter(|s| s.1.is_none())
+                .map(|s| s.0 as ShardCount),
+        );
+        // .collect::<Vec<usize>>();
         if missed.is_empty() {
             let data = std::mem::take(&mut self.shards)
                 .into_iter()
@@ -214,15 +215,15 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            self.terminal = missed.last().cloned().unwrap_or_default() as u64;
-            for shard in missed {
+            self.terminal = missed.last().map(|l| *l.end()).unwrap_or_default();
+            for range in missed {
+                debug!("Asked to repeat shard #{range:?}");
                 sender
                     .send(
-                        UdpMessage::ask_to_repeat(self.id, Part::Shard(shard as u64)),
+                        UdpMessage::ask_to_repeat(self.id, Part::RepeatRange(range)),
                         Recepients::One(self.sender),
                     )
                     .ok();
-                debug!("Asked to repeat shard #{shard:?}");
             }
             // self.shards.clear(); // FIXME
         }
@@ -350,6 +351,7 @@ impl TextMessage {
                         Content::Text(text)
                     }
                 }
+                Command::File => Content::FileLink(FileLink::from_text(&msg.read_text()).unwrap()), // FIXME
                 Command::Exit => Content::Exit,
                 Command::Seen => Content::Seen,
                 _ => Content::Empty,
