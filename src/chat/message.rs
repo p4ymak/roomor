@@ -338,6 +338,10 @@ impl UdpMessage {
     pub fn read_text(&self) -> String {
         string_from_be_u8(&self.data)
     }
+
+    pub fn checksum(&self) -> CheckSum {
+        self.checksum
+    }
 }
 
 pub fn string_from_be_u8(bytes: &[u8]) -> String {

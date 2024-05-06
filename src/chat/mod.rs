@@ -6,7 +6,7 @@ pub mod peers;
 
 use self::{
     file::{FileEnding, FileLink},
-    message::{new_id, CheckSum, Part, ShardCount, MAX_PREVIEW_CHARS},
+    message::{new_id, CheckSum, Part, ShardCount, CRC, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
@@ -137,10 +137,9 @@ impl InMessage {
         ctx: &impl Repaintable,
         downloads_path: &Path,
     ) -> bool {
-        debug!("Got shard #{position} of {}.", self.count);
         self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
-            if block.is_none() {
+            if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
                 *block = Some(msg.data);
             }
         }
@@ -163,7 +162,7 @@ impl InMessage {
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
         );
-        // .collect::<Vec<usize>>();
+
         if missed.is_empty() {
             let data = std::mem::take(&mut self.shards)
                 .into_iter()

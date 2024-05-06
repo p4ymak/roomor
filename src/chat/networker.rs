@@ -1,5 +1,4 @@
 use crate::chat::{
-    file::FileLink,
     message::{self, send_shards, Command},
     InMessage, TextMessage,
 };
@@ -13,7 +12,7 @@ use log::{debug, error};
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    ops::{ControlFlow, RangeInclusive},
+    ops::ControlFlow,
     path::Path,
     sync::Arc,
     time::{Duration, SystemTime},
