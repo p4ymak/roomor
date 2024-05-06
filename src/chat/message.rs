@@ -1,8 +1,8 @@
-use super::{networker::NetWorker, Content, Outbox, Recepients, TextMessage};
+use super::{file::FileLink, networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
-use std::{error::Error, fmt, fs, io::Read, ops::RangeInclusive, time::SystemTime};
+use std::{error::Error, fmt, fs, ops::RangeInclusive, os::unix::fs::FileExt, time::SystemTime};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -165,7 +165,6 @@ impl UdpMessage {
         };
 
         if let Content::FileLink(link) = &msg.content {
-            let mut file = fs::File::open(&link.path)?;
             let count = link.size / DATA_LIMIT_BYTES as u64;
             debug!("Count {count}");
             let total_checksum = 0;
@@ -195,21 +194,13 @@ impl UdpMessage {
             };
             outbox.add(msg.ip(), message);
 
-            for i in 0..count {
-                let mut data = vec![0; DATA_LIMIT_BYTES];
-                file.read_exact(&mut data)?;
-                sender.send(
-                    UdpMessage {
-                        id: msg.id,
-                        part: Part::Shard(i),
-                        checksum: CRC.checksum(&data),
-                        public: msg.public,
-                        command,
-                        data,
-                    },
-                    recepients,
-                )?;
-            }
+            send_shard(
+                link,
+                0..=count.saturating_sub(1),
+                msg.id,
+                recepients,
+                sender,
+            )?;
 
             Ok(())
         } else {
@@ -360,4 +351,30 @@ pub fn new_id() -> Id {
         .duration_since(SystemTime::UNIX_EPOCH)
         .expect("System Time")
         .as_secs() as u32
+}
+
+fn send_shard(
+    link: &FileLink,
+    range: RangeInclusive<ShardCount>,
+    id: Id,
+    recepients: Recepients,
+    sender: &mut NetWorker,
+) -> Result<(), Box<dyn Error + 'static>> {
+    let file = fs::File::open(&link.path)?;
+    for i in range {
+        let mut data = vec![0; DATA_LIMIT_BYTES];
+        file.read_exact_at(&mut data, DATA_LIMIT_BYTES as u64 * i)?;
+        sender.send(
+            UdpMessage {
+                id,
+                part: Part::Shard(i),
+                checksum: CRC.checksum(&data),
+                public: recepients.is_public(),
+                command: Command::File,
+                data,
+            },
+            recepients,
+        )?;
+    }
+    Ok(())
 }

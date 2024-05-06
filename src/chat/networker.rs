@@ -12,7 +12,7 @@ use log::{debug, error};
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    ops::ControlFlow,
+    ops::{ControlFlow, RangeInclusive},
     path::Path,
     sync::Arc,
     time::{Duration, SystemTime},

@@ -405,6 +405,7 @@ impl Roomor {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         self.dispatch_file(&path);
                     }
+                    ui.close_menu();
                 }
             });
 

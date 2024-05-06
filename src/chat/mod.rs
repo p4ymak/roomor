@@ -42,6 +42,9 @@ impl Recepients {
             Recepients::All
         }
     }
+    pub fn is_public(&self) -> bool {
+        matches!(self, Recepients::All)
+    }
 }
 
 // FIXME
@@ -118,7 +121,7 @@ impl InMessage {
                 file_name,
                 _total_checksum: init.checksum(),
                 count: init.count(),
-                terminal: init.count(),
+                terminal: init.count().saturating_sub(1),
                 shards: vec![None; init.count() as usize],
             })
         } else {
