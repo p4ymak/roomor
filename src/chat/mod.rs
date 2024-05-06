@@ -118,7 +118,7 @@ impl InMessage {
                 file_name,
                 _total_checksum: init.checksum(),
                 count: init.count(),
-                terminal: 0,
+                terminal: init.count(),
                 shards: vec![None; init.count() as usize],
             })
         } else {
@@ -127,20 +127,19 @@ impl InMessage {
     }
     pub fn insert(
         &mut self,
-        remains: ShardCount,
+        position: ShardCount,
         msg: UdpMessage,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
         downloads_path: &Path,
     ) {
-        debug!("Got shard, {remains} remains.");
-        let pos = self.count - remains - 1;
-        if let Some(block) = self.shards.get_mut(pos as usize) {
+        debug!("Got shard #{position}.");
+        if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() {
                 *block = Some(msg.data);
             }
         }
-        if remains == self.terminal {
+        if position == self.terminal {
             self.combine(networker, downloads_path, ctx);
         }
     }
