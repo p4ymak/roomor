@@ -194,7 +194,7 @@ impl UdpMessage {
             };
             outbox.add(msg.ip(), message);
 
-            send_shard(
+            send_shards(
                 link,
                 0..=count.saturating_sub(1),
                 msg.id,
@@ -353,7 +353,7 @@ pub fn new_id() -> Id {
         .as_secs() as u32
 }
 
-fn send_shard(
+pub fn send_shards(
     link: &FileLink,
     range: RangeInclusive<ShardCount>,
     id: Id,

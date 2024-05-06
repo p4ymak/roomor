@@ -1,5 +1,5 @@
 use crate::chat::{
-    message::{self, Command},
+    message::{self, send_shards, Command},
     InMessage, TextMessage,
 };
 
@@ -204,9 +204,8 @@ impl NetWorker {
                     }
                 }
                 message::Part::RepeatRange(range) => {
-                    if let Some(file_link) = outbox.files.get(&r_msg.id) {
-                        todo!();
-                        // file_link.send(range);
+                    if let Some(link) = outbox.files.get(&r_msg.id) {
+                        send_shards(link, range, r_msg.id, Recepients::One(self.ip), self).ok();
                     }
                 }
             },
