@@ -160,6 +160,7 @@ impl NetWorker {
             return;
         }
         debug!("Received {:?} from {r_ip}", r_msg.command);
+        let r_id = r_msg.id;
 
         match r_msg.command {
             Command::Enter | Command::Greating => {
@@ -194,14 +195,17 @@ impl NetWorker {
                 }
                 message::Part::Init(_) => {
                     debug!("incomint PartInit");
-                    let r_id = r_msg.id;
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
                         inbox.0.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {
+                    let mut completed = false;
                     if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
-                        inmsg.insert(count, r_msg, self, ctx, downloads_path);
+                        completed = inmsg.insert(count, r_msg, self, ctx, downloads_path);
+                    }
+                    if completed {
+                        inbox.0.remove(&r_id);
                     }
                 }
                 _ => (),

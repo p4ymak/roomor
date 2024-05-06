@@ -137,7 +137,7 @@ impl InMessage {
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
         downloads_path: &Path,
-    ) {
+    ) -> bool {
         debug!("Got shard #{position} of {}.", self.count);
         self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
@@ -146,8 +146,9 @@ impl InMessage {
             }
         }
         if position == self.terminal {
-            self.combine(networker, downloads_path, ctx);
+            return self.combine(networker, downloads_path, ctx).is_ok();
         }
+        false
     }
     pub fn combine(
         &mut self,
