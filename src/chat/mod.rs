@@ -136,7 +136,7 @@ impl InMessage {
         ctx: &impl Repaintable,
         downloads_path: &Path,
     ) {
-        debug!("Got shard #{position}.");
+        debug!("Got shard #{position} of {}.", self.count);
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() {
                 *block = Some(msg.data);
