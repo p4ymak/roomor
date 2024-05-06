@@ -7,10 +7,11 @@ pub mod peers;
 use self::{
     file::{FileEnding, FileLink},
     message::{new_id, CheckSum, Part, ShardCount, MAX_PREVIEW_CHARS},
-    networker::{NetWorker, TIMEOUT_CHECK},
+    networker::{NetWorker, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
 use crate::app::UserSetup;
+use chrono::NaiveTime;
 use directories::UserDirs;
 use flume::{Receiver, Sender};
 use log::{debug, error};
@@ -137,6 +138,7 @@ impl InMessage {
         downloads_path: &Path,
     ) {
         debug!("Got shard #{position} of {}.", self.count);
+        self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() {
                 *block = Some(msg.data);
@@ -534,6 +536,17 @@ impl UdpChat {
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
+            // FIXME file request timer
+            self.inbox
+                .0
+                .values_mut()
+                .filter(|m| {
+                    SystemTime::now()
+                        .duration_since(m.ts)
+                        .is_ok_and(|d| d > TIMEOUT_CHECK)
+                })
+                .for_each(|m| m.combine(&mut self.networker, &self.downloads_path, ctx));
+
             match event {
                 ChatEvent::Front(front) => {
                     match self
