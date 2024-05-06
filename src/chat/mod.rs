@@ -227,6 +227,7 @@ impl InMessage {
                     )
                     .ok();
             }
+            debug!("New terminal: {}", self.terminal);
             // self.shards.clear(); // FIXME
         }
     }

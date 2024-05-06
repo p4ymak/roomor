@@ -229,22 +229,19 @@ impl NetWorker {
             Command::AskToRepeat => {
                 self.incoming(r_ip);
                 let id = r_msg.id;
-                // let id: u32 = u32::from_be_bytes(
-                //     (0..4)
-                //         .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                //         .collect::<Vec<u8>>()
-                //         .try_into()
-                //         .unwrap_or_default(),
-                // );
+                debug!("Asked to repeat {id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 if id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::RepeatRange(range) = &r_msg.part {
-                    if let Some(link) = FileLink::from_text(&r_msg.read_text()) {
+                    let msg_text = r_msg.read_text();
+                    debug!("{msg_text}");
+                    if let Some(link) = outbox.files.get(&id) {
+                        debug!("sending shards {range:?}");
                         send_shards(
-                            &link,
+                            link,
                             range.to_owned(),
                             r_msg.id,
                             Recepients::One(self.ip),
@@ -252,13 +249,16 @@ impl NetWorker {
                         )
                         .ok();
                     }
-                    error!("file not found");
                 } else if let Some(message) = outbox.get(r_ip, id) {
+                    debug!("Message found..");
+
                     let mut message = message.clone();
                     message.command = Command::Repeat;
                     self.send(message, Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
+                } else {
+                    error!("Message not found!");
                 }
             } // Command::File => todo!(),
         }

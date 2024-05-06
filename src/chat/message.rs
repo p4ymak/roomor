@@ -192,9 +192,9 @@ impl UdpMessage {
                 command,
                 data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
             };
-            outbox.add(msg.ip(), message);
+            // outbox.add(msg.ip(), message);
             // FIXME
-            // outbox.files.insert(msg.id, link.clone());
+            outbox.files.insert(msg.id, link.clone());
 
             send_shards(
                 link,
