@@ -1,4 +1,5 @@
 use crate::chat::{
+    file::FileLink,
     message::{self, send_shards, Command},
     InMessage, TextMessage,
 };
@@ -203,11 +204,7 @@ impl NetWorker {
                         inmsg.insert(count, r_msg, self, ctx, downloads_path);
                     }
                 }
-                message::Part::RepeatRange(range) => {
-                    if let Some(link) = outbox.files.get(&r_msg.id) {
-                        send_shards(link, range, r_msg.id, Recepients::One(self.ip), self).ok();
-                    }
-                }
+                _ => (),
             },
             Command::Seen => {
                 let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
@@ -231,18 +228,31 @@ impl NetWorker {
 
             Command::AskToRepeat => {
                 self.incoming(r_ip);
-                let id: u32 = u32::from_be_bytes(
-                    (0..4)
-                        .map(|i| *r_msg.data.get(i).unwrap_or(&0))
-                        .collect::<Vec<u8>>()
-                        .try_into()
-                        .unwrap_or_default(),
-                );
+                let id = r_msg.id;
+                // let id: u32 = u32::from_be_bytes(
+                //     (0..4)
+                //         .map(|i| *r_msg.data.get(i).unwrap_or(&0))
+                //         .collect::<Vec<u8>>()
+                //         .try_into()
+                //         .unwrap_or_default(),
+                // );
                 // Resend my Name
                 if id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
+                } else if let message::Part::RepeatRange(range) = &r_msg.part {
+                    if let Some(link) = FileLink::from_text(&r_msg.read_text()) {
+                        send_shards(
+                            &link,
+                            range.to_owned(),
+                            r_msg.id,
+                            Recepients::One(self.ip),
+                            self,
+                        )
+                        .ok();
+                    }
+                    error!("file not found");
                 } else if let Some(message) = outbox.get(r_ip, id) {
                     let mut message = message.clone();
                     message.command = Command::Repeat;
