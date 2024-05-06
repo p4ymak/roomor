@@ -7,11 +7,10 @@ pub mod peers;
 use self::{
     file::{FileEnding, FileLink},
     message::{new_id, CheckSum, Part, ShardCount, MAX_PREVIEW_CHARS},
-    networker::{NetWorker, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
 use crate::app::UserSetup;
-use chrono::NaiveTime;
 use directories::UserDirs;
 use eframe::Result;
 use flume::{Receiver, Sender};
@@ -538,16 +537,16 @@ impl UdpChat {
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
-        for event in self.rx.iter() {
-            // FIXME file request timer
-            self.inbox.0.retain(|_, msg| {
-                !(SystemTime::now()
-                    .duration_since(msg.ts)
-                    .is_ok_and(|d| d > TIMEOUT_CHECK)
-                    && msg
-                        .combine(&mut self.networker, &self.downloads_path, ctx)
-                        .is_ok())
-            });
+        // for event in self.rx.iter() {
+        //     // FIXME file request timer
+        //     self.inbox.0.retain(|_, msg| {
+        //         !(SystemTime::now()
+        //             .duration_since(msg.ts)
+        //             .is_ok_and(|d| d > TIMEOUT_CHECK)
+        //             && msg
+        //                 .combine(&mut self.networker, &self.downloads_path, ctx)
+        //                 .is_ok())
+        //     });
 
             match event {
                 ChatEvent::Front(front) => {
