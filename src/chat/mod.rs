@@ -13,6 +13,7 @@ use self::{
 use crate::app::UserSetup;
 use chrono::NaiveTime;
 use directories::UserDirs;
+use eframe::Result;
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use message::{Command, Id, UdpMessage};
@@ -153,7 +154,7 @@ impl InMessage {
         sender: &mut NetWorker,
         downloads_path: &Path,
         ctx: &impl Repaintable,
-    ) {
+    ) -> Result<(), Box<dyn Error + 'static>> {
         debug!("Combining");
         let missed = range_rover(
             self.shards
@@ -172,14 +173,37 @@ impl InMessage {
 
             match self.command {
                 Command::Text => {
-                    if let Ok(text) = String::from_utf8(data) {
+                    let text = String::from_utf8(data)?;
+                    let txt_msg = TextMessage {
+                        timestamp: self.ts,
+                        incoming: true,
+                        public: self.public,
+                        ip: self.sender,
+                        id: self.id,
+                        content: Content::Text(text),
+                        seen: Some(Seen::One),
+                    };
+                    sender
+                        .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
+                    sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                    Ok(())
+                }
+                Command::File => {
+                    let path = downloads_path.join(&self.file_name);
+                    debug!("Writing new file to {path:?}");
+                    fs::write(&path, data)?;
+
+                    if let Some(link) = FileLink::new(&path) {
+                        debug!("Creating link");
                         let txt_msg = TextMessage {
                             timestamp: self.ts,
                             incoming: true,
                             public: self.public,
                             ip: self.sender,
                             id: self.id,
-                            content: Content::Text(text),
+                            content: Content::FileLink(link),
                             seen: Some(Seen::One),
                         };
                         sender
@@ -187,35 +211,12 @@ impl InMessage {
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                         sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                        Ok(())
+                    } else {
+                        Err("Missing Link".into())
                     }
                 }
-                Command::File => {
-                    let path = downloads_path.join(&self.file_name);
-                    debug!("Writing new file to {path:?}");
-                    match fs::write(&path, data) {
-                        Ok(_) => {
-                            if let Some(link) = FileLink::new(&path) {
-                                debug!("Creating link");
-                                let txt_msg = TextMessage {
-                                    timestamp: self.ts,
-                                    incoming: true,
-                                    public: self.public,
-                                    ip: self.sender,
-                                    id: self.id,
-                                    content: Content::FileLink(link),
-                                    seen: Some(Seen::One),
-                                };
-                                sender
-                                    .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
-                                    .inspect_err(|e| error!("{e}"))
-                                    .ok();
-                                sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
-                            }
-                        }
-                        Err(err) => error!("{err}"),
-                    }
-                }
-                _ => (),
+                _ => Ok(()),
             }
         } else {
             error!("Shards missing!");
@@ -230,6 +231,7 @@ impl InMessage {
                     .ok();
             }
             debug!("New terminal: {}", self.terminal);
+            Err("Missing Shards".into())
             // self.shards.clear(); // FIXME
         }
     }
@@ -537,15 +539,14 @@ impl UdpChat {
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
             // FIXME file request timer
-            self.inbox
-                .0
-                .values_mut()
-                .filter(|m| {
-                    SystemTime::now()
-                        .duration_since(m.ts)
-                        .is_ok_and(|d| d > TIMEOUT_CHECK)
-                })
-                .for_each(|m| m.combine(&mut self.networker, &self.downloads_path, ctx));
+            self.inbox.0.retain(|_, msg| {
+                !(SystemTime::now()
+                    .duration_since(msg.ts)
+                    .is_ok_and(|d| d > TIMEOUT_CHECK)
+                    && msg
+                        .combine(&mut self.networker, &self.downloads_path, ctx)
+                        .is_ok())
+            });
 
             match event {
                 ChatEvent::Front(front) => {

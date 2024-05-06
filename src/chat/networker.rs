@@ -244,7 +244,7 @@ impl NetWorker {
                             link,
                             range.to_owned(),
                             r_msg.id,
-                            Recepients::One(self.ip),
+                            Recepients::One(r_ip),
                             self,
                         )
                         .ok();
