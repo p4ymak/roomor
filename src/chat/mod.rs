@@ -219,7 +219,10 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            self.terminal = missed.last().map(|l| *l.end()).unwrap_or_default();
+            self.terminal = missed
+                .last()
+                .map(|l| *l.end())
+                .unwrap_or(self.count.saturating_sub(1));
             for range in missed {
                 debug!("Asked to repeat shard #{range:?}");
                 sender
