@@ -165,7 +165,7 @@ impl UdpMessage {
         };
 
         if let Content::FileLink(link) = &msg.content {
-            let count = link.size / DATA_LIMIT_BYTES as u64;
+            let count = link.size.div_ceil(DATA_LIMIT_BYTES as u64);
             debug!("Count {count}");
             let total_checksum = 0;
             let message = UdpMessage {
