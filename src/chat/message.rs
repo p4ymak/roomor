@@ -181,17 +181,17 @@ impl UdpMessage {
             };
             sender.send(message, recepients)?;
 
-            let message = UdpMessage {
-                id: msg.id,
-                part: Part::Init(PartInit {
-                    total_checksum,
-                    count,
-                }),
-                public: msg.public,
-                checksum: 0,
-                command,
-                data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
-            };
+            // let message = UdpMessage {
+            //     id: msg.id,
+            //     part: Part::Init(PartInit {
+            //         total_checksum,
+            //         count,
+            //     }),
+            //     public: msg.public,
+            //     checksum: 0,
+            //     command,
+            //     data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
+            // };
             // outbox.add(msg.ip(), message);
             // FIXME
             outbox.files.insert(msg.id, link.clone());

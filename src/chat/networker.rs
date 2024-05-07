@@ -64,7 +64,7 @@ impl NetWorker {
                 Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, self.port)),
             };
             match &result {
-                Ok(num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
+                Ok(_num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
                 Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
             };
             result
@@ -243,14 +243,16 @@ impl NetWorker {
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&id) {
                         debug!("sending shards {range:?}");
-                        send_shards(
+                        match send_shards(
                             link,
                             range.to_owned(),
                             r_msg.id,
                             Recepients::One(r_ip),
                             self,
-                        )
-                        .ok();
+                        ) {
+                            Ok(_) => (),
+                            Err(err) => error!("{err}"),
+                        }
                     }
                 } else if let Some(message) = outbox.get(r_ip, id) {
                     debug!("Message found..");
