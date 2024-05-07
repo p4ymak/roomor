@@ -163,7 +163,7 @@ impl InMessage {
                 .map(|s| s.0 as ShardCount),
         );
 
-        if missed.is_empty() {
+        if self.shards.iter().all(|s| s.is_some()) {
             let data = std::mem::take(&mut self.shards)
                 .into_iter()
                 .flatten()
