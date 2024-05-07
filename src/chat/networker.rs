@@ -64,7 +64,7 @@ impl NetWorker {
                 Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, self.port)),
             };
             match &result {
-                Ok(num) => debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
+                Ok(num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
                 Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
             };
             result
