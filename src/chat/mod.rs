@@ -541,14 +541,14 @@ impl UdpChat {
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
             //     // FIXME file request timer
-            //     self.inbox.0.retain(|_, msg| {
-            //         !(SystemTime::now()
-            //             .duration_since(msg.ts)
-            //             .is_ok_and(|d| d > TIMEOUT_CHECK)
-            //             && msg
-            //                 .combine(&mut self.networker, &self.downloads_path, ctx)
-            //                 .is_ok())
-            //     });
+            self.inbox.0.retain(|_, msg| {
+                !(SystemTime::now()
+                    .duration_since(msg.ts)
+                    .is_ok_and(|d| d > TIMEOUT_CHECK)
+                    && msg
+                        .combine(&mut self.networker, &self.downloads_path, ctx)
+                        .is_ok())
+            });
 
             match event {
                 ChatEvent::Front(front) => {
