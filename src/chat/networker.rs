@@ -119,7 +119,7 @@ impl NetWorker {
     ) -> ControlFlow<()> {
         match event {
             FrontEvent::Message(msg) => {
-                debug!("Sending: {}", msg.get_text());
+                // debug!("Sending: {}", msg.get_text());
 
                 UdpMessage::send_message(&msg, self, outbox)
                     .inspect_err(|e| error!("{e}"))
@@ -158,7 +158,7 @@ impl NetWorker {
         if r_ip == self.ip {
             return;
         }
-        debug!("Received {:?} from {r_ip}", r_msg.command);
+        // debug!("Received {:?} from {r_ip}", r_msg.command);
         let r_id = r_msg.id;
 
         match r_msg.command {

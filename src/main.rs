@@ -2,14 +2,13 @@ mod app;
 mod chat;
 use app::Roomor;
 use eframe::egui;
-use env_logger::Env;
 
 fn main() -> Result<(), eframe::Error> {
     #[cfg(debug_assertions)]
     {
-        // std::env::set_var("RUST_BACKTRACE", "1");
-        // std::env::set_var("RUST_LOG", "roomor");
-        env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
+        std::env::set_var("RUST_BACKTRACE", "1");
+        std::env::set_var("RUST_LOG", "roomor");
+        env_logger::init();
     }
 
     let icon = egui::viewport::IconData {
