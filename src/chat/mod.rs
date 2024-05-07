@@ -14,7 +14,7 @@ use crate::app::UserSetup;
 use directories::UserDirs;
 use eframe::Result;
 use flume::{Receiver, Sender};
-use log::{debug, error};
+use log::{debug, error, warn};
 use message::{Command, Id, UdpMessage};
 use range_rover::range_rover;
 use std::{
@@ -223,16 +223,16 @@ impl InMessage {
                 .last()
                 .map(|l| *l.end())
                 .unwrap_or(self.count.saturating_sub(1));
-            for range in missed {
-                debug!("Asked to repeat shard #{range:?}");
+            missed.into_iter().for_each(|range| {
+                debug!("Asked to repeat shards #{range:?}");
                 sender
                     .send(
                         UdpMessage::ask_to_repeat(self.id, Part::RepeatRange(range)),
                         Recepients::One(self.sender),
                     )
                     .ok();
-            }
-            debug!("New terminal: {}", self.terminal);
+            });
+            warn!("New terminal: {}", self.terminal);
             Err("Missing Shards".into())
             // self.shards.clear(); // FIXME
         }
