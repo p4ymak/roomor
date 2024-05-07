@@ -144,6 +144,7 @@ impl InMessage {
             }
         }
         if position == self.terminal {
+            warn!("Received terminal {position}");
             return self.combine(networker, downloads_path, ctx).is_ok();
         }
         false
