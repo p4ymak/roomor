@@ -1,6 +1,6 @@
 use super::{EMOJI_SCALE, FONT_SCALE, PUBLIC};
 use crate::chat::{
-    file::LinkFile,
+    file::FileLink,
     limit_text,
     message::MAX_EMOJI_SIZE,
     peers::{Peer, PeersMap, Presence},
@@ -96,7 +96,7 @@ impl Rooms {
         // if !self.is_able_to_send() {
         //     return None;
         // }
-        let link = Arc::new(LinkFile::from_path(path)?);
+        let link = Arc::new(FileLink::from_path(path)?);
         Some(TextMessage::out_message(
             Content::FileLink(link),
             self.active_chat,
@@ -611,27 +611,25 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
-                ui.vertical_centered(|h| {
-                    h.vertical_centered(|ui| {
-                        ui.vertical_centered(|ui| {
-                            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                                font_id.size *= FONT_SCALE * EMOJI_SCALE;
-                            }
-                            ui.label("🖹");
-                        });
-                        ui.heading(&link.name);
-                        ui.label(human_bytes(link.size as f64));
-
-                        if link.is_ready() {
-                            if ui.link("Open").clicked() {
-                                opener::open(&link.path).ok();
-                            }
-                        } else {
-                            ui.add(egui::ProgressBar::new(link.progress()));
-                            // FIXME cleanup
-                            ui.label(format!("{}", link.progress()));
+                ui.vertical_centered(|ui| {
+                    ui.vertical_centered(|ui| {
+                        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                            font_id.size *= FONT_SCALE * EMOJI_SCALE;
                         }
+                        ui.label("🖹");
                     });
+                    ui.heading(&link.name);
+                    ui.label(human_bytes(link.size as f64));
+
+                    if link.is_ready() {
+                        if ui.link("Open").clicked() {
+                            opener::open(&link.path).ok();
+                        }
+                    } else {
+                        ui.add(egui::ProgressBar::new(link.progress()));
+                        // FIXME cleanup
+                        ui.label(format!("{}", link.progress()));
+                    }
                 });
             }
             _ => (),

@@ -1,5 +1,5 @@
 use crate::chat::{
-    message::{self, send_shards, Command, ShardCount},
+    message::{self, send_shards, Command, Part, ShardCount},
     InMessage, Seen, TextMessage,
 };
 
@@ -187,7 +187,7 @@ impl NetWorker {
                 message::Part::Single => {
                     let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                     self.incoming(r_ip); // FIXME
-                    self.send(UdpMessage::seen(&txt_msg), Recepients::One(r_ip))
+                    self.send(UdpMessage::seen_msg(&txt_msg), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                     self.handle_back_event(BackEvent::Message(txt_msg), ctx);
@@ -207,9 +207,12 @@ impl NetWorker {
                             content: Content::FileLink(inmsg.link.clone()),
                             seen: Some(Seen::One),
                         };
-                        self.send(UdpMessage::seen(&txt_msg), Recepients::One(inmsg.sender))
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
+                        self.send(
+                            UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
+                            Recepients::One(r_ip),
+                        )
+                        .ok();
+
                         self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                         inbox.0.insert(r_id, inmsg);
                     }
@@ -221,6 +224,9 @@ impl NetWorker {
                     }
                     if completed {
                         inbox.0.remove(&r_id);
+                        self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
                 }
                 _ => (),
@@ -269,6 +275,7 @@ impl NetWorker {
                             r_msg.id,
                             Recepients::One(r_ip),
                             self,
+                            ctx,
                         ) {
                             Ok(_) => (),
                             Err(err) => error!("{err}"),

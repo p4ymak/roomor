@@ -16,7 +16,7 @@ pub enum FileStatus {
 }
 
 #[derive(Debug)]
-pub struct LinkFile {
+pub struct FileLink {
     id: Id,
     pub name: String,
     pub path: PathBuf,
@@ -26,11 +26,11 @@ pub struct LinkFile {
     pub is_ready: AtomicBool,
 }
 
-impl LinkFile {
+impl FileLink {
     pub fn new(name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
         path.push(name);
-        LinkFile {
+        FileLink {
             id: new_id(),
             name: name.to_string(),
             path,
@@ -43,7 +43,7 @@ impl LinkFile {
 
     pub fn from_path(path: &Path) -> Option<Self> {
         let size = File::open(path).ok()?.metadata().ok()?.len();
-        Some(LinkFile {
+        Some(FileLink {
             id: new_id(),
             name: path.file_name()?.to_string_lossy().to_string(),
             path: path.to_path_buf(),
@@ -64,7 +64,7 @@ impl LinkFile {
         let id = lines.next()?.parse::<u32>().ok()?;
         let name = lines.next()?.to_string();
         let size = lines.next()?.parse::<u64>().ok()?;
-        Some(LinkFile {
+        Some(FileLink {
             id,
             name,
             path: PathBuf::default(),

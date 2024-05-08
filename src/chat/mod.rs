@@ -5,7 +5,7 @@ pub mod notifier;
 pub mod peers;
 
 use self::{
-    file::{FileEnding, LinkFile},
+    file::{FileEnding, FileLink},
     message::{new_id, CheckSum, Part, ShardCount, CRC, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
@@ -55,7 +55,7 @@ pub enum Content {
     Ping(String),
     Text(String),
     Icon(String),
-    FileLink(Arc<LinkFile>),
+    FileLink(Arc<FileLink>),
     FileData(PathBuf),
     FileEnding(FileEnding),
     Exit,
@@ -90,7 +90,7 @@ pub enum ChatEvent {
 #[derive(Default)]
 pub struct Outbox {
     pub texts: BTreeMap<Ipv4Addr, Vec<OutMessage>>,
-    pub files: BTreeMap<Id, Arc<LinkFile>>,
+    pub files: BTreeMap<Id, Arc<FileLink>>,
 }
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
@@ -102,7 +102,7 @@ pub struct InMessage {
     public: bool,
     command: Command,
     _total_checksum: CheckSum,
-    link: Arc<LinkFile>,
+    link: Arc<FileLink>,
     terminal: ShardCount,
     shards: Vec<Option<Shard>>,
 }
@@ -116,7 +116,7 @@ impl InMessage {
             } else {
                 String::new()
             };
-            let link = LinkFile::new(&file_name, downloads_path, init.count());
+            let link = FileLink::new(&file_name, downloads_path, init.count());
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
@@ -189,7 +189,7 @@ impl InMessage {
                         seen: Some(Seen::One),
                     };
                     sender
-                        .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
+                        .send(UdpMessage::seen_msg(&txt_msg), Recepients::One(self.sender))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                     sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
@@ -202,6 +202,7 @@ impl InMessage {
                     self.link
                         .is_ready
                         .store(true, std::sync::atomic::Ordering::Relaxed);
+                    ctx.request_repaint();
                     Ok(())
                 }
                 _ => Ok(()),

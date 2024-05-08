@@ -1,4 +1,7 @@
-use super::{file::LinkFile, networker::NetWorker, Content, Outbox, Recepients, TextMessage};
+use super::{
+    file::FileLink, networker::NetWorker, notifier::Repaintable, Content, Outbox, Recepients,
+    TextMessage,
+};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
@@ -125,16 +128,20 @@ impl UdpMessage {
     pub fn exit() -> Self {
         UdpMessage::new_single(Command::Exit, vec![], true)
     }
-    pub fn seen(msg: &TextMessage) -> Self {
+    pub fn seen_msg(msg: &TextMessage) -> Self {
+        UdpMessage::seen_id(msg.id, msg.public)
+    }
+    pub fn seen_id(id: Id, public: bool) -> Self {
         UdpMessage {
-            id: msg.id,
+            id,
             checksum: 0,
             part: Part::Single,
             command: Command::Seen,
-            public: msg.public,
+            public,
             data: vec![],
         }
     }
+
     pub fn ask_to_repeat(id: Id, part: Part) -> Self {
         UdpMessage {
             id,
@@ -179,6 +186,7 @@ impl UdpMessage {
                 command,
                 data,
             };
+            outbox.add(msg.ip(), message.clone());
             sender.send(message, recepients)?;
 
             // let message = UdpMessage {
@@ -192,17 +200,7 @@ impl UdpMessage {
             //     command,
             //     data: be_u8_from_str(link.path.as_os_str().to_str().unwrap_or_default()),
             // };
-            // outbox.add(msg.ip(), message);
-            // FIXME
             outbox.files.insert(msg.id, link.clone());
-
-            send_shards(
-                link,
-                0..=count.saturating_sub(1),
-                msg.id,
-                recepients,
-                sender,
-            )?;
 
             Ok(())
         } else {
@@ -360,13 +358,15 @@ pub fn new_id() -> Id {
 }
 
 pub fn send_shards(
-    link: &LinkFile,
+    link: &FileLink,
     range: RangeInclusive<ShardCount>,
     id: Id,
     recepients: Recepients,
     sender: &mut NetWorker,
+    ctx: &impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
     let file = fs::File::open(&link.path)?;
+    let count = range.clone().count() as ShardCount;
     for i in range {
         let mut data = vec![0; DATA_LIMIT_BYTES];
         file.read_at(&mut data, DATA_LIMIT_BYTES as u64 * i)?;
@@ -381,8 +381,9 @@ pub fn send_shards(
             },
             recepients,
         )?;
-        link.completed
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        ctx.request_repaint();
     }
+    link.completed
+        .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
