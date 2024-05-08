@@ -202,6 +202,7 @@ impl NetWorker {
                             &inmsg.file_name,
                             downloads_path,
                             inmsg.count * DATA_LIMIT_BYTES as ShardCount,
+                            inmsg.progress.clone(),
                         );
                         debug!("Creating link");
 
@@ -240,7 +241,7 @@ impl NetWorker {
             Command::Seen => {
                 let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
                 self.incoming(r_ip);
-                outbox.remove(r_ip, txt_msg.id());
+                // outbox.remove(r_ip, txt_msg.id());
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
             Command::Error => {

@@ -634,6 +634,11 @@ impl TextMessage {
                                     link.progress.load(std::sync::atomic::Ordering::Relaxed) as f32
                                         / 100.0,
                                 ));
+                                // FIXME cleanup
+                                ui.label(format!(
+                                    "{}",
+                                    link.progress.load(std::sync::atomic::Ordering::Relaxed)
+                                ));
                             }
                             FileStatus::Ready => {
                                 if ui.link("Open").clicked() {

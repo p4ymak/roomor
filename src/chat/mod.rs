@@ -114,7 +114,6 @@ impl InMessage {
             } else {
                 String::new()
             };
-            let progress = Arc::new(AtomicU8::new(0));
 
             Some(InMessage {
                 ts: SystemTime::now(),
@@ -126,7 +125,7 @@ impl InMessage {
                 _total_checksum: init.checksum(),
                 count: init.count(),
                 completed: 0,
-                progress: progress.clone(),
+                progress: Arc::new(AtomicU8::new(0)),
                 terminal: init.count().saturating_sub(1),
                 shards: vec![None; init.count() as usize],
             })
@@ -146,6 +145,11 @@ impl InMessage {
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
                 *block = Some(msg.data);
+                self.completed += 1;
+                self.progress.store(
+                    (self.completed / self.count) as u8,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
             }
         }
         if position == self.terminal {
@@ -348,7 +352,7 @@ impl TextMessage {
                         Content::Text(text)
                     }
                 }
-                Command::File => Content::FileLink(FileLink::from_text(&msg.read_text()).unwrap()), // FIXME
+                // Command::File => Content::FileLink(FileLink::from_text(&msg.read_text()).unwrap()), // FIXME
                 Command::Exit => Content::Exit,
                 Command::Seen => Content::Seen,
                 _ => Content::Empty,
