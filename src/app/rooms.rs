@@ -70,6 +70,10 @@ impl Rooms {
         }
     }
 
+    pub fn is_active_public(&self) -> bool {
+        self.active_chat.is_public()
+    }
+
     pub fn compose_message(&mut self) -> Option<TextMessage> {
         if !self.is_able_to_send() {
             return None;
@@ -523,7 +527,7 @@ impl Peer {
 }
 
 impl TextMessage {
-    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, peers: &PeersMap) {
+    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, _peers: &PeersMap) {
         let direction = if self.is_incoming() {
             egui::Direction::LeftToRight
         } else {
@@ -568,21 +572,22 @@ impl TextMessage {
                         } else {
                             self.draw_text(g);
                         }
-                    })
-                    .response
-                    .on_hover_ui_at_pointer(|ui| {
-                        ui.label(pretty_ago(self.time()).unwrap_or_default());
-                        let seen_by = self.is_seen_by();
-                        if !seen_by.is_empty() {
-                            ui.label("");
-                            ui.label("Received by:");
-                            for ip in seen_by.iter() {
-                                if let Some(peer) = peers.0.get(ip) {
-                                    ui.label(peer.rich_name());
-                                }
-                            }
-                        }
                     });
+                // FIXME hover steals mouse input for room context menu
+                // .response
+                // .on_hover_ui_at_pointer(|ui| {
+                //     ui.label(pretty_ago(self.time()).unwrap_or_default());
+                //     let seen_by = self.is_seen_by();
+                //     if !seen_by.is_empty() {
+                //         ui.label("");
+                //         ui.label("Received by:");
+                //         for ip in seen_by.iter() {
+                //             if let Some(peer) = peers.0.get(ip) {
+                //                 ui.label(peer.rich_name());
+                //             }
+                //         }
+                //     }
+                // });
             },
         );
     }
@@ -626,9 +631,7 @@ impl TextMessage {
                             opener::open(&link.path).ok();
                         }
                     } else {
-                        ui.add(egui::ProgressBar::new(link.progress()));
-                        // FIXME cleanup
-                        ui.label(format!("{}", link.progress()));
+                        ui.add(egui::ProgressBar::new(link.progress()).show_percentage());
                     }
                 });
             }

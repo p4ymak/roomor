@@ -351,18 +351,21 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
-            if !i.raw.hovered_files.is_empty() {
-                debug!("HOVERED");
-            }
-            if !i.raw.dropped_files.is_empty() {
-                debug!("DROPPED");
-            }
-            if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
-                debug!("Dropped file '{path:?}'");
-                self.dispatch_file(&path);
-            }
-        });
+        if !self.rooms.is_active_public() {
+            ctx.input(|i| {
+                if !i.raw.hovered_files.is_empty() {
+                    debug!("HOVERED");
+                }
+                if !i.raw.dropped_files.is_empty() {
+                    debug!("DROPPED");
+                }
+
+                if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
+                    debug!("Dropped file '{path:?}'");
+                    self.dispatch_file(&path);
+                }
+            });
+        }
         let mut font_size = 10.0;
         let max_height = ctx.input(|i| i.screen_rect.height()) * 0.5;
         egui::TopBottomPanel::bottom("text intput")
@@ -401,7 +404,7 @@ impl Roomor {
                     self.rooms.get_mut_active().clear_history();
                     ui.close_menu();
                 }
-                if ui.button("Send File..").clicked() {
+                if !self.rooms.is_active_public() && ui.button("Send File..").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         self.dispatch_file(&path);
                     }

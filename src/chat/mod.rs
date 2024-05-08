@@ -424,7 +424,7 @@ impl TextMessage {
     pub fn is_seen(&self) -> bool {
         self.seen.is_some()
     }
-    pub fn is_seen_by(&self) -> &[Ipv4Addr] {
+    pub fn _is_seen_by(&self) -> &[Ipv4Addr] {
         if let Some(Seen::Many(peers)) = &self.seen {
             peers
         } else {
@@ -450,6 +450,7 @@ impl TextMessage {
                 }
             }
             Content::Icon(icon) => icon.to_owned(),
+            Content::FileLink(link) => link.name.to_owned(),
             _ => String::new(),
         }
     }
