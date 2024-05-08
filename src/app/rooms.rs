@@ -7,8 +7,7 @@ use crate::chat::{
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
 use eframe::{
-    egui,
-    egui::{Rounding, Stroke},
+    egui::{self, Direction, Rounding, Stroke},
     emath::Align2,
 };
 use flume::Sender;
@@ -551,9 +550,9 @@ impl TextMessage {
                         stroke_width(line),
                         line.style().visuals.widgets.inactive.fg_stroke.color,
                     ))
-                    .show(line, |g| {
-                        if let Some(peer) = incoming {
-                            g.vertical(|v| {
+                    .show(line, |v| {
+                        v.vertical(|v| {
+                            if let Some(peer) = incoming {
                                 v.horizontal(|h| {
                                     h.label(peer.rich_name())
                                         .on_hover_text_at_pointer(peer.ip().to_string());
@@ -567,12 +566,14 @@ impl TextMessage {
                                         _ => (),
                                     }
                                 });
-                                self.draw_text(v);
-                            });
-                        } else {
-                            self.draw_text(g);
-                        }
+                            }
+                            self.draw_content(v, direction);
+
+                            v.shrink_width_to_current();
+                        });
+                        v.shrink_width_to_current();
                     });
+
                 // FIXME hover steals mouse input for room context menu
                 // .response
                 // .on_hover_ui_at_pointer(|ui| {
@@ -592,7 +593,7 @@ impl TextMessage {
         );
     }
 
-    pub fn draw_text(&self, ui: &mut eframe::egui::Ui) {
+    pub fn draw_content(&self, ui: &mut eframe::egui::Ui, direction: Direction) {
         match self.content() {
             Content::Text(content) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
@@ -616,23 +617,48 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
-                ui.vertical_centered(|ui| {
-                    ui.vertical_centered(|ui| {
-                        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                            font_id.size *= FONT_SCALE * EMOJI_SCALE;
-                        }
-                        ui.label("🖹");
-                    });
-                    ui.heading(&link.name);
-                    ui.label(human_bytes(link.size as f64));
-
-                    if link.is_ready() {
-                        if ui.link("Open").clicked() {
-                            opener::open(&link.path).ok();
-                        }
-                    } else {
-                        ui.add(egui::ProgressBar::new(link.progress()).show_percentage());
-                    }
+                // ui.vertical(|ui| {
+                // ui.vertical_centered(|ui| {
+                //     for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                //         font_id.size *= FONT_SCALE * EMOJI_SCALE;
+                //     }
+                //     ui.label("🖹");
+                //     ui.shrink_width_to_current();
+                // });
+                ui.vertical(|ui| {
+                    ui.with_layout(
+                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+                            .with_main_wrap(true),
+                        |r| {
+                            r.heading(&link.name);
+                        },
+                    );
+                    ui.with_layout(
+                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+                            .with_main_wrap(true),
+                        |r| {
+                            r.label(human_bytes(link.size as f64));
+                        },
+                    );
+                    ui.shrink_width_to_current();
+                    let width = ui.available_width();
+                    ui.with_layout(
+                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+                            .with_main_wrap(true),
+                        |r| {
+                            if link.is_ready() {
+                                if r.link("Open").clicked() {
+                                    opener::open(&link.path).ok();
+                                }
+                            } else {
+                                r.add(
+                                    egui::ProgressBar::new(link.progress())
+                                        .show_percentage()
+                                        .desired_width(width),
+                                );
+                            }
+                        },
+                    );
                 });
             }
             _ => (),

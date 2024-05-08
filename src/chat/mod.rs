@@ -10,7 +10,7 @@ use self::{
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
 };
-use crate::app::UserSetup;
+use crate::{app::UserSetup, chat::peers::Presence};
 use directories::UserDirs;
 use eframe::Result;
 use flume::{Receiver, Sender};
@@ -213,15 +213,21 @@ impl InMessage {
                 .last()
                 .map(|l| *l.end())
                 .unwrap_or(self.link.count.saturating_sub(1));
-            missed.into_iter().for_each(|range| {
-                debug!("Asked to repeat shards #{range:?}");
-                sender
-                    .send(
-                        UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                        Recepients::One(self.sender),
-                    )
-                    .ok();
-            });
+            // TODO save outbox
+            if !matches!(
+                sender.peers.online_status(Recepients::One(self.sender)),
+                Presence::Offline
+            ) {
+                missed.into_iter().for_each(|range| {
+                    debug!("Asked to repeat shards #{range:?}");
+                    sender
+                        .send(
+                            UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                            Recepients::One(self.sender),
+                        )
+                        .ok();
+                });
+            }
             warn!("New terminal: {}", self.terminal);
             Err("Missing Shards".into())
         }

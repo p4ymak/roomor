@@ -212,8 +212,9 @@ impl NetWorker {
                             Recepients::One(r_ip),
                         )
                         .ok();
-
-                        self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                        if inmsg.command == Command::File {
+                            self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                        }
                         inbox.0.insert(r_id, inmsg);
                     }
                 }
