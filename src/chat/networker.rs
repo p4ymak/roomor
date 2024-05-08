@@ -226,11 +226,6 @@ impl NetWorker {
                     let mut completed = false;
                     if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
                         completed = inmsg.insert(count, r_msg, self, ctx, downloads_path);
-                        inmsg.completed += 1;
-                        inmsg.progress.store(
-                            (inmsg.completed / inmsg.count) as u8,
-                            std::sync::atomic::Ordering::Release,
-                        );
                     }
                     if completed {
                         inbox.0.remove(&r_id);

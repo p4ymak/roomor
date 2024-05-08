@@ -147,8 +147,8 @@ impl InMessage {
                 *block = Some(msg.data);
                 self.completed += 1;
                 self.progress.store(
-                    (self.completed / self.count) as u8,
-                    std::sync::atomic::Ordering::Relaxed,
+                    (100.0 * self.completed as f32 / self.count as f32) as u8,
+                    std::sync::atomic::Ordering::Release,
                 );
             }
         }
