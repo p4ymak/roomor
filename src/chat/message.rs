@@ -40,7 +40,7 @@ impl Command {
 pub enum Part {
     Single,
     Init(PartInit),
-    RepeatRange(RangeInclusive<ShardCount>),
+    AskRange(RangeInclusive<ShardCount>),
     Shard(ShardCount),
 }
 impl Part {
@@ -48,7 +48,7 @@ impl Part {
         match self {
             Part::Single => 0,
             Part::Init(_) => 1,
-            Part::RepeatRange(_) => 2,
+            Part::AskRange(_) => 2,
             Part::Shard(_) => 3,
         }
     }
@@ -277,7 +277,7 @@ impl UdpMessage {
                 bytes.get(17..)?.to_owned(),
             ),
             2 => (
-                Part::RepeatRange(
+                Part::AskRange(
                     u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)
                         ..=u64::from_be_bytes(bytes.get(15..=22)?.try_into().ok()?),
                 ),
@@ -324,7 +324,7 @@ impl UdpMessage {
                 bytes.extend(init.total_checksum.to_be_bytes());
                 bytes.extend(init.count.to_be_bytes());
             }
-            Part::RepeatRange(range) => {
+            Part::AskRange(range) => {
                 bytes.extend(range.start().to_be_bytes());
                 bytes.extend(range.end().to_be_bytes());
             }

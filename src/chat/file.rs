@@ -26,14 +26,14 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(path: &Path) -> Option<Self> {
+    pub fn new(path: &Path, progress: Arc<AtomicU8>) -> Option<Self> {
         Some(FileLink {
             id: new_id(),
             name: path.file_name()?.to_string_lossy().to_string(),
             path: path.to_path_buf(),
             size: File::open(path).ok()?.metadata().ok()?.len(),
-            progress: Arc::new(AtomicU8::new(0)),
-            status: FileStatus::Ready,
+            progress,
+            status: FileStatus::InProgress,
         })
     }
     pub fn id(&self) -> Id {
@@ -53,7 +53,7 @@ impl FileLink {
             path: PathBuf::default(),
             size,
             progress: Arc::new(AtomicU8::new(0)),
-            status: FileStatus::Link,
+            status: FileStatus::InProgress,
         })
     }
 }

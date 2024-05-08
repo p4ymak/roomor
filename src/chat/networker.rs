@@ -1,6 +1,7 @@
 use crate::chat::{
+    file::FileLink,
     message::{self, send_shards, Command},
-    InMessage, TextMessage,
+    InMessage, Seen, TextMessage,
 };
 
 use super::{
@@ -195,6 +196,24 @@ impl NetWorker {
                 message::Part::Init(_) => {
                     debug!("incomint PartInit");
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
+                        // TODO move to fn
+                        let path = downloads_path.join(&inmsg.file_name);
+                        if let Some(link) = FileLink::new(&path, inmsg.progress.clone()) {
+                            debug!("Creating link");
+                            let txt_msg = TextMessage {
+                                timestamp: inmsg.ts,
+                                incoming: true,
+                                public: inmsg.public,
+                                ip: inmsg.sender,
+                                id: inmsg.id,
+                                content: Content::FileLink(link),
+                                seen: Some(Seen::One),
+                            };
+                            self.send(UdpMessage::seen(&txt_msg), Recepients::One(inmsg.sender))
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
+                            self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                        }
                         inbox.0.insert(r_id, inmsg);
                     }
                 }
@@ -202,6 +221,8 @@ impl NetWorker {
                     let mut completed = false;
                     if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
                         completed = inmsg.insert(count, r_msg, self, ctx, downloads_path);
+                        inmsg.completed += 1;
+                        inmsg.progress = inmsg.completed / inmsg.count;
                     }
                     if completed {
                         inbox.0.remove(&r_id);
@@ -238,7 +259,7 @@ impl NetWorker {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                } else if let message::Part::RepeatRange(range) = &r_msg.part {
+                } else if let message::Part::AskRange(range) = &r_msg.part {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&id) {

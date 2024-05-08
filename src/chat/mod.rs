@@ -24,7 +24,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{atomic::AtomicU8, Arc},
     thread::{self, JoinHandle},
     time::SystemTime,
 };
@@ -99,6 +99,8 @@ pub struct InMessage {
     _total_checksum: CheckSum,
     file_name: String,
     count: ShardCount,
+    completed: ShardCount,
+    progress: Arc<AtomicU8>,
     terminal: ShardCount,
     shards: Vec<Option<Shard>>,
 }
@@ -112,6 +114,7 @@ impl InMessage {
             } else {
                 String::new()
             };
+            let progress = Arc::new(AtomicU8::new(0));
 
             Some(InMessage {
                 ts: SystemTime::now(),
@@ -122,6 +125,8 @@ impl InMessage {
                 file_name,
                 _total_checksum: init.checksum(),
                 count: init.count(),
+                completed: 0,
+                progress: progress.clone(),
                 terminal: init.count().saturating_sub(1),
                 shards: vec![None; init.count() as usize],
             })
@@ -191,30 +196,12 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
+                    self.progress
+                        .store(100, std::sync::atomic::Ordering::Release);
                     let path = downloads_path.join(&self.file_name);
                     debug!("Writing new file to {path:?}");
                     fs::write(&path, data)?;
-
-                    if let Some(link) = FileLink::new(&path) {
-                        debug!("Creating link");
-                        let txt_msg = TextMessage {
-                            timestamp: self.ts,
-                            incoming: true,
-                            public: self.public,
-                            ip: self.sender,
-                            id: self.id,
-                            content: Content::FileLink(link),
-                            seen: Some(Seen::One),
-                        };
-                        sender
-                            .send(UdpMessage::seen(&txt_msg), Recepients::One(self.sender))
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-                        sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
-                        Ok(())
-                    } else {
-                        Err("Missing Link".into())
-                    }
+                    Ok(())
                 }
                 _ => Ok(()),
             }
@@ -228,7 +215,7 @@ impl InMessage {
                 debug!("Asked to repeat shards #{range:?}");
                 sender
                     .send(
-                        UdpMessage::ask_to_repeat(self.id, Part::RepeatRange(range)),
+                        UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
                         Recepients::One(self.sender),
                     )
                     .ok();

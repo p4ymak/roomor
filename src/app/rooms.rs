@@ -13,7 +13,17 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, time::SystemTime};
+use std::{
+    borrow::Borrow,
+    collections::BTreeMap,
+    net::Ipv4Addr,
+    path::Path,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    time::SystemTime,
+};
 use timediff::TimeDiff;
 
 pub struct Rooms {
@@ -97,7 +107,7 @@ impl Rooms {
         //     return None;
         // }
         Some(TextMessage::out_message(
-            Content::FileLink(FileLink::new(path)?),
+            Content::FileLink(FileLink::new(path, Arc::new(AtomicU8::new(0)))?),
             self.active_chat,
         ))
     }
