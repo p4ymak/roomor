@@ -1,6 +1,6 @@
 use crate::chat::{
     file::FileLink,
-    message::{self, send_shards, Command},
+    message::{self, send_shards, Command, ShardCount, DATA_LIMIT_BYTES},
     InMessage, Seen, TextMessage,
 };
 
@@ -193,27 +193,31 @@ impl NetWorker {
                         .ok();
                     self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                 }
-                message::Part::Init(_) => {
+                message::Part::Init(ref part) => {
                     debug!("incomint PartInit");
+                    let name = r_msg.read_text();
+                    let link = FileLink::new(
+                        &name,
+                        downloads_path,
+                        part.count() * DATA_LIMIT_BYTES as ShardCount,
+                    );
+                    debug!("Creating link");
+
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
                         // TODO move to fn
-                        let path = downloads_path.join(&inmsg.file_name);
-                        if let Some(link) = FileLink::new(&path, inmsg.progress.clone()) {
-                            debug!("Creating link");
-                            let txt_msg = TextMessage {
-                                timestamp: inmsg.ts,
-                                incoming: true,
-                                public: inmsg.public,
-                                ip: inmsg.sender,
-                                id: inmsg.id,
-                                content: Content::FileLink(link),
-                                seen: Some(Seen::One),
-                            };
-                            self.send(UdpMessage::seen(&txt_msg), Recepients::One(inmsg.sender))
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                            self.handle_back_event(BackEvent::Message(txt_msg), ctx);
-                        }
+                        let txt_msg = TextMessage {
+                            timestamp: inmsg.ts,
+                            incoming: true,
+                            public: inmsg.public,
+                            ip: inmsg.sender,
+                            id: inmsg.id,
+                            content: Content::FileLink(link),
+                            seen: Some(Seen::One),
+                        };
+                        // self.send(UdpMessage::seen(&txt_msg), Recepients::One(inmsg.sender))
+                        //     .inspect_err(|e| error!("{e}"))
+                        //     .ok();
+                        self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                         inbox.0.insert(r_id, inmsg);
                     }
                 }

@@ -26,7 +26,20 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(path: &Path, progress: Arc<AtomicU8>) -> Option<Self> {
+    pub fn new(name: &str, dir: &Path, size: u64) -> Self {
+        let mut path = dir.to_owned();
+        path.push(name);
+        FileLink {
+            id: new_id(),
+            name: name.to_string(),
+            path,
+            size,
+            progress: Arc::new(AtomicU8::new(0)),
+            status: FileStatus::InProgress,
+        }
+    }
+
+    pub fn from_path(path: &Path, progress: Arc<AtomicU8>) -> Option<Self> {
         Some(FileLink {
             id: new_id(),
             name: path.file_name()?.to_string_lossy().to_string(),
