@@ -381,6 +381,8 @@ pub fn send_shards(
             },
             recepients,
         )?;
+        link.completed
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
     Ok(())
 }

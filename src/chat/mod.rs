@@ -146,6 +146,7 @@ impl InMessage {
                 self.link
                     .completed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                ctx.request_repaint();
             }
         }
         if position == self.terminal {

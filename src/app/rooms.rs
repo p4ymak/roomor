@@ -622,7 +622,7 @@ impl TextMessage {
                         ui.heading(&link.name);
                         ui.label(human_bytes(link.size as f64));
 
-                        if link.is_ready.load(std::sync::atomic::Ordering::Relaxed) {
+                        if link.is_ready() {
                             if ui.link("Open").clicked() {
                                 opener::open(&link.path).ok();
                             }

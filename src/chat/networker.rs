@@ -1,5 +1,5 @@
 use crate::chat::{
-    message::{self, send_shards, Command},
+    message::{self, send_shards, Command, ShardCount},
     InMessage, Seen, TextMessage,
 };
 
@@ -258,6 +258,10 @@ impl NetWorker {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&id) {
+                        link.completed.fetch_sub(
+                            range.clone().count() as ShardCount,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
                         debug!("sending shards {range:?}");
                         match send_shards(
                             link,

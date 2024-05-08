@@ -77,6 +77,9 @@ impl LinkFile {
     pub fn progress(&self) -> f32 {
         self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32
     }
+    pub fn is_ready(&self) -> bool {
+        self.is_ready.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 #[derive(Debug, Clone)]
