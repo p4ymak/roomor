@@ -1,6 +1,6 @@
 use super::{EMOJI_SCALE, FONT_SCALE, PUBLIC};
 use crate::chat::{
-    file::{FileLink, FileStatus},
+    file::LinkFile,
     limit_text,
     message::MAX_EMOJI_SIZE,
     peers::{Peer, PeersMap, Presence},
@@ -13,13 +13,7 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use std::{
-    collections::BTreeMap,
-    net::Ipv4Addr,
-    path::Path,
-    sync::{atomic::AtomicU8, Arc},
-    time::SystemTime,
-};
+use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
 use timediff::TimeDiff;
 
 pub struct Rooms {
@@ -102,8 +96,9 @@ impl Rooms {
         // if !self.is_able_to_send() {
         //     return None;
         // }
+        let link = Arc::new(LinkFile::from_path(path)?);
         Some(TextMessage::out_message(
-            Content::FileLink(FileLink::from_path(path, Arc::new(AtomicU8::new(0)))?),
+            Content::FileLink(link),
             self.active_chat,
         ))
     }
@@ -627,25 +622,15 @@ impl TextMessage {
                         ui.heading(&link.name);
                         ui.label(human_bytes(link.size as f64));
 
-                        match link.status {
-                            FileStatus::Link => if ui.link("Download").clicked() {},
-                            FileStatus::InProgress => {
-                                ui.add(egui::ProgressBar::new(
-                                    link.progress.load(std::sync::atomic::Ordering::Relaxed) as f32
-                                        / 100.0,
-                                ));
-                                // FIXME cleanup
-                                ui.label(format!(
-                                    "{}",
-                                    link.progress.load(std::sync::atomic::Ordering::Relaxed)
-                                ));
+                        if link.is_ready.load(std::sync::atomic::Ordering::Relaxed) {
+                            if ui.link("Open").clicked() {
+                                opener::open(&link.path).ok();
                             }
-                            FileStatus::Ready => {
-                                if ui.link("Open").clicked() {
-                                    opener::open(&link.path).ok();
-                                }
-                            }
-                        };
+                        } else {
+                            ui.add(egui::ProgressBar::new(link.progress()));
+                            // FIXME cleanup
+                            ui.label(format!("{}", link.progress()));
+                        }
                     });
                 });
             }

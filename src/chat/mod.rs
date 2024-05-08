@@ -5,7 +5,7 @@ pub mod notifier;
 pub mod peers;
 
 use self::{
-    file::{FileEnding, FileLink},
+    file::{FileEnding, LinkFile},
     message::{new_id, CheckSum, Part, ShardCount, CRC, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_CHECK},
     notifier::Repaintable,
@@ -24,7 +24,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
     path::{Path, PathBuf},
-    sync::{atomic::AtomicU8, Arc},
+    sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,
 };
@@ -50,17 +50,22 @@ impl Recepients {
 
 // FIXME
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Content {
     Ping(String),
     Text(String),
     Icon(String),
-    FileLink(FileLink),
+    FileLink(Arc<LinkFile>),
     FileData(PathBuf),
     FileEnding(FileEnding),
     Exit,
     Seen,
     Empty,
+}
+impl std::fmt::Debug for Content {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "content")
+    }
 }
 #[derive(Debug)]
 pub enum BackEvent {
@@ -85,7 +90,7 @@ pub enum ChatEvent {
 #[derive(Default)]
 pub struct Outbox {
     pub texts: BTreeMap<Ipv4Addr, Vec<OutMessage>>,
-    pub files: BTreeMap<Id, FileLink>,
+    pub files: BTreeMap<Id, Arc<LinkFile>>,
 }
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
@@ -97,15 +102,12 @@ pub struct InMessage {
     public: bool,
     command: Command,
     _total_checksum: CheckSum,
-    file_name: String,
-    count: ShardCount,
-    completed: ShardCount,
-    progress: Arc<AtomicU8>,
+    link: Arc<LinkFile>,
     terminal: ShardCount,
     shards: Vec<Option<Shard>>,
 }
 impl InMessage {
-    pub fn new(ip: Ipv4Addr, msg: UdpMessage) -> Option<Self> {
+    pub fn new(ip: Ipv4Addr, msg: UdpMessage, downloads_path: &Path) -> Option<Self> {
         debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
             let file_name = if let Command::File = msg.command {
@@ -114,18 +116,15 @@ impl InMessage {
             } else {
                 String::new()
             };
-
+            let link = LinkFile::new(&file_name, downloads_path, init.count());
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
                 sender: ip,
                 public: msg.public,
                 command: msg.command,
-                file_name,
                 _total_checksum: init.checksum(),
-                count: init.count(),
-                completed: 0,
-                progress: Arc::new(AtomicU8::new(0)),
+                link: Arc::new(link),
                 terminal: init.count().saturating_sub(1),
                 shards: vec![None; init.count() as usize],
             })
@@ -139,29 +138,25 @@ impl InMessage {
         msg: UdpMessage,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
-        downloads_path: &Path,
     ) -> bool {
         self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
                 *block = Some(msg.data);
-                self.completed += 1;
-                self.progress.store(
-                    (100.0 * self.completed as f32 / self.count as f32) as u8,
-                    std::sync::atomic::Ordering::Release,
-                );
+                self.link
+                    .completed
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
         if position == self.terminal {
             warn!("Received terminal {position}");
-            return self.combine(networker, downloads_path, ctx).is_ok();
+            return self.combine(networker, ctx).is_ok();
         }
         false
     }
     pub fn combine(
         &mut self,
         sender: &mut NetWorker,
-        downloads_path: &Path,
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
         debug!("Combining");
@@ -200,11 +195,12 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
-                    self.progress
-                        .store(100, std::sync::atomic::Ordering::Release);
-                    let path = downloads_path.join(&self.file_name);
+                    let path = &self.link.path;
                     debug!("Writing new file to {path:?}");
-                    fs::write(&path, data)?;
+                    fs::write(path, data)?;
+                    self.link
+                        .is_ready
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                     Ok(())
                 }
                 _ => Ok(()),
@@ -214,7 +210,7 @@ impl InMessage {
             self.terminal = missed
                 .last()
                 .map(|l| *l.end())
-                .unwrap_or(self.count.saturating_sub(1));
+                .unwrap_or(self.link.count.saturating_sub(1));
             missed.into_iter().for_each(|range| {
                 debug!("Asked to repeat shards #{range:?}");
                 sender
@@ -537,9 +533,7 @@ impl UdpChat {
                 !(SystemTime::now()
                     .duration_since(msg.ts)
                     .is_ok_and(|d| d > TIMEOUT_CHECK)
-                    && msg
-                        .combine(&mut self.networker, &self.downloads_path, ctx)
-                        .is_ok())
+                    && msg.combine(&mut self.networker, ctx).is_ok())
             });
 
             match event {

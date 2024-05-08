@@ -3,10 +3,10 @@
 use std::{
     fs::File,
     path::{Path, PathBuf},
-    sync::{atomic::AtomicU8, Arc},
+    sync::atomic::{AtomicBool, AtomicU64},
 };
 
-use super::message::{new_id, Id};
+use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
 
 #[derive(Debug, Clone)]
 pub enum FileStatus {
@@ -15,38 +15,42 @@ pub enum FileStatus {
     Ready,
 }
 
-#[derive(Debug, Clone)]
-pub struct FileLink {
+#[derive(Debug)]
+pub struct LinkFile {
     id: Id,
     pub name: String,
     pub path: PathBuf,
     pub size: u64,
-    pub progress: Arc<AtomicU8>,
-    pub status: FileStatus,
+    pub count: ShardCount,
+    pub completed: AtomicU64,
+    pub is_ready: AtomicBool,
 }
 
-impl FileLink {
-    pub fn new(name: &str, dir: &Path, size: u64, progress: Arc<AtomicU8>) -> Self {
+impl LinkFile {
+    pub fn new(name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
         path.push(name);
-        FileLink {
+        LinkFile {
             id: new_id(),
             name: name.to_string(),
             path,
-            size,
-            progress,
-            status: FileStatus::InProgress,
+            size: count * DATA_LIMIT_BYTES as ShardCount,
+            count,
+            completed: AtomicU64::new(0),
+            is_ready: AtomicBool::new(false),
         }
     }
 
-    pub fn from_path(path: &Path, progress: Arc<AtomicU8>) -> Option<Self> {
-        Some(FileLink {
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let size = File::open(path).ok()?.metadata().ok()?.len();
+        Some(LinkFile {
             id: new_id(),
             name: path.file_name()?.to_string_lossy().to_string(),
             path: path.to_path_buf(),
-            size: File::open(path).ok()?.metadata().ok()?.len(),
-            progress,
-            status: FileStatus::InProgress,
+            size,
+            count: size.div_ceil(DATA_LIMIT_BYTES as ShardCount),
+            completed: AtomicU64::new(0),
+            is_ready: AtomicBool::new(false),
         })
     }
     pub fn id(&self) -> Id {
@@ -60,14 +64,18 @@ impl FileLink {
         let id = lines.next()?.parse::<u32>().ok()?;
         let name = lines.next()?.to_string();
         let size = lines.next()?.parse::<u64>().ok()?;
-        Some(FileLink {
+        Some(LinkFile {
             id,
             name,
             path: PathBuf::default(),
             size,
-            progress: Arc::new(AtomicU8::new(0)),
-            status: FileStatus::InProgress,
+            count: size.div_ceil(DATA_LIMIT_BYTES as ShardCount),
+            completed: AtomicU64::new(0),
+            is_ready: AtomicBool::new(false),
         })
+    }
+    pub fn progress(&self) -> f32 {
+        self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32 * 100.0
     }
 }
 

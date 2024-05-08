@@ -1,4 +1,4 @@
-use super::{file::FileLink, networker::NetWorker, Content, Outbox, Recepients, TextMessage};
+use super::{file::LinkFile, networker::NetWorker, Content, Outbox, Recepients, TextMessage};
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
@@ -360,7 +360,7 @@ pub fn new_id() -> Id {
 }
 
 pub fn send_shards(
-    link: &FileLink,
+    link: &LinkFile,
     range: RangeInclusive<ShardCount>,
     id: Id,
     recepients: Recepients,

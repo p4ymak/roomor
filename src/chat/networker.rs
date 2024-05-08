@@ -1,6 +1,5 @@
 use crate::chat::{
-    file::FileLink,
-    message::{self, send_shards, Command, ShardCount, DATA_LIMIT_BYTES},
+    message::{self, send_shards, Command},
     InMessage, Seen, TextMessage,
 };
 
@@ -196,15 +195,8 @@ impl NetWorker {
                 message::Part::Init(_) => {
                     debug!("incomint PartInit");
 
-                    if let Some(inmsg) = InMessage::new(r_ip, r_msg) {
+                    if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         // TODO move to fn
-                        let link = FileLink::new(
-                            &inmsg.file_name,
-                            downloads_path,
-                            inmsg.count * DATA_LIMIT_BYTES as ShardCount,
-                            inmsg.progress.clone(),
-                        );
-                        debug!("Creating link");
 
                         let txt_msg = TextMessage {
                             timestamp: inmsg.ts,
@@ -212,7 +204,7 @@ impl NetWorker {
                             public: inmsg.public,
                             ip: inmsg.sender,
                             id: inmsg.id,
-                            content: Content::FileLink(link),
+                            content: Content::FileLink(inmsg.link.clone()),
                             seen: Some(Seen::One),
                         };
                         self.send(UdpMessage::seen(&txt_msg), Recepients::One(inmsg.sender))
@@ -225,7 +217,7 @@ impl NetWorker {
                 message::Part::Shard(count) => {
                     let mut completed = false;
                     if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
-                        completed = inmsg.insert(count, r_msg, self, ctx, downloads_path);
+                        completed = inmsg.insert(count, r_msg, self, ctx);
                     }
                     if completed {
                         inbox.0.remove(&r_id);
