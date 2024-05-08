@@ -224,7 +224,6 @@ impl InMessage {
             });
             warn!("New terminal: {}", self.terminal);
             Err("Missing Shards".into())
-            // self.shards.clear(); // FIXME
         }
     }
 }
