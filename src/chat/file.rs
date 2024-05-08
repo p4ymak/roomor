@@ -75,7 +75,7 @@ impl LinkFile {
         })
     }
     pub fn progress(&self) -> f32 {
-        self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32 * 100.0
+        self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32
     }
 }
 
