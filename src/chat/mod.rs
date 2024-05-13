@@ -7,7 +7,7 @@ pub mod peers;
 use self::{
     file::{FileEnding, FileLink},
     message::{new_id, CheckSum, Part, ShardCount, CRC, MAX_PREVIEW_CHARS},
-    networker::{NetWorker, TIMEOUT_CHECK},
+    networker::{NetWorker, TIMEOUT_CHECK, TIMEOUT_SECOND},
     notifier::Repaintable,
 };
 use crate::{app::UserSetup, chat::peers::Presence};
@@ -155,6 +155,7 @@ impl InMessage {
         }
         false
     }
+
     pub fn combine(
         &mut self,
         sender: &mut NetWorker,
@@ -512,35 +513,38 @@ impl UdpChat {
             let local_ip = self.networker.ip;
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
-            thread::spawn(move || {
-                let mut buf = [0; 2048];
-                loop {
-                    if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
-                        socket.recv_from(&mut buf)
-                    {
-                        let ip = *src_addr_v4.ip();
-                        if let Some(message) =
-                            UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
+            thread::Builder::new()
+                .name("listener".to_string())
+                .spawn(move || {
+                    let mut buf = [0; 2048];
+                    loop {
+                        if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
+                            socket.recv_from(&mut buf)
                         {
-                            if ip != local_ip {
-                                receiver.send(ChatEvent::Incoming((ip, message))).ok();
-                            } else if message.command == Command::Exit {
-                                break;
+                            let ip = *src_addr_v4.ip();
+                            if let Some(message) =
+                                UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                            {
+                                if ip != local_ip {
+                                    receiver.send(ChatEvent::Incoming((ip, message))).ok();
+                                } else if message.command == Command::Exit {
+                                    break;
+                                }
                             }
                         }
                     }
-                }
-            })
+                })
+                .expect("can't build thread")
         });
     }
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
-            //     // FIXME file request timer
+            // FIXME file request timer
             self.inbox.0.retain(|_, msg| {
                 !(SystemTime::now()
                     .duration_since(msg.ts)
-                    .is_ok_and(|d| d > TIMEOUT_CHECK)
+                    .is_ok_and(|d| d > TIMEOUT_SECOND)
                     && msg.combine(&mut self.networker, ctx).is_ok())
             });
 

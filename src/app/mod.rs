@@ -283,10 +283,18 @@ impl Roomor {
             );
             match init.prelude(&self.user) {
                 Ok(_) => {
-                    self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
+                    self.chat_handle = Some(
+                        thread::Builder::new()
+                            .name("chat_back".to_string())
+                            .spawn(move || init.run(&ctx))
+                            .expect("can't build chat_back thread"),
+                    );
                     self.pulse_handle = Some({
                         let tx = self.back_tx.clone();
-                        thread::spawn(move || pulse(tx))
+                        thread::Builder::new()
+                            .name("pulse".to_string())
+                            .spawn(move || pulse(tx))
+                            .expect("can't build pulse thread")
                     });
                 }
                 Err(err) => {

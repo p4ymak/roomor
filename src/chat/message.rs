@@ -1,4 +1,5 @@
 use super::{
+    file::FileLink,
     networker::{send, NetWorker, Port},
     notifier::Repaintable,
     Content, Outbox, Recepients, TextMessage,
@@ -7,8 +8,8 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
 use std::{
-    error::Error, fmt, fs, net::UdpSocket, ops::RangeInclusive, os::unix::fs::FileExt,
-    path::PathBuf, sync::Arc, time::SystemTime,
+    error::Error, fmt, fs, net::UdpSocket, ops::RangeInclusive, os::unix::fs::FileExt, sync::Arc,
+    time::SystemTime,
 };
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
@@ -196,7 +197,7 @@ impl UdpMessage {
 
             Ok(())
         } else {
-            let checksum = 0; // FIXME
+            let checksum = CRC.checksum(&data);
             let total_checksum = CRC.checksum(&data);
             let count = data.chunks(DATA_LIMIT_BYTES).count() as u64;
             let chunks = data.chunks(DATA_LIMIT_BYTES);
@@ -350,7 +351,7 @@ pub fn new_id() -> Id {
 }
 
 pub fn send_shards(
-    path: PathBuf,
+    link: Arc<FileLink>,
     range: RangeInclusive<ShardCount>,
     id: Id,
     recepients: Recepients,
@@ -358,7 +359,7 @@ pub fn send_shards(
     port: Port,
     ctx: impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
-    let file = fs::File::open(path)?;
+    let file = fs::File::open(&link.path)?;
 
     for i in range {
         let mut data = vec![0; DATA_LIMIT_BYTES];
@@ -376,6 +377,8 @@ pub fn send_shards(
             },
             recepients,
         )?;
+        link.completed
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         ctx.request_repaint();
     }
 

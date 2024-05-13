@@ -24,6 +24,7 @@ use std::{
 
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
+pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 pub const IP_MULTICAST_DEFAULT: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
 pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 pub type Port = u16;
@@ -68,7 +69,7 @@ impl NetWorker {
     }
     pub fn send_shards(
         &self,
-        link: &FileLink,
+        link: Arc<FileLink>,
         range: RangeInclusive<ShardCount>,
         id: Id,
         recepients: Recepients,
@@ -78,16 +79,16 @@ impl NetWorker {
             let socket = socket.clone();
             let port = self.port;
             let ctx = ctx.clone();
-            let path = link.path.clone();
-            let count = range.clone().count() as ShardCount;
-            thread::spawn(move || {
-                match send_shards(path, range, id, recepients, socket, port, ctx) {
-                    Ok(_) => (),
-                    Err(err) => error!("{err}"),
-                }
-            });
-            link.completed
-                .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
+
+            thread::Builder::new()
+                .name("shard_sender".to_string())
+                .spawn(
+                    move || match send_shards(link, range, id, recepients, socket, port, ctx) {
+                        Ok(_) => (),
+                        Err(err) => error!("{err}"),
+                    },
+                )
+                .ok();
         }
     }
 
@@ -100,18 +101,12 @@ impl NetWorker {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                    // let notification_text = format!("{} joined..", self.peers.get_display_name(ip));
-                    // ctx.notify(&notification_text);
-                    // } else {
-                    // ctx.request_repaint();
                 }
                 ctx.request_repaint();
             }
             BackEvent::PeerLeft(ip) => {
-                // let notification_text = format!("{} left..", self.peers.get_display_name(ip));
                 self.peers.remove(&ip);
                 self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
-                // ctx.notify(&notification_text);
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
@@ -137,8 +132,6 @@ impl NetWorker {
     ) -> ControlFlow<()> {
         match event {
             FrontEvent::Message(msg) => {
-                // debug!("Sending: {}", msg.get_text());
-
                 UdpMessage::send_message(&msg, self, outbox)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
@@ -157,7 +150,6 @@ impl NetWorker {
                 self.send(UdpMessage::exit(), Recepients::All)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
-                // self.sender.send(UdpMessage::exit(), Recepients::Myself);
                 return ControlFlow::Break(());
             }
         }
@@ -283,13 +275,14 @@ impl NetWorker {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&id) {
-                        link.completed.fetch_sub(
-                            range.clone().count() as ShardCount,
+                        let completed = link.completed.load(std::sync::atomic::Ordering::Relaxed);
+                        link.completed.store(
+                            completed.saturating_sub(range.clone().count() as ShardCount),
                             std::sync::atomic::Ordering::Relaxed,
                         );
                         debug!("sending shards {range:?}");
                         self.send_shards(
-                            link,
+                            link.clone(),
                             range.to_owned(),
                             r_msg.id,
                             Recepients::One(r_ip),

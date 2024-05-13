@@ -130,6 +130,10 @@ impl Rooms {
             .or_insert(ChatHistory::new(recepients));
         if matches!(msg.content(), Content::Seen) {
             if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
+                if let Content::FileLink(link) = found.content() {
+                    link.is_ready
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 match recepients {
                     Recepients::One(_) => found.seen_private(),
                     _ => found.seen_public_by(msg.ip()),
