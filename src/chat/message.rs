@@ -1,11 +1,15 @@
 use super::{
-    file::FileLink, networker::NetWorker, notifier::Repaintable, Content, Outbox, Recepients,
-    TextMessage,
+    networker::{send, NetWorker, Port},
+    notifier::Repaintable,
+    Content, Outbox, Recepients, TextMessage,
 };
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
-use std::{error::Error, fmt, fs, ops::RangeInclusive, os::unix::fs::FileExt, time::SystemTime};
+use std::{
+    error::Error, fmt, fs, net::UdpSocket, ops::RangeInclusive, os::unix::fs::FileExt,
+    path::PathBuf, sync::Arc, time::SystemTime,
+};
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -346,19 +350,22 @@ pub fn new_id() -> Id {
 }
 
 pub fn send_shards(
-    link: &FileLink,
+    path: PathBuf,
     range: RangeInclusive<ShardCount>,
     id: Id,
     recepients: Recepients,
-    sender: &mut NetWorker,
-    ctx: &impl Repaintable,
+    socket: Arc<UdpSocket>,
+    port: Port,
+    ctx: impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
-    let file = fs::File::open(&link.path)?;
-    let count = range.clone().count() as ShardCount;
+    let file = fs::File::open(path)?;
+
     for i in range {
         let mut data = vec![0; DATA_LIMIT_BYTES];
         file.read_at(&mut data, DATA_LIMIT_BYTES as u64 * i)?;
-        sender.send(
+        send(
+            &socket,
+            port,
             UdpMessage {
                 id,
                 part: Part::Shard(i),
@@ -371,7 +378,6 @@ pub fn send_shards(
         )?;
         ctx.request_repaint();
     }
-    link.completed
-        .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
+
     Ok(())
 }

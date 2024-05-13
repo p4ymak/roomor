@@ -4,17 +4,21 @@ use crate::chat::{
 };
 
 use super::{
-    message::UdpMessage, notifier::Repaintable, peers::PeersMap, BackEvent, Content, FrontEvent,
-    Inbox, Outbox, Recepients,
+    file::FileLink,
+    message::{Id, UdpMessage},
+    notifier::Repaintable,
+    peers::PeersMap,
+    BackEvent, Content, FrontEvent, Inbox, Outbox, Recepients,
 };
 use flume::Sender;
 use log::{debug, error};
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    ops::ControlFlow,
+    ops::{ControlFlow, RangeInclusive},
     path::Path,
     sync::Arc,
+    thread,
     time::{Duration, SystemTime},
 };
 
@@ -22,13 +26,14 @@ pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
 pub const IP_MULTICAST_DEFAULT: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
 pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
+pub type Port = u16;
 // pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
 pub struct NetWorker {
     pub name: String,
     pub socket: Option<Arc<UdpSocket>>,
     pub ip: Ipv4Addr,
-    pub port: u16,
+    pub port: Port,
     pub peers: PeersMap,
     pub front_tx: Sender<BackEvent>,
 }
@@ -54,22 +59,35 @@ impl NetWorker {
         Ok(())
     }
 
-    pub fn send(&mut self, message: UdpMessage, addrs: Recepients) -> std::io::Result<usize> {
-        let bytes = message.to_be_bytes();
+    pub fn send(&self, message: UdpMessage, addrs: Recepients) -> std::io::Result<usize> {
         if let Some(socket) = &self.socket {
-            let result = match addrs {
-                Recepients::All => {
-                    socket.send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, self.port))
-                }
-                Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, self.port)),
-            };
-            match &result {
-                Ok(_num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
-                Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
-            };
-            result
+            send(socket, self.port, message, addrs)
         } else {
             Ok(0)
+        }
+    }
+    pub fn send_shards(
+        &self,
+        link: &FileLink,
+        range: RangeInclusive<ShardCount>,
+        id: Id,
+        recepients: Recepients,
+        ctx: &impl Repaintable,
+    ) {
+        if let Some(socket) = &self.socket {
+            let socket = socket.clone();
+            let port = self.port;
+            let ctx = ctx.clone();
+            let path = link.path.clone();
+            let count = range.clone().count() as ShardCount;
+            thread::spawn(move || {
+                match send_shards(path, range, id, recepients, socket, port, ctx) {
+                    Ok(_) => (),
+                    Err(err) => error!("{err}"),
+                }
+            });
+            link.completed
+                .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -270,17 +288,13 @@ impl NetWorker {
                             std::sync::atomic::Ordering::Relaxed,
                         );
                         debug!("sending shards {range:?}");
-                        match send_shards(
+                        self.send_shards(
                             link,
                             range.to_owned(),
                             r_msg.id,
                             Recepients::One(r_ip),
-                            self,
                             ctx,
-                        ) {
-                            Ok(_) => (),
-                            Err(err) => error!("{err}"),
-                        }
+                        );
                     }
                 } else if let Some(message) = outbox.get(r_ip, id) {
                     debug!("Message found..");
@@ -334,4 +348,22 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
         return Some(addr.ip().to_owned());
     }
     None
+}
+
+pub fn send(
+    socket: &Arc<UdpSocket>,
+    port: Port,
+    message: UdpMessage,
+    addrs: Recepients,
+) -> std::io::Result<usize> {
+    let bytes = message.to_be_bytes();
+    let result = match addrs {
+        Recepients::All => socket.send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, port)),
+        Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, port)),
+    };
+    match &result {
+        Ok(_num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),
+        Err(err) => error!("Could't send '{:?}' to {addrs:?}: {err}", message.command),
+    };
+    result
 }
