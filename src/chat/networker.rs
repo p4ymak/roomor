@@ -224,7 +224,10 @@ impl NetWorker {
                     let mut completed = false;
                     if let Some(inmsg) = inbox.get_mut(&r_msg.id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
+                    } else {
+                        todo!();
                     }
+
                     if completed {
                         inbox.remove(&r_id);
                         self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))

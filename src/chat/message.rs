@@ -16,7 +16,7 @@ pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
 pub const MAX_NAME_SIZE: usize = 44;
 pub const MAX_PREVIEW_CHARS: usize = 13;
-pub const DATA_LIMIT_BYTES: usize = 100;
+pub const DATA_LIMIT_BYTES: usize = 96;
 
 pub type Id = u32;
 pub type CheckSum = u16;

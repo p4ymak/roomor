@@ -8,8 +8,14 @@ use super::{
 use log::{debug, error, warn};
 use range_rover::range_rover;
 use std::{
-    collections::BTreeMap, error::Error, fs, net::Ipv4Addr, path::Path, sync::Arc, time::Duration,
-    time::SystemTime,
+    collections::BTreeMap,
+    error::Error,
+    fs,
+    net::Ipv4Addr,
+    ops::RangeInclusive,
+    path::Path,
+    sync::Arc,
+    time::{Duration, SystemTime},
 };
 
 pub type Shard = Vec<u8>;
@@ -94,12 +100,31 @@ impl InMessage {
             warn!("Received terminal {position}");
             return self.combine(networker, ctx).is_ok();
         }
+        if self.shards.get(position.saturating_sub(1) as usize) == Some(None).as_ref() {
+            if let Some(range) = self.find_missing_back(position) {
+                networker
+                    .send(
+                        UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                        Recepients::One(self.sender),
+                    )
+                    .ok();
+            }
+        }
         false
+    }
+    pub fn find_missing_back(&self, pos: ShardCount) -> Option<RangeInclusive<ShardCount>> {
+        self.shards
+            .iter()
+            .enumerate()
+            .rev()
+            .skip(self.shards.len().saturating_sub(pos as usize))
+            .find(|x| x.1.is_some())
+            .map(|x| (x.0 + 1) as ShardCount..=pos)
     }
 
     pub fn combine(
         &mut self,
-        sender: &mut NetWorker,
+        networker: &mut NetWorker,
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
         debug!("Combining");
@@ -130,11 +155,11 @@ impl InMessage {
                         content: Content::Text(text),
                         seen: Some(Seen::One),
                     };
-                    sender
+                    networker
                         .send(UdpMessage::seen_msg(&txt_msg), Recepients::One(self.sender))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                    sender.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                    networker.handle_back_event(BackEvent::Message(txt_msg), ctx);
                     Ok(())
                 }
                 Command::File => {
@@ -158,12 +183,12 @@ impl InMessage {
                 .unwrap_or(self.link.count.saturating_sub(1));
             // TODO save outbox
             if !matches!(
-                sender.peers.online_status(Recepients::One(self.sender)),
+                networker.peers.online_status(Recepients::One(self.sender)),
                 Presence::Offline
             ) {
                 missed.into_iter().for_each(|range| {
                     debug!("Asked to repeat shards #{range:?}");
-                    sender
+                    networker
                         .send(
                             UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
                             Recepients::One(self.sender),
