@@ -1,6 +1,7 @@
 use crate::chat::{
+    inbox::InMessage,
     message::{self, send_shards, Command, Part, ShardCount},
-    InMessage, Seen, TextMessage,
+    TextMessage,
 };
 
 use super::{
@@ -28,7 +29,6 @@ pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 pub const IP_MULTICAST_DEFAULT: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
 pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 pub type Port = u16;
-// pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
 
 pub struct NetWorker {
     pub name: String,
@@ -195,7 +195,7 @@ impl NetWorker {
             }
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
                 message::Part::Single => {
-                    let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
+                    let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                     self.incoming(r_ip); // FIXME
                     self.send(UdpMessage::seen_msg(&txt_msg), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
@@ -208,15 +208,7 @@ impl NetWorker {
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         // TODO move to fn
 
-                        let txt_msg = TextMessage {
-                            timestamp: inmsg.ts,
-                            incoming: true,
-                            public: inmsg.public,
-                            ip: inmsg.sender,
-                            id: inmsg.id,
-                            content: Content::FileLink(inmsg.link.clone()),
-                            seen: Some(Seen::One),
-                        };
+                        let txt_msg = TextMessage::from_inmsg(&inmsg);
                         self.send(
                             UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
                             Recepients::One(r_ip),
@@ -225,16 +217,16 @@ impl NetWorker {
                         if inmsg.command == Command::File {
                             self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                         }
-                        inbox.0.insert(r_id, inmsg);
+                        inbox.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {
                     let mut completed = false;
-                    if let Some(inmsg) = inbox.0.get_mut(&r_msg.id) {
+                    if let Some(inmsg) = inbox.get_mut(&r_msg.id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
                     }
                     if completed {
-                        inbox.0.remove(&r_id);
+                        inbox.remove(&r_id);
                         self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
@@ -243,7 +235,7 @@ impl NetWorker {
                 _ => (),
             },
             Command::Seen => {
-                let txt_msg = TextMessage::from_message(r_ip, &r_msg, true);
+                let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                 self.incoming(r_ip);
                 outbox.remove(r_ip, txt_msg.id());
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
