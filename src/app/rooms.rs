@@ -131,8 +131,7 @@ impl Rooms {
         if matches!(msg.content(), Content::Seen) {
             if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
                 if let Content::FileLink(link) = found.content() {
-                    link.is_ready
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    link.set_ready();
                 }
                 match recepients {
                     Recepients::One(_) => found.seen_private(),
@@ -651,6 +650,8 @@ impl TextMessage {
                             .with_main_wrap(true),
                         |r| {
                             if link.is_ready() {
+                                let bandwidth = link.bandwidth();
+                                r.label(format!("{}/s", human_bytes(bandwidth as f32)));
                                 if r.link("Open").clicked() {
                                     opener::open(&link.path).ok();
                                 }

@@ -141,9 +141,10 @@ impl InMessage {
                     let path = &self.link.path;
                     debug!("Writing new file to {path:?}");
                     fs::write(path, data)?;
-                    self.link
-                        .is_ready
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    self.link.set_ready();
+                    // self.link
+                    //     .is_ready
+                    //     .store(true, std::sync::atomic::Ordering::Relaxed);
                     ctx.request_repaint();
                     Ok(())
                 }

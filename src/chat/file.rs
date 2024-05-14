@@ -4,6 +4,7 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64},
+    time::SystemTime,
 };
 
 use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
@@ -18,6 +19,9 @@ pub enum FileStatus {
 #[derive(Debug)]
 pub struct FileLink {
     id: Id,
+    time_start: SystemTime,
+    seconds_elapsed: AtomicU64,
+    bandwidth: AtomicU64,
     pub name: String,
     pub path: PathBuf,
     pub size: u64,
@@ -32,6 +36,9 @@ impl FileLink {
         path.push(name);
         FileLink {
             id: new_id(),
+            time_start: SystemTime::now(),
+            seconds_elapsed: AtomicU64::new(1),
+            bandwidth: AtomicU64::new(0),
             name: name.to_string(),
             path,
             size: count * DATA_LIMIT_BYTES as ShardCount,
@@ -45,6 +52,9 @@ impl FileLink {
         let size = File::open(path).ok()?.metadata().ok()?.len();
         Some(FileLink {
             id: new_id(),
+            time_start: SystemTime::now(),
+            seconds_elapsed: AtomicU64::new(1),
+            bandwidth: AtomicU64::new(0),
             name: path.file_name()?.to_string_lossy().to_string(),
             path: path.to_path_buf(),
             size,
@@ -66,6 +76,9 @@ impl FileLink {
         let size = lines.next()?.parse::<u64>().ok()?;
         Some(FileLink {
             id,
+            time_start: SystemTime::now(),
+            seconds_elapsed: AtomicU64::new(1),
+            bandwidth: AtomicU64::new(0),
             name,
             path: PathBuf::default(),
             size,
@@ -77,8 +90,26 @@ impl FileLink {
     pub fn progress(&self) -> f32 {
         self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32
     }
+    pub fn set_ready(&self) {
+        self.is_ready
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let seconds = SystemTime::now()
+            .duration_since(self.time_start)
+            .map(|d| d.as_secs())
+            .unwrap_or(1);
+        let bandwidth = self.size / seconds.max(1);
+
+        self.seconds_elapsed
+            .store(seconds, std::sync::atomic::Ordering::Relaxed);
+        self.bandwidth
+            .store(bandwidth, std::sync::atomic::Ordering::Relaxed);
+    }
     pub fn is_ready(&self) -> bool {
         self.is_ready.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn bandwidth(&self) -> u64 {
+        self.bandwidth.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
