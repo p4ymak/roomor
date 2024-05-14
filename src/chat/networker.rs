@@ -206,8 +206,6 @@ impl NetWorker {
                     debug!("incomint PartInit");
 
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
-                        // TODO move to fn
-
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
                         self.send(
                             UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
@@ -225,7 +223,7 @@ impl NetWorker {
                     if let Some(inmsg) = inbox.get_mut(&r_msg.id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
                     } else {
-                        todo!();
+                        // FIXME
                     }
 
                     if completed {
