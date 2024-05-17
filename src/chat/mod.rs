@@ -9,7 +9,7 @@ pub mod peers;
 use self::{
     file::{FileEnding, FileLink},
     inbox::InMessage,
-    message::{new_id, MAX_PREVIEW_CHARS},
+    message::{new_id, DATA_LIMIT_BYTES, MAX_PREVIEW_CHARS},
     networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     outbox::Outbox,
@@ -329,14 +329,15 @@ impl UdpChat {
             thread::Builder::new()
                 .name("listener".to_string())
                 .spawn(move || {
-                    let mut buf = [0; 2048];
+                    let mut buf = [0; DATA_LIMIT_BYTES * 2];
                     loop {
-                        if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
+                        if let Ok((_number_of_bytes, SocketAddr::V4(src_addr_v4))) =
                             socket.recv_from(&mut buf)
                         {
                             let ip = *src_addr_v4.ip();
-                            if let Some(message) =
-                                UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                            if let Some(message) = UdpMessage::from_be_bytes(&buf)
+                            // TODO
+                            // UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
                             {
                                 if ip != local_ip {
                                     receiver.send(ChatEvent::Incoming((ip, message))).ok();
