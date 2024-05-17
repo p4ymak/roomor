@@ -331,13 +331,12 @@ impl UdpChat {
                 .spawn(move || {
                     let mut buf = [0; DATA_LIMIT_BYTES * 2];
                     loop {
-                        if let Ok((_number_of_bytes, SocketAddr::V4(src_addr_v4))) =
+                        if let Ok((number_of_bytes, SocketAddr::V4(src_addr_v4))) =
                             socket.recv_from(&mut buf)
                         {
                             let ip = *src_addr_v4.ip();
-                            if let Some(message) = UdpMessage::from_be_bytes(&buf)
-                            // TODO
-                            // UdpMessage::from_be_bytes(&buf[..number_of_bytes.min(128)])
+                            if let Some(message) =
+                                UdpMessage::from_be_bytes(&buf[..number_of_bytes])
                             {
                                 if ip != local_ip {
                                     receiver.send(ChatEvent::Incoming((ip, message))).ok();
