@@ -237,7 +237,7 @@ impl Roomor {
             egui::ScrollArea::both().show(ui, |ui| {
                 ui.vertical_centered_justified(|ui| {
                     ui.vertical_centered(|ui| {
-                        ui.style_mut().wrap = Some(false);
+                        ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
                         let size = ui.available_size_before_wrap().x * 0.075;
                         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                             font_id.size = size;
@@ -310,7 +310,9 @@ impl Roomor {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
                 h.horizontal(|h| {
-                    h.set_enabled(self.chat_init.is_none());
+                    if self.chat_init.is_some() {
+                        h.disable();
+                    }
                     self.rooms.side_panel_toggle(h);
                 });
                 // Notifications
@@ -332,7 +334,7 @@ impl Roomor {
                                 .count(),
                             self.rooms.peers.0.len()
                         ))
-                        .wrap(false),
+                        .wrap_mode(TextWrapMode::Extend),
                     );
                     if !self.rooms.peers.0.is_empty() {
                         summary.on_hover_ui(|h| {

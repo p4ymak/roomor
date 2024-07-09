@@ -387,10 +387,7 @@ pub fn utf8_truncate(input: &mut String, maxsize: usize) {
         {
             let mut char_iter = input.char_indices();
             while utf8_maxsize >= maxsize {
-                utf8_maxsize = match char_iter.next_back() {
-                    Some((index, _)) => index,
-                    _ => 0,
-                };
+                utf8_maxsize = char_iter.next_back().unwrap_or_default().0;
             }
         } // Extra {} wrap to limit the immutable borrow of char_indices()
         input.truncate(utf8_maxsize);

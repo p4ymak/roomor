@@ -33,5 +33,9 @@ fn main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    eframe::run_native("Roomor", options, Box::new(|cc| Box::new(Roomor::new(cc))))
+    eframe::run_native(
+        "Roomor",
+        options,
+        Box::new(|cc| Ok(Box::new(Roomor::new(cc)))),
+    )
 }

@@ -12,7 +12,8 @@ keywords = ["chat", "lan", "offline"]
 resolver = "2"
 
 [dependencies]
-eframe = "0.27.2"
+eframe = "0.28"
+egui_extras = "0.28"
 rfd = "0.14.0"
 human_bytes = "0.4.3"
 opener = "0.6.1"
