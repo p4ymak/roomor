@@ -398,7 +398,7 @@ impl Roomor {
                 self.rooms.draw_list(ui);
             });
         egui::SidePanel::left("Chats List Light")
-            .exact_width(font_size)
+            .exact_width(font_size * 2.0)
             .resizable(false)
             .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
                 self.rooms.draw_list(ui);
@@ -493,19 +493,19 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::ArrowUp,
                     pressed: true,
-                    modifiers: Modifiers::SHIFT,
+                    modifiers: Modifiers::COMMAND,
                     ..
                 } => self.rooms.list_go_up(),
                 Event::Key {
                     key: egui::Key::ArrowDown,
                     pressed: true,
-                    modifiers: Modifiers::SHIFT,
+                    modifiers: Modifiers::COMMAND,
                     ..
                 } => self.rooms.list_go_down(),
 
                 Event::Key {
                     key: egui::Key::O,
-                    modifiers: egui::Modifiers::CTRL,
+                    modifiers: egui::Modifiers::COMMAND,
                     pressed: true,
                     ..
                 } => {

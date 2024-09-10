@@ -535,68 +535,70 @@ impl TextMessage {
         } else {
             egui::Direction::RightToLeft
         };
-        ui.with_layout(
-            egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
-                .with_main_wrap(true),
-            |line| {
-                let mut rounding = Rounding::same(rounding(line) * FONT_SCALE);
-                if self.is_seen() {
-                    if self.is_incoming() {
-                        rounding.sw = 0.0;
-                    } else {
-                        rounding.se = 0.0;
-                    }
+        let ui_width = ui.available_width() - text_height(ui);
+        draw_direction(ui, direction, |line| {
+            line.set_max_width(ui_width);
+            let mut rounding =
+                Rounding::same(rounding(line) * line.style().visuals.window_stroke.width);
+            if self.is_seen() {
+                if self.is_incoming() {
+                    rounding.sw = 0.0;
+                } else {
+                    rounding.se = 0.0;
                 }
-                egui::Frame::group(line.style())
-                    .rounding(rounding)
-                    .stroke(Stroke::new(
-                        stroke_width(line),
-                        line.style().visuals.widgets.inactive.fg_stroke.color,
-                    ))
-                    .show(line, |v| {
-                        v.vertical(|v| {
-                            if let Some(peer) = incoming {
-                                v.horizontal(|h| {
-                                    h.label(peer.rich_name())
-                                        .on_hover_text_at_pointer(peer.ip().to_string());
-                                    match self.content() {
-                                        Content::Ping(_) => {
-                                            h.label("joined..");
-                                        }
-                                        Content::Exit => {
-                                            h.label("left..");
-                                        }
-                                        _ => (),
+            }
+            egui::Frame::group(line.style())
+                .rounding(rounding)
+                .stroke(Stroke::new(
+                    stroke_width(line),
+                    line.style().visuals.widgets.inactive.fg_stroke.color,
+                ))
+                .show(line, |v| {
+                    draw_direction(v, direction, |ui| {
+                        if let Some(peer) = incoming {
+                            ui.vertical(|v| {
+                                v.label(peer.rich_name())
+                                    .on_hover_text_at_pointer(peer.ip().to_string());
+                                match self.content() {
+                                    Content::Ping(_) => {
+                                        v.label("joined..");
                                     }
-                                });
-                            }
-                            self.draw_content(v, direction);
-
-                            v.shrink_width_to_current();
-                        });
-                        v.shrink_width_to_current();
+                                    Content::Exit => {
+                                        v.label("left..");
+                                    }
+                                    _ => {
+                                        self.draw_content(v);
+                                        v.shrink_width_to_current();
+                                    }
+                                }
+                            });
+                        } else {
+                            self.draw_content(ui);
+                        }
                     });
+                    v.shrink_width_to_current();
+                });
 
-                // FIXME hover steals mouse input for room context menu
-                // .response
-                // .on_hover_ui_at_pointer(|ui| {
-                //     ui.label(pretty_ago(self.time()).unwrap_or_default());
-                //     let seen_by = self.is_seen_by();
-                //     if !seen_by.is_empty() {
-                //         ui.label("");
-                //         ui.label("Received by:");
-                //         for ip in seen_by.iter() {
-                //             if let Some(peer) = peers.0.get(ip) {
-                //                 ui.label(peer.rich_name());
-                //             }
-                //         }
-                //     }
-                // });
-            },
-        );
+            // FIXME hover steals mouse input for room context menu
+            // .response
+            // .on_hover_ui_at_pointer(|ui| {
+            //     ui.label(pretty_ago(self.time()).unwrap_or_default());
+            //     let seen_by = self.is_seen_by();
+            //     if !seen_by.is_empty() {
+            //         ui.label("");
+            //         ui.label("Received by:");
+            //         for ip in seen_by.iter() {
+            //             if let Some(peer) = peers.0.get(ip) {
+            //                 ui.label(peer.rich_name());
+            //             }
+            //         }
+            //     }
+            // });
+        });
     }
 
-    pub fn draw_content(&self, ui: &mut eframe::egui::Ui, direction: Direction) {
+    #[inline]
+    pub fn draw_content(&self, ui: &mut eframe::egui::Ui) {
         match self.content() {
             Content::Text(content) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
@@ -620,62 +622,34 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
-                // ui.vertical(|ui| {
-                // ui.vertical_centered(|ui| {
-                //     for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                //         font_id.size *= FONT_SCALE * EMOJI_SCALE;
-                //     }
-                //     ui.label("🖹");
-                //     ui.shrink_width_to_current();
-                // });
-                ui.vertical(|ui| {
-                    ui.with_layout(
-                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
-                            .with_main_wrap(true),
-                        |r| {
-                            r.heading(&link.name);
-                        },
+                if link.is_ready() {
+                    // let bandwidth = link.bandwidth();
+                    // ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
+                    if ui.link(&link.name).clicked() {
+                        opener::open(&link.path).ok();
+                    }
+                } else {
+                    let rounding =
+                        Rounding::same(rounding(ui) * ui.style().visuals.window_stroke.width);
+                    ui.add(
+                        egui::ProgressBar::new(link.progress())
+                            .rounding(rounding)
+                            .show_percentage(),
                     );
-                    ui.with_layout(
-                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
-                            .with_main_wrap(true),
-                        |r| {
-                            r.label(human_bytes(link.size as f64));
-                        },
-                    );
-                    ui.shrink_width_to_current();
-                    let width = ui.available_width();
-                    ui.with_layout(
-                        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
-                            .with_main_wrap(true),
-                        |r| {
-                            if link.is_ready() {
-                                let bandwidth = link.bandwidth();
-                                r.label(format!("{}/s", human_bytes(bandwidth as f32)));
-                                if r.link("Open").clicked() {
-                                    opener::open(&link.path).ok();
-                                }
-                            } else {
-                                r.add(
-                                    egui::ProgressBar::new(link.progress())
-                                        .show_percentage()
-                                        .desired_width(width),
-                                );
-                            }
-                        },
-                    );
-                });
+                }
             }
             _ => (),
         }
     }
 }
-
+fn text_height(ui: &mut egui::Ui) -> f32 {
+    ui.text_style_height(&egui::TextStyle::Body)
+}
 fn rounding(ui: &mut egui::Ui) -> f32 {
-    ui.text_style_height(&egui::TextStyle::Body) * 0.5
+    text_height(ui) * 0.5
 }
 fn stroke_width(ui: &mut egui::Ui) -> f32 {
-    ui.text_style_height(&egui::TextStyle::Body) * 0.1
+    text_height(ui) * 0.1
 }
 
 pub fn pretty_ago(ts: SystemTime) -> Option<String> {
@@ -685,4 +659,13 @@ pub fn pretty_ago(ts: SystemTime) -> Option<String> {
         .ok()?
         .parse()
         .ok()
+}
+
+pub fn draw_direction(ui: &mut egui::Ui, direction: Direction, func: impl FnOnce(&mut egui::Ui)) {
+    ui.with_layout(
+        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
+            .with_main_wrap(true),
+        |line| func(line),
+    );
+    // ui.shrink_width_to_current()
 }
