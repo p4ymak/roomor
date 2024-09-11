@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -12,20 +12,22 @@ keywords = ["chat", "lan", "offline"]
 resolver = "2"
 
 [dependencies]
-eframe = "0.26.2"
+eframe = "0.28"
+egui_extras = "0.28"
 rfd = "0.14.0"
 human_bytes = "0.4.3"
 opener = "0.6.1"
 
 flume = "0.11.0"
 
-whoami = "1.4.1"
-ipnet = "2.9.0"
+whoami = "1.5.1"
+directories = "5.0.1"
 chrono = "0.4.34"
 timediff = "0.2.3"
 
 enumn = "0.1.13"
 crc = "3.0.1"
+range_rover = "0.1.2"
 
 rodio = { version = "0.17.3", default-features = false }
 notify-rust = "4.10.0"
@@ -45,3 +47,12 @@ codegen-units = 1
 panic = "abort"
 strip = "debuginfo"
 
+[package.metadata.bundle]
+name = "Roomor"
+identifier = "com.p4ymak.roomor"
+icon = ["icon/128x128.png"]
+version = "0.3.0"
+short_description = "Minimalistic offline chat over local network."
+long_description = "Minimalistic offline chat over local network."
+deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]
+osx_frameworks = ["SDL2"]

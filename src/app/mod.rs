@@ -4,7 +4,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, parse_netmask, TIMEOUT_ALIVE, TIMEOUT_CHECK, TIMEOUT_SECOND},
+    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
@@ -13,12 +13,13 @@ use eframe::{
     CreationContext,
 };
 use flume::{Receiver, Sender};
-use ipnet::Ipv4Net;
-use log::debug;
+use log::{debug, error};
 use rodio::{OutputStream, OutputStreamHandle};
+use rooms::RoomAction;
 use std::{
     net::Ipv4Addr,
     path::Path,
+    str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
     time::SystemTime,
@@ -34,7 +35,8 @@ pub struct UserSetup {
     name: String,
     ip: Ipv4Addr,
     port: u16,
-    mask: u8,
+    multicast: Ipv4Addr,
+    multicast_str: String,
     pub error_message: Option<String>,
 }
 impl Default for UserSetup {
@@ -51,7 +53,8 @@ impl Default for UserSetup {
             name: whoami::username(),
             ip,
             port: 4444,
-            mask: 24,
+            multicast: IP_MULTICAST_DEFAULT,
+            multicast_str: format!("{}", IP_MULTICAST_DEFAULT),
             error_message,
         }
     }
@@ -66,34 +69,45 @@ impl UserSetup {
     pub fn port(&self) -> u16 {
         self.port
     }
-    pub fn mask(&self) -> u8 {
-        self.mask
+    pub fn multicast(&self) -> Ipv4Addr {
+        self.multicast
+    }
+    fn parse_multicast(&mut self) {
+        if let Ok(ip) = Ipv4Addr::from_str(&self.multicast_str) {
+            if ip.is_multicast() {
+                self.multicast = ip;
+            } else {
+                self.multicast_str = self.multicast.to_string();
+                self.error_message = Some("Non-multicast IP. Got Previous.".to_string());
+            }
+        } else {
+            self.multicast_str = self.multicast.to_string();
+            self.error_message = Some("Cant't parse IP. Got Previous.".to_string());
+        }
     }
     pub fn draw_setup(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
-            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                font_id.size *= FONT_SCALE;
-            }
             ui.heading("Name");
             limit_text(&mut self.name, MAX_NAME_SIZE);
-            let name =
-                ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
-            if self.name.is_empty() || self.init {
-                name.request_focus();
-                self.init = false;
-            }
+            ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
             ui.heading("IPv4");
             drag_ip(ui, &self.ip);
             ui.heading("Port");
             ui.add(egui::DragValue::new(&mut self.port));
-            ui.heading("Mask");
-            drag_mask(ui, &mut self.mask);
+            ui.heading("Multicast IPv4");
+            let multicast = ui.add(
+                egui::TextEdit::singleline(&mut self.multicast_str).horizontal_align(Align::Center),
+            );
+            if multicast.lost_focus() {
+                self.parse_multicast();
+            }
         });
         if let Some(err) = &self.error_message {
             ui.heading(err);
         }
     }
 }
+
 pub struct Roomor {
     user: UserSetup,
     chat_init: Option<UdpChat>,
@@ -224,7 +238,7 @@ impl Roomor {
             egui::ScrollArea::both().show(ui, |ui| {
                 ui.vertical_centered_justified(|ui| {
                     ui.vertical_centered(|ui| {
-                        ui.style_mut().wrap = Some(false);
+                        ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
                         let size = ui.available_size_before_wrap().x * 0.075;
                         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                             font_id.size = size;
@@ -233,7 +247,23 @@ impl Roomor {
                         TextMessage::logo().draw(ui, None, &self.rooms.peers);
                     });
                     ui.label("");
-                    self.user.draw_setup(ui);
+                    ui.vertical_centered_justified(|ui| {
+                        for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                            font_id.size *= FONT_SCALE;
+                        }
+                        self.user.draw_setup(ui);
+                        let join_button = ui.add_enabled(
+                            !self.user.name().trim().is_empty(),
+                            egui::Button::new("Join"),
+                        );
+                        if self.user.init {
+                            join_button.request_focus();
+                            self.user.init = false;
+                        }
+                        if join_button.clicked() {
+                            self.init_chat(ctx);
+                        }
+                    });
                     ui.label("");
                     ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
                     ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
@@ -254,14 +284,23 @@ impl Roomor {
             );
             match init.prelude(&self.user) {
                 Ok(_) => {
-                    self.chat_handle = Some(thread::spawn(move || init.run(&ctx)));
+                    self.chat_handle = Some(
+                        thread::Builder::new()
+                            .name("chat_back".to_string())
+                            .spawn(move || init.run(&ctx))
+                            .expect("can't build chat_back thread"),
+                    );
                     self.pulse_handle = Some({
                         let tx = self.back_tx.clone();
-                        thread::spawn(move || pulse(tx))
+                        thread::Builder::new()
+                            .name("pulse".to_string())
+                            .spawn(move || pulse(tx))
+                            .expect("can't build pulse thread")
                     });
                 }
                 Err(err) => {
                     self.user.error_message = Some(format!("{err}"));
+                    error!("{err}");
                     self.chat_init = Some(init);
                 }
             }
@@ -272,7 +311,9 @@ impl Roomor {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
                 h.horizontal(|h| {
-                    h.set_enabled(self.chat_init.is_none());
+                    if self.chat_init.is_some() {
+                        h.disable();
+                    }
                     self.rooms.side_panel_toggle(h);
                 });
                 // Notifications
@@ -294,7 +335,7 @@ impl Roomor {
                                 .count(),
                             self.rooms.peers.0.len()
                         ))
-                        .wrap(false),
+                        .wrap_mode(TextWrapMode::Extend),
                     );
                     if !self.rooms.peers.0.is_empty() {
                         summary.on_hover_ui(|h| {
@@ -321,24 +362,33 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
-            if !i.raw.hovered_files.is_empty() {
-                debug!("HOVERED");
-            }
-            if !i.raw.dropped_files.is_empty() {
-                debug!("DROPPED");
-            }
-            if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
-                debug!("Dropped file '{path:?}'");
-                self.dispatch_file(&path);
-            }
-        });
+        if !self.rooms.is_active_public() {
+            ctx.input(|i| {
+                if !i.raw.hovered_files.is_empty() {
+                    debug!("HOVERED");
+                }
+                if !i.raw.dropped_files.is_empty() {
+                    debug!("DROPPED");
+                }
+
+                if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
+                    debug!("Dropped file '{path:?}'");
+                    self.dispatch_file(&path);
+                }
+            });
+        }
         let mut font_size = 10.0;
+        let max_height = ctx.input(|i| i.screen_rect.height()) * 0.5;
         egui::TopBottomPanel::bottom("text intput")
+            .max_height(max_height)
             .resizable(false)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
-                self.rooms.draw_input(ui);
+                egui::ScrollArea::vertical()
+                    .min_scrolled_height(max_height)
+                    .show(ui, |ui| {
+                        self.rooms.draw_input(ui);
+                    });
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
@@ -349,27 +399,23 @@ impl Roomor {
                 self.rooms.draw_list(ui);
             });
         egui::SidePanel::left("Chats List Light")
-            .exact_width(font_size)
+            .exact_width(font_size * 2.0)
             .resizable(false)
             .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
                 self.rooms.draw_list(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // FIXME
-            // ui.interact(
-            //     ui.available_rect_before_wrap(),
-            //     egui::Id::new("context menu"),
-            //     Sense::click(),
-            // )
-            // .context_menu(|ui| {
-            //     if ui.button("Send File..").clicked() {
-            //         if let Some(path) = rfd::FileDialog::new().pick_file() {
-            //             self.dispatch_file(&path);
-            //         }
-            //     }
-            // });
-
-            self.rooms.draw_history(ui);
+        egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
+            RoomAction::None => (),
+            RoomAction::Clear => {
+                self.rooms.get_mut_active().clear_history();
+            }
+            RoomAction::File => {
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    if !self.rooms.is_active_public() {
+                        self.dispatch_file(&path);
+                    }
+                }
+            }
         });
     }
 
@@ -395,6 +441,15 @@ impl Roomor {
                 h.separator();
                 egui::widgets::global_dark_light_mode_switch(h);
             });
+            ui.separator();
+            if ui.button("Clear History").clicked() {
+                self.rooms.clear_history();
+                ui.close_menu();
+            }
+            if ui.button("Exit").clicked() {
+                self.exit();
+                ui.close_menu();
+            }
         });
     }
 
@@ -404,20 +459,17 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
+                    modifiers: Modifiers::NONE,
                     ..
                 } => {
-                    if self.chat_init.is_some() {
-                        if !self.user.name().trim().is_empty() {
-                            self.init_chat(ctx);
-                        }
-                    } else {
+                    if self.chat_init.is_none() {
                         self.dispatch_text();
                     }
                 }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
-                    modifiers: egui::Modifiers::SHIFT,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => {
                     self.exit();
@@ -425,6 +477,7 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::Tab,
                     pressed: true,
+                    modifiers: Modifiers::SHIFT,
                     ..
                 } => {
                     self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
@@ -433,17 +486,19 @@ impl Roomor {
                 Event::Key {
                     key: egui::Key::ArrowUp,
                     pressed: true,
+                    modifiers: Modifiers::COMMAND,
                     ..
                 } => self.rooms.list_go_up(),
                 Event::Key {
                     key: egui::Key::ArrowDown,
                     pressed: true,
+                    modifiers: Modifiers::COMMAND,
                     ..
                 } => self.rooms.list_go_down(),
 
                 Event::Key {
                     key: egui::Key::O,
-                    modifiers: egui::Modifiers::CTRL,
+                    modifiers: egui::Modifiers::COMMAND,
                     pressed: true,
                     ..
                 } => {
@@ -462,7 +517,7 @@ impl Roomor {
     fn exit(&mut self) {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
         if let Some(handle) = self.chat_handle.take() {
-            handle.join().unwrap();
+            handle.join().expect("can't join chat thread on exit");
         }
         let (front_tx, back_rx) = flume::unbounded();
         let chat = UdpChat::new(self.user.ip(), front_tx);
@@ -487,23 +542,27 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: 
     if !val {
         icon = icon.weak();
     }
-    if ui.button(icon).on_hover_text_at_pointer(hover).clicked() {
+    if ui
+        .add(egui::Button::new(icon).frame(false))
+        .on_hover_text_at_pointer(hover)
+        .clicked()
+    {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
-fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
-    ui.add(
-        egui::DragValue::new(mask)
-            .speed(1)
-            .custom_formatter(|m, _| {
-                let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
-                let mask = net.netmask().octets();
-                format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
-            })
-            .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
-    );
-}
+// fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
+//     ui.add(
+//         egui::DragValue::new(mask)
+//             .speed(1)
+//             .custom_formatter(|m, _| {
+//                 let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
+//                 let mask = net.netmask().octets();
+//                 format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
+//             })
+//             .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
+//     );
+// }
 fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
     ui.add_enabled(
         false,
@@ -523,7 +582,7 @@ fn pulse(tx: Sender<ChatEvent>) {
         let now = SystemTime::now();
         if let Ok(delta) = now.duration_since(last_time) {
             if delta > TIMEOUT_CHECK {
-                if delta > TIMEOUT_CHECK + TIMEOUT_SECOND {
+                if delta > TIMEOUT_CHECK * 2 {
                     debug!("Pulse Ping");
                     tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
                         .ok();
