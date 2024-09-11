@@ -69,7 +69,12 @@ impl Repaintable for Notifier {
             self.play_sound();
         }
         if self.d_bus.load(Ordering::Relaxed) {
-            Notification::new().summary("Roomor").body(text).show().ok();
+            Notification::new()
+                .summary("Roomor")
+                .body(text)
+                .appname("roomor")
+                .show()
+                .ok();
         }
     }
 }
