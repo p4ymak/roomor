@@ -655,8 +655,11 @@ impl TextMessage {
                 ui.label(human_bytes(link.size as f64));
                 let width = ui.min_rect().width();
                 if link.is_ready() {
-                    let bandwidth = link.bandwidth();
-                    ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
+                    #[cfg(debug_assertions)]
+                    {
+                        let bandwidth = link.bandwidth();
+                        ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
+                    }
                     if ui.link("Open").clicked() {
                         opener::open(&link.path).ok();
                     }
