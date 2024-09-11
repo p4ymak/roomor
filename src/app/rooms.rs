@@ -7,7 +7,7 @@ use crate::chat::{
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
 use eframe::{
-    egui::{self, Direction, Rounding, Stroke},
+    egui::{self, Rounding, Stroke},
     emath::Align2,
 };
 use flume::Sender;
@@ -530,13 +530,13 @@ impl Peer {
 
 impl TextMessage {
     pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, _peers: &PeersMap) {
-        let direction = if self.is_incoming() {
-            egui::Direction::LeftToRight
+        let align = if self.is_incoming() {
+            egui::Align::Min
         } else {
-            egui::Direction::RightToLeft
+            egui::Align::Max
         };
         let ui_width = ui.available_width() - text_height(ui);
-        draw_direction(ui, direction, |line| {
+        ui.with_layout(egui::Layout::top_down(align), |line| {
             line.set_max_width(ui_width);
             let mut rounding =
                 Rounding::same(rounding(line) * line.style().visuals.window_stroke.width);
@@ -553,30 +553,35 @@ impl TextMessage {
                     stroke_width(line),
                     line.style().visuals.widgets.inactive.fg_stroke.color,
                 ))
-                .show(line, |v| {
-                    draw_direction(v, direction, |ui| {
-                        if let Some(peer) = incoming {
-                            ui.vertical(|v| {
+                .show(line, |ui| {
+                    if let Some(peer) = incoming {
+                        ui.vertical(|v| match self.content() {
+                            Content::Ping(_) => {
+                                v.horizontal(|h| {
+                                    h.label(peer.rich_name())
+                                        .on_hover_text_at_pointer(peer.ip().to_string());
+
+                                    h.label("joined..");
+                                });
+                            }
+                            Content::Exit => {
+                                v.horizontal(|h| {
+                                    h.label(peer.rich_name())
+                                        .on_hover_text_at_pointer(peer.ip().to_string());
+
+                                    h.label("left..");
+                                });
+                            }
+                            _ => {
                                 v.label(peer.rich_name())
                                     .on_hover_text_at_pointer(peer.ip().to_string());
-                                match self.content() {
-                                    Content::Ping(_) => {
-                                        v.label("joined..");
-                                    }
-                                    Content::Exit => {
-                                        v.label("left..");
-                                    }
-                                    _ => {
-                                        self.draw_content(v);
-                                        v.shrink_width_to_current();
-                                    }
-                                }
-                            });
-                        } else {
-                            self.draw_content(ui);
-                        }
-                    });
-                    v.shrink_width_to_current();
+
+                                self.draw_content(v);
+                            }
+                        });
+                    } else {
+                        self.draw_content(ui);
+                    }
                 });
 
             // FIXME hover steals mouse input for room context menu
@@ -622,10 +627,13 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
+                ui.label(&link.name);
+                ui.label(human_bytes(link.size as f64));
+                let width = ui.min_rect().width();
                 if link.is_ready() {
-                    // let bandwidth = link.bandwidth();
-                    // ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
-                    if ui.link(&link.name).clicked() {
+                    let bandwidth = link.bandwidth();
+                    ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
+                    if ui.link("Open").clicked() {
                         opener::open(&link.path).ok();
                     }
                 } else {
@@ -634,6 +642,7 @@ impl TextMessage {
                     ui.add(
                         egui::ProgressBar::new(link.progress())
                             .rounding(rounding)
+                            .desired_width(width)
                             .show_percentage(),
                     );
                 }
@@ -659,13 +668,4 @@ pub fn pretty_ago(ts: SystemTime) -> Option<String> {
         .ok()?
         .parse()
         .ok()
-}
-
-pub fn draw_direction(ui: &mut egui::Ui, direction: Direction, func: impl FnOnce(&mut egui::Ui)) {
-    ui.with_layout(
-        egui::Layout::from_main_dir_and_cross_align(direction, egui::Align::Min)
-            .with_main_wrap(true),
-        |line| func(line),
-    );
-    // ui.shrink_width_to_current()
 }

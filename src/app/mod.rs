@@ -404,9 +404,11 @@ impl Roomor {
                 self.rooms.draw_list(ui);
             });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.interact(
-                ui.available_rect_before_wrap(),
-                egui::Id::new("context menu"),
+            self.rooms.draw_history(ui);
+
+            ui.interact_bg(
+                // ui.available_rect_before_wrap(),
+                // egui::Id::new("context menu"),
                 Sense::click(),
             )
             .context_menu(|ui| {
@@ -421,8 +423,6 @@ impl Roomor {
                     ui.close_menu();
                 }
             });
-
-            self.rooms.draw_history(ui);
         });
     }
 
