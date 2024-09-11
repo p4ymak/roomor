@@ -15,6 +15,7 @@ use eframe::{
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use rodio::{OutputStream, OutputStreamHandle};
+use rooms::RoomAction;
 use std::{
     net::Ipv4Addr,
     path::Path,
@@ -403,26 +404,18 @@ impl Roomor {
             .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
                 self.rooms.draw_list(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.rooms.draw_history(ui);
-
-            ui.interact_bg(
-                // ui.available_rect_before_wrap(),
-                // egui::Id::new("context menu"),
-                Sense::click(),
-            )
-            .context_menu(|ui| {
-                if ui.small_button("Clear History").clicked() {
-                    self.rooms.get_mut_active().clear_history();
-                    ui.close_menu();
-                }
-                if !self.rooms.is_active_public() && ui.button("Send File..").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+        egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
+            RoomAction::None => (),
+            RoomAction::Clear => {
+                self.rooms.get_mut_active().clear_history();
+            }
+            RoomAction::File => {
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    if !self.rooms.is_active_public() {
                         self.dispatch_file(&path);
                     }
-                    ui.close_menu();
                 }
-            });
+            }
         });
     }
 
@@ -549,7 +542,11 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: 
     if !val {
         icon = icon.weak();
     }
-    if ui.button(icon).on_hover_text_at_pointer(hover).clicked() {
+    if ui
+        .add(egui::Button::new(icon).frame(false))
+        .on_hover_text_at_pointer(hover)
+        .clicked()
+    {
         value.store(!val, std::sync::atomic::Ordering::Relaxed);
     }
 }

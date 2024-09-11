@@ -15,6 +15,13 @@ use human_bytes::human_bytes;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
 use timediff::TimeDiff;
 
+#[derive(PartialEq, Eq)]
+pub enum RoomAction {
+    None,
+    Clear,
+    File,
+}
+
 pub struct Rooms {
     active_chat: Recepients,
     pub peers: PeersMap,
@@ -161,7 +168,7 @@ impl Rooms {
         self.chats.values().any(|c| c.unread > 0)
     }
 
-    pub fn draw_history(&self, ui: &mut egui::Ui) {
+    pub fn draw_history(&self, ui: &mut egui::Ui) -> RoomAction {
         if !self.side_panel_opened {
             ui.vertical_centered(|ui| {
                 let name = match self.active_chat {
@@ -172,10 +179,28 @@ impl Rooms {
             });
             ui.separator();
         }
+        let mut action = RoomAction::None;
+
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
             .auto_shrink([false; 2])
             .show(ui, |ui| {
+                ui.interact(
+                    ui.clip_rect(),
+                    egui::Id::new("context menu"),
+                    egui::Sense::click(),
+                )
+                .context_menu(|ui| {
+                    if ui.small_button("Clear History").clicked() {
+                        action = RoomAction::Clear;
+                        ui.close_menu();
+                    }
+                    if ui.button("Send File..").clicked() {
+                        action = RoomAction::File;
+                        ui.close_menu();
+                    }
+                });
+
                 self.get_active().history.iter().for_each(|m| {
                     let peer = m
                         .is_incoming()
@@ -184,6 +209,7 @@ impl Rooms {
                     m.draw(ui, peer, &self.peers);
                 });
             });
+        action
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
@@ -238,7 +264,7 @@ impl Rooms {
         // if self.has_unread() {
         //     side_ico = side_ico.strong();
         // }
-        if ui.button(side_ico).clicked() {
+        if ui.add(egui::Button::new(side_ico).frame(false)).clicked() {
             self.side_panel_opened = !self.side_panel_opened;
         }
     }
@@ -529,7 +555,7 @@ impl Peer {
 }
 
 impl TextMessage {
-    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, _peers: &PeersMap) {
+    pub fn draw(&self, ui: &mut egui::Ui, incoming: Option<&Peer>, peers: &PeersMap) {
         let align = if self.is_incoming() {
             egui::Align::Min
         } else {
@@ -547,7 +573,7 @@ impl TextMessage {
                     rounding.se = 0.0;
                 }
             }
-            egui::Frame::group(line.style())
+            let frame = egui::Frame::group(line.style())
                 .rounding(rounding)
                 .stroke(Stroke::new(
                     stroke_width(line),
@@ -584,21 +610,19 @@ impl TextMessage {
                     }
                 });
 
-            // FIXME hover steals mouse input for room context menu
-            // .response
-            // .on_hover_ui_at_pointer(|ui| {
-            //     ui.label(pretty_ago(self.time()).unwrap_or_default());
-            //     let seen_by = self.is_seen_by();
-            //     if !seen_by.is_empty() {
-            //         ui.label("");
-            //         ui.label("Received by:");
-            //         for ip in seen_by.iter() {
-            //             if let Some(peer) = peers.0.get(ip) {
-            //                 ui.label(peer.rich_name());
-            //             }
-            //         }
-            //     }
-            // });
+            frame.response.on_hover_ui_at_pointer(|ui| {
+                ui.label(pretty_ago(self.time()).unwrap_or_default());
+                let seen_by = self.is_seen_by();
+                if !seen_by.is_empty() {
+                    ui.label("");
+                    ui.label("Received by:");
+                    for ip in seen_by.iter() {
+                        if let Some(peer) = peers.0.get(ip) {
+                            ui.label(peer.rich_name());
+                        }
+                    }
+                }
+            });
         });
     }
 
@@ -655,7 +679,7 @@ fn text_height(ui: &mut egui::Ui) -> f32 {
     ui.text_style_height(&egui::TextStyle::Body)
 }
 fn rounding(ui: &mut egui::Ui) -> f32 {
-    text_height(ui) * 0.5
+    text_height(ui) * 0.75
 }
 fn stroke_width(ui: &mut egui::Ui) -> f32 {
     text_height(ui) * 0.1

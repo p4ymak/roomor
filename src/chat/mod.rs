@@ -244,7 +244,7 @@ impl TextMessage {
     pub fn is_seen(&self) -> bool {
         self.seen.is_some()
     }
-    pub fn _is_seen_by(&self) -> &[Ipv4Addr] {
+    pub fn is_seen_by(&self) -> &[Ipv4Addr] {
         if let Some(Seen::Many(peers)) = &self.seen {
             peers
         } else {
