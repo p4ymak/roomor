@@ -195,7 +195,8 @@ impl Rooms {
                         action = RoomAction::Clear;
                         ui.close_menu();
                     }
-                    if ui.button("Send File..").clicked() {
+
+                    if !self.is_active_public() && ui.button("Send File..").clicked() {
                         action = RoomAction::File;
                         ui.close_menu();
                     }
