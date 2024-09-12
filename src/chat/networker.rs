@@ -193,6 +193,7 @@ impl NetWorker {
             Command::Exit => {
                 self.handle_back_event(BackEvent::PeerLeft(r_ip), ctx);
             }
+
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
                 message::Part::Single => {
                     let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
@@ -233,14 +234,20 @@ impl NetWorker {
                             .ok();
                     }
                 }
+                message::Part::Abort => {
+                    inbox.remove(&r_msg.id);
+                    outbox.files.remove(&r_msg.id);
+                }
                 _ => (),
             },
+
             Command::Seen => {
                 let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                 self.incoming(r_ip);
                 outbox.remove(r_ip, txt_msg.id());
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
+
             Command::Error => {
                 self.incoming(r_ip);
                 self.send(
@@ -291,6 +298,9 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else {
+                    self.send(UdpMessage::abort(id), Recepients::One(r_ip))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
                     error!("Message not found!");
                 }
             } // Command::File => todo!(),

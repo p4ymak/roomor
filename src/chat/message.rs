@@ -50,6 +50,7 @@ pub enum Part {
     Init(PartInit),
     AskRange(RangeInclusive<ShardCount>),
     Shard(ShardCount),
+    Abort,
 }
 impl Part {
     fn to_code(&self) -> u8 {
@@ -58,6 +59,7 @@ impl Part {
             Part::Init(_) => 1,
             Part::AskRange(_) => 2,
             Part::Shard(_) => 3,
+            Part::Abort => 4,
         }
     }
 }
@@ -146,7 +148,16 @@ impl UdpMessage {
             data: vec![],
         }
     }
-
+    pub fn abort(id: Id) -> Self {
+        UdpMessage {
+            id,
+            public: false,
+            part: Part::Abort,
+            checksum: 0,
+            command: Command::File,
+            data: vec![],
+        }
+    }
     pub fn ask_to_repeat(id: Id, part: Part) -> Self {
         UdpMessage {
             id,
@@ -310,7 +321,7 @@ impl UdpMessage {
         bytes.extend(self.id.to_be_bytes());
         bytes.extend(self.checksum.to_be_bytes());
         match &self.part {
-            Part::Single => (),
+            Part::Single | Part::Abort => (),
             Part::Init(init) => {
                 bytes.extend(init.total_checksum.to_be_bytes());
                 bytes.extend(init.count.to_be_bytes());
