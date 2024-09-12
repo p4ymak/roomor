@@ -150,6 +150,12 @@ impl NetWorker {
                 self.send(UdpMessage::exit(), Recepients::All)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
+                for file in outbox.files.iter() {
+                    self.send(UdpMessage::abort(*file.0), Recepients::All)
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
+                }
+
                 return ControlFlow::Break(());
             }
         }
@@ -235,7 +241,7 @@ impl NetWorker {
                     }
                 }
                 message::Part::Abort => {
-                    error!("ABORT!");
+                    error!("ABORTING!");
                     inbox.remove(&r_msg.id);
                     outbox.files.remove(&r_msg.id);
                 }
@@ -302,7 +308,7 @@ impl NetWorker {
                     self.send(UdpMessage::abort(id), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                    error!("Message not found!");
+                    error!("Message not found Aborting transmission!");
                 }
             } // Command::File => todo!(),
         }
