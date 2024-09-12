@@ -102,27 +102,8 @@ impl InMessage {
             warn!("Received terminal {position}");
             return self.combine(networker, ctx).is_ok();
         }
-        // if self.shards.get(position.saturating_sub(1) as usize) == Some(None).as_ref() {
-        //     if let Some(range) = self.find_missing_back(position) {
-        //         networker
-        //             .send(
-        //                 UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-        //                 Recepients::One(self.sender),
-        //             )
-        //             .ok();
-        //     }
-        // }
         false
     }
-    // pub fn find_missing_back(&self, pos: ShardCount) -> Option<RangeInclusive<ShardCount>> {
-    //     self.shards
-    //         .iter()
-    //         .enumerate()
-    //         .rev()
-    //         .skip(self.shards.len().saturating_sub(pos as usize))
-    //         .find(|x| x.1.is_some())
-    //         .map(|x| (x.0 + 1) as ShardCount..=pos)
-    // }
 
     pub fn combine(
         &mut self,
@@ -169,9 +150,6 @@ impl InMessage {
                     debug!("Writing new file to {path:?}");
                     fs::write(path, data)?;
                     self.link.set_ready();
-                    // self.link
-                    //     .is_ready
-                    //     .store(true, std::sync::atomic::Ordering::Relaxed);
                     ctx.request_repaint();
                     Ok(())
                 }
