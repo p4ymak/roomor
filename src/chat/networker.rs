@@ -235,6 +235,7 @@ impl NetWorker {
                     }
                 }
                 message::Part::Abort => {
+                    error!("ABORT!");
                     inbox.remove(&r_msg.id);
                     outbox.files.remove(&r_msg.id);
                 }
