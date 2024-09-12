@@ -150,11 +150,6 @@ impl NetWorker {
                 self.send(UdpMessage::exit(), Recepients::All)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
-                for file in outbox.files.iter() {
-                    self.send(UdpMessage::abort(*file.0), Recepients::All)
-                        .inspect_err(|e| error!("{e}"))
-                        .ok();
-                }
 
                 return ControlFlow::Break(());
             }
