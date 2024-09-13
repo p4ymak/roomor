@@ -225,10 +225,9 @@ impl NetWorker {
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
                     } else {
-                        // FIXME
-                        // self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                        //     .inspect_err(|e| error!("{e}"))
-                        //     .ok();
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
 
                     if completed {
@@ -250,7 +249,13 @@ impl NetWorker {
             }
             Command::Abort => {
                 debug!("ABORTING! {}", r_id);
+                if let Some(msg) = inbox.get_mut(&r_id) {
+                    msg.link.abort();
+                }
                 inbox.remove(&r_id);
+                if let Some(link) = outbox.files.get(&r_id) {
+                    link.abort();
+                }
                 outbox.files.remove(&r_id);
             }
             Command::Error => {

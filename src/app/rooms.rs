@@ -655,7 +655,9 @@ impl TextMessage {
                 ui.label(&link.name);
                 ui.label(human_bytes(link.size as f64));
                 let width = ui.min_rect().width();
-                if link.is_ready() {
+                if link.is_aborted() {
+                    ui.label("XX");
+                } else if link.is_ready() {
                     #[cfg(debug_assertions)]
                     {
                         let bandwidth = link.bandwidth();
