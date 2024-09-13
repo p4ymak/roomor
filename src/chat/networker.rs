@@ -225,10 +225,9 @@ impl NetWorker {
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
                     } else {
-                        // FIXME
-                        // self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                        //     .inspect_err(|e| error!("{e}"))
-                        //     .ok();
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
 
                     if completed {
@@ -276,8 +275,6 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
-                    let msg_text = r_msg.read_text();
-                    debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&r_id) {
                         let completed = link.completed.load(std::sync::atomic::Ordering::Relaxed);
                         link.completed.store(

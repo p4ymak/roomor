@@ -28,7 +28,7 @@ impl Inbox {
             !(SystemTime::now()
                 .duration_since(msg.ts)
                 .is_ok_and(|d| d > delta)
-                && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
+                && (msg.combine(networker, ctx).is_ok() || msg.attempt < MAX_ATTEMPTS))
         });
     }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
