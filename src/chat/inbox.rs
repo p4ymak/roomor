@@ -28,7 +28,7 @@ impl Inbox {
             !(SystemTime::now()
                 .duration_since(msg.ts)
                 .is_ok_and(|d| d > delta)
-                && (msg.combine(networker, ctx).is_ok() || msg.attempt < MAX_ATTEMPTS))
+                && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
         });
     }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
@@ -164,11 +164,11 @@ impl InMessage {
             if terminal == self.terminal {
                 self.attempt = self.attempt.saturating_add(1);
                 warn!("New attempt: {}", self.attempt);
-                if self.attempt > MAX_ATTEMPTS {
-                    networker
-                        .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
-                        .ok();
-                }
+                // if self.attempt > MAX_ATTEMPTS {
+                //     networker
+                //         .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
+                //         .ok();
+                // }
             } else {
                 self.terminal = terminal;
                 warn!("New terminal: {}", self.terminal);
