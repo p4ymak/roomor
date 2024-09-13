@@ -675,6 +675,10 @@ impl TextMessage {
                             .desired_width(width)
                             .show_percentage(),
                     );
+                    // TODO
+                    // if ui.link("Cancel").clicked() {
+                    //     link.abort();
+                    // }
                 }
             }
             _ => (),
