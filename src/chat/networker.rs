@@ -290,6 +290,11 @@ impl NetWorker {
                             Recepients::One(r_ip),
                             ctx,
                         );
+                    } else {
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
+                        error!("File not found. Aborting transmission!");
                     }
                 } else if let Some(message) = outbox.get(r_ip, r_id) {
                     debug!("Message found..");
