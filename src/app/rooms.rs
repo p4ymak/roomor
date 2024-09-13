@@ -656,7 +656,7 @@ impl TextMessage {
                 ui.label(human_bytes(link.size as f64));
                 let width = ui.min_rect().width();
                 if link.is_aborted() {
-                    ui.label("XX");
+                    ui.label("(X_X)");
                 } else if link.is_ready() {
                     #[cfg(debug_assertions)]
                     {
