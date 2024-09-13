@@ -270,11 +270,12 @@ impl NetWorker {
                 self.incoming(r_ip);
                 debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
-                if r_id == 0 {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
-                        .inspect_err(|e| error!("{e}"))
-                        .ok();
-                } else if let message::Part::AskRange(range) = &r_msg.part {
+                // if r_id == 0 {
+                //     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
+                //         .inspect_err(|e| error!("{e}"))
+                //         .ok();
+                // } else
+                if let message::Part::AskRange(range) = &r_msg.part {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&r_id) {
