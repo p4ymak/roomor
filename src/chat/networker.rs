@@ -222,10 +222,12 @@ impl NetWorker {
                 }
                 message::Part::Shard(count) => {
                     let mut completed = false;
-                    if let Some(inmsg) = inbox.get_mut(&r_msg.id) {
+                    if let Some(inmsg) = inbox.get_mut(&r_id) {
                         completed = inmsg.insert(count, r_msg, self, ctx);
                     } else {
-                        // FIXME
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
 
                     if completed {
@@ -236,7 +238,7 @@ impl NetWorker {
                     }
                 }
                 message::Part::Abort => {
-                    error!("ABORTING!");
+                    debug!("ABORTING!");
                     inbox.remove(&r_msg.id);
                     outbox.files.remove(&r_msg.id);
                 }
@@ -266,17 +268,16 @@ impl NetWorker {
 
             Command::AskToRepeat => {
                 self.incoming(r_ip);
-                let id = r_msg.id;
-                debug!("Asked to repeat {id}, part: {:?}", r_msg.part);
+                debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
-                if id == 0 {
+                if r_id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
-                    if let Some(link) = outbox.files.get(&id) {
+                    if let Some(link) = outbox.files.get(&r_id) {
                         let completed = link.completed.load(std::sync::atomic::Ordering::Relaxed);
                         link.completed.store(
                             completed.saturating_sub(range.clone().count() as ShardCount),
@@ -286,12 +287,12 @@ impl NetWorker {
                         self.send_shards(
                             link.clone(),
                             range.to_owned(),
-                            r_msg.id,
+                            r_id,
                             Recepients::One(r_ip),
                             ctx,
                         );
                     }
-                } else if let Some(message) = outbox.get(r_ip, id) {
+                } else if let Some(message) = outbox.get(r_ip, r_id) {
                     debug!("Message found..");
 
                     let mut message = message.clone();
@@ -300,10 +301,10 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else {
-                    self.send(UdpMessage::abort(id), Recepients::One(r_ip))
+                    self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                    error!("Message not found Aborting transmission!");
+                    error!("Message not found. Aborting transmission!");
                 }
             } // Command::File => todo!(),
         }
