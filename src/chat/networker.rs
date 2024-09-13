@@ -251,7 +251,7 @@ impl NetWorker {
             Command::Abort => {
                 debug!("ABORTING! {}", r_id);
                 inbox.remove(&r_id);
-                // outbox.files.remove(&r_id);
+                outbox.files.remove(&r_id);
             }
             Command::Error => {
                 self.incoming(r_ip);

@@ -18,7 +18,7 @@ use std::{
 };
 
 pub type Shard = Vec<u8>;
-pub const MAX_ATTEMPTS: u8 = 3;
+// pub const MAX_ATTEMPTS: u8 = 10;
 
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
@@ -28,7 +28,7 @@ impl Inbox {
             !(SystemTime::now()
                 .duration_since(msg.ts)
                 .is_ok_and(|d| d > delta)
-                && (msg.combine(networker, ctx).is_ok() || msg.attempt < MAX_ATTEMPTS))
+                && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
         });
     }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
@@ -164,11 +164,12 @@ impl InMessage {
             if terminal == self.terminal {
                 self.attempt = self.attempt.saturating_add(1);
                 warn!("New attempt: {}", self.attempt);
-                if self.attempt > MAX_ATTEMPTS {
-                    networker
-                        .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
-                        .ok();
-                }
+                // if self.attempt > MAX_ATTEMPTS {
+                //     networker
+                //         .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
+                //         .ok();
+                //     return Ok(());
+                // }
             } else {
                 self.terminal = terminal;
                 warn!("New terminal: {}", self.terminal);
@@ -177,7 +178,8 @@ impl InMessage {
             if !matches!(
                 networker.peers.online_status(Recepients::One(self.sender)),
                 Presence::Offline
-            ) && self.attempt <= MAX_ATTEMPTS
+            )
+            //&& self.attempt <= MAX_ATTEMPTS
             {
                 missed.into_iter().for_each(|range| {
                     debug!("Asked to repeat shards #{range:?}");
