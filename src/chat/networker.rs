@@ -237,11 +237,7 @@ impl NetWorker {
                             .ok();
                     }
                 }
-                message::Part::Abort => {
-                    debug!("ABORTING!");
-                    inbox.remove(&r_msg.id);
-                    outbox.files.remove(&r_msg.id);
-                }
+
                 _ => (),
             },
 
@@ -251,7 +247,11 @@ impl NetWorker {
                 outbox.remove(r_ip, txt_msg.id());
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
-
+            Command::Abort => {
+                debug!("ABORTING!");
+                inbox.remove(&r_msg.id);
+                outbox.files.remove(&r_msg.id);
+            }
             Command::Error => {
                 self.incoming(r_ip);
                 self.send(
@@ -270,12 +270,11 @@ impl NetWorker {
                 self.incoming(r_ip);
                 debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
-                // if r_id == 0 {
-                //     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
-                //         .inspect_err(|e| error!("{e}"))
-                //         .ok();
-                // } else
-                if let message::Part::AskRange(range) = &r_msg.part {
+                if r_id == 0 {
+                    self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
+                } else if let message::Part::AskRange(range) = &r_msg.part {
                     let msg_text = r_msg.read_text();
                     debug!("{msg_text}");
                     if let Some(link) = outbox.files.get(&r_id) {

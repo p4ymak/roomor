@@ -34,6 +34,7 @@ pub enum Command {
     Exit,
     Seen,
     Error,
+    Abort,
 }
 impl Command {
     pub fn to_code(self) -> u8 {
@@ -50,7 +51,6 @@ pub enum Part {
     Init(PartInit),
     AskRange(RangeInclusive<ShardCount>),
     Shard(ShardCount),
-    Abort,
 }
 impl Part {
     fn to_code(&self) -> u8 {
@@ -59,7 +59,6 @@ impl Part {
             Part::Init(_) => 1,
             Part::AskRange(_) => 2,
             Part::Shard(_) => 3,
-            Part::Abort => 4,
         }
     }
 }
@@ -152,9 +151,9 @@ impl UdpMessage {
         UdpMessage {
             id,
             public: false,
-            part: Part::Abort,
+            part: Part::Single,
             checksum: 0,
-            command: Command::File,
+            command: Command::Abort,
             data: vec![],
         }
     }
@@ -321,7 +320,7 @@ impl UdpMessage {
         bytes.extend(self.id.to_be_bytes());
         bytes.extend(self.checksum.to_be_bytes());
         match &self.part {
-            Part::Single | Part::Abort => (),
+            Part::Single => (),
             Part::Init(init) => {
                 bytes.extend(init.total_checksum.to_be_bytes());
                 bytes.extend(init.count.to_be_bytes());
