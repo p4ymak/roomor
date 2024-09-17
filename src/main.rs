@@ -23,6 +23,8 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_icon(icon)
+            .with_taskbar(true)
+            .with_app_id("roomor")
             .with_decorations(true)
             .with_transparent(false)
             .with_resizable(true)

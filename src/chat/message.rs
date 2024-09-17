@@ -34,6 +34,7 @@ pub enum Command {
     Exit,
     Seen,
     Error,
+    Abort,
 }
 impl Command {
     pub fn to_code(self) -> u8 {
@@ -146,7 +147,16 @@ impl UdpMessage {
             data: vec![],
         }
     }
-
+    pub fn abort(id: Id) -> Self {
+        UdpMessage {
+            id,
+            public: false,
+            part: Part::Single,
+            checksum: 0,
+            command: Command::Abort,
+            data: vec![],
+        }
+    }
     pub fn ask_to_repeat(id: Id, part: Part) -> Self {
         UdpMessage {
             id,

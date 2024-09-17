@@ -150,6 +150,7 @@ impl NetWorker {
                 self.send(UdpMessage::exit(), Recepients::All)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
+
                 return ControlFlow::Break(());
             }
         }
@@ -193,6 +194,7 @@ impl NetWorker {
             Command::Exit => {
                 self.handle_back_event(BackEvent::PeerLeft(r_ip), ctx);
             }
+
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
                 message::Part::Single => {
                     let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
@@ -219,27 +221,52 @@ impl NetWorker {
                     }
                 }
                 message::Part::Shard(count) => {
-                    let mut completed = false;
-                    if let Some(inmsg) = inbox.get_mut(&r_msg.id) {
-                        completed = inmsg.insert(count, r_msg, self, ctx);
+                    let mut is_completed = false;
+                    let mut is_aborted = false;
+                    if let Some(inmsg) = inbox.get_mut(&r_id) {
+                        is_aborted = inmsg.link.is_aborted();
+                        if is_aborted {
+                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
+                        } else {
+                            is_completed = inmsg.insert(count, r_msg, self, ctx);
+                        }
                     } else {
-                        // FIXME
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
                     }
-
-                    if completed {
+                    if is_aborted {
+                        inbox.remove(&r_id);
+                    }
+                    if is_completed {
                         inbox.remove(&r_id);
                         self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                     }
                 }
+
                 _ => (),
             },
+
             Command::Seen => {
                 let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                 self.incoming(r_ip);
                 outbox.remove(r_ip, txt_msg.id());
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+            }
+            Command::Abort => {
+                debug!("ABORTING! {}", r_id);
+                if let Some(msg) = inbox.get_mut(&r_id) {
+                    msg.link.abort();
+                }
+                inbox.remove(&r_id);
+                if let Some(link) = outbox.files.get(&r_id) {
+                    link.abort();
+                }
+                outbox.files.remove(&r_id);
             }
             Command::Error => {
                 self.incoming(r_ip);
@@ -257,32 +284,46 @@ impl NetWorker {
 
             Command::AskToRepeat => {
                 self.incoming(r_ip);
-                let id = r_msg.id;
-                debug!("Asked to repeat {id}, part: {:?}", r_msg.part);
+                debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
-                if id == 0 {
+                if r_id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
-                    let msg_text = r_msg.read_text();
-                    debug!("{msg_text}");
-                    if let Some(link) = outbox.files.get(&id) {
-                        let completed = link.completed.load(std::sync::atomic::Ordering::Relaxed);
-                        link.completed.store(
-                            completed.saturating_sub(range.clone().count() as ShardCount),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                        debug!("sending shards {range:?}");
-                        self.send_shards(
-                            link.clone(),
-                            range.to_owned(),
-                            r_msg.id,
-                            Recepients::One(r_ip),
-                            ctx,
-                        );
+                    let mut is_aborted = false;
+                    if let Some(link) = outbox.files.get(&r_id) {
+                        is_aborted = link.is_aborted();
+                        if !is_aborted {
+                            let completed =
+                                link.completed.load(std::sync::atomic::Ordering::Relaxed);
+                            link.completed.store(
+                                completed.saturating_sub(range.clone().count() as ShardCount),
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                            debug!("sending shards {range:?}");
+                            self.send_shards(
+                                link.clone(),
+                                range.to_owned(),
+                                r_id,
+                                Recepients::One(r_ip),
+                                ctx,
+                            );
+                        }
+                    } else {
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
+                        error!("File not found. Aborting transmission!");
                     }
-                } else if let Some(message) = outbox.get(r_ip, id) {
+                    if is_aborted {
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
+                        debug!("Transmition aborted by user.");
+                        outbox.files.remove(&r_id);
+                    }
+                } else if let Some(message) = outbox.get(r_ip, r_id) {
                     debug!("Message found..");
 
                     let mut message = message.clone();
@@ -291,7 +332,10 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else {
-                    error!("Message not found!");
+                    self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                        .inspect_err(|e| error!("{e}"))
+                        .ok();
+                    error!("Message not found. Aborting transmission!");
                 }
             } // Command::File => todo!(),
         }

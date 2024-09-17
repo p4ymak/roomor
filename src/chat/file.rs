@@ -28,6 +28,7 @@ pub struct FileLink {
     pub count: ShardCount,
     pub completed: AtomicU64,
     pub is_ready: AtomicBool,
+    pub is_aborted: AtomicBool,
 }
 
 impl FileLink {
@@ -45,6 +46,7 @@ impl FileLink {
             count,
             completed: AtomicU64::new(0),
             is_ready: AtomicBool::new(false),
+            is_aborted: AtomicBool::new(false),
         }
     }
 
@@ -61,6 +63,7 @@ impl FileLink {
             count: size.div_ceil(DATA_LIMIT_BYTES as ShardCount),
             completed: AtomicU64::new(0),
             is_ready: AtomicBool::new(false),
+            is_aborted: AtomicBool::new(false),
         })
     }
     pub fn id(&self) -> Id {
@@ -85,10 +88,16 @@ impl FileLink {
             count: size.div_ceil(DATA_LIMIT_BYTES as ShardCount),
             completed: AtomicU64::new(0),
             is_ready: AtomicBool::new(false),
+            is_aborted: AtomicBool::new(false),
         })
     }
     pub fn progress(&self) -> f32 {
-        self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32
+        (self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32)
+            .min(0.99)
+    }
+    pub fn abort(&self) {
+        self.is_aborted
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     pub fn set_ready(&self) {
         self.is_ready
@@ -104,6 +113,9 @@ impl FileLink {
             .store(seconds, std::sync::atomic::Ordering::Relaxed);
         self.bandwidth
             .store(bandwidth, std::sync::atomic::Ordering::Relaxed);
+    }
+    pub fn is_aborted(&self) -> bool {
+        self.is_aborted.load(std::sync::atomic::Ordering::Relaxed)
     }
     pub fn is_ready(&self) -> bool {
         self.is_ready.load(std::sync::atomic::Ordering::Relaxed)

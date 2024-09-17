@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.3.0"
+version = "0.3.2"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -51,7 +51,7 @@ strip = "debuginfo"
 name = "Roomor"
 identifier = "com.p4ymak.roomor"
 icon = ["icon/128x128.png"]
-version = "0.3.0"
+version = "0.3.2"
 short_description = "Minimalistic offline chat over local network."
 long_description = "Minimalistic offline chat over local network."
 deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]

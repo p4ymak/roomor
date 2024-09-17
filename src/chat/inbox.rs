@@ -18,6 +18,7 @@ use std::{
 };
 
 pub type Shard = Vec<u8>;
+// pub const MAX_ATTEMPTS: u8 = 10;
 
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
@@ -27,7 +28,7 @@ impl Inbox {
             !(SystemTime::now()
                 .duration_since(msg.ts)
                 .is_ok_and(|d| d > delta)
-                && msg.combine(networker, ctx).is_ok())
+                && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
         });
     }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
@@ -51,6 +52,7 @@ pub struct InMessage {
     pub link: Arc<FileLink>,
     pub terminal: ShardCount,
     pub shards: Vec<Option<Shard>>,
+    pub attempt: u8,
 }
 impl InMessage {
     pub fn new(ip: Ipv4Addr, msg: UdpMessage, downloads_path: &Path) -> Option<Self> {
@@ -73,6 +75,7 @@ impl InMessage {
                 link: Arc::new(link),
                 terminal: init.count().saturating_sub(1),
                 shards: vec![None; init.count() as usize],
+                attempt: 0,
             })
         } else {
             None
@@ -99,27 +102,8 @@ impl InMessage {
             warn!("Received terminal {position}");
             return self.combine(networker, ctx).is_ok();
         }
-        // if self.shards.get(position.saturating_sub(1) as usize) == Some(None).as_ref() {
-        //     if let Some(range) = self.find_missing_back(position) {
-        //         networker
-        //             .send(
-        //                 UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-        //                 Recepients::One(self.sender),
-        //             )
-        //             .ok();
-        //     }
-        // }
         false
     }
-    // pub fn find_missing_back(&self, pos: ShardCount) -> Option<RangeInclusive<ShardCount>> {
-    //     self.shards
-    //         .iter()
-    //         .enumerate()
-    //         .rev()
-    //         .skip(self.shards.len().saturating_sub(pos as usize))
-    //         .find(|x| x.1.is_some())
-    //         .map(|x| (x.0 + 1) as ShardCount..=pos)
-    // }
 
     pub fn combine(
         &mut self,
@@ -166,9 +150,6 @@ impl InMessage {
                     debug!("Writing new file to {path:?}");
                     fs::write(path, data)?;
                     self.link.set_ready();
-                    // self.link
-                    //     .is_ready
-                    //     .store(true, std::sync::atomic::Ordering::Relaxed);
                     ctx.request_repaint();
                     Ok(())
                 }
@@ -176,10 +157,17 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            self.terminal = missed
+            let terminal = missed
                 .last()
                 .map(|l| *l.end())
                 .unwrap_or(self.link.count.saturating_sub(1));
+            if terminal == self.terminal {
+                self.attempt = self.attempt.saturating_add(1);
+                warn!("New attempt: {}", self.attempt);
+            } else {
+                self.terminal = terminal;
+                warn!("New terminal: {}", self.terminal);
+            }
             // TODO save outbox
             if !matches!(
                 networker.peers.online_status(Recepients::One(self.sender)),
@@ -195,7 +183,7 @@ impl InMessage {
                         .ok();
                 });
             }
-            warn!("New terminal: {}", self.terminal);
+
             Err("Missing Shards".into())
         }
     }
