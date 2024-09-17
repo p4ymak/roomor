@@ -655,7 +655,7 @@ impl TextMessage {
                 ui.label(&link.name);
                 ui.label(human_bytes(link.size as f64));
                 let width = ui.min_rect().width();
-                if link.is_aborted() {
+                if link.is_aborted() && !link.is_ready() {
                     ui.label("(X_X)");
                 } else if link.is_ready() {
                     #[cfg(debug_assertions)]
@@ -675,10 +675,9 @@ impl TextMessage {
                             .desired_width(width)
                             .show_percentage(),
                     );
-                    // TODO
-                    // if ui.link("Cancel").clicked() {
-                    //     link.abort();
-                    // }
+                    if ui.link("Cancel").clicked() {
+                        link.abort();
+                    }
                 }
             }
             _ => (),

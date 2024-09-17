@@ -221,16 +221,26 @@ impl NetWorker {
                     }
                 }
                 message::Part::Shard(count) => {
-                    let mut completed = false;
+                    let mut is_completed = false;
+                    let mut is_aborted = false;
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
-                        completed = inmsg.insert(count, r_msg, self, ctx);
+                        is_aborted = inmsg.link.is_aborted();
+                        if is_aborted {
+                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
+                        } else {
+                            is_completed = inmsg.insert(count, r_msg, self, ctx);
+                        }
                     } else {
                         self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                     }
-
-                    if completed {
+                    if is_aborted {
+                        inbox.remove(&r_id);
+                    }
+                    if is_completed {
                         inbox.remove(&r_id);
                         self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
@@ -281,25 +291,37 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
+                    let mut is_aborted = false;
                     if let Some(link) = outbox.files.get(&r_id) {
-                        let completed = link.completed.load(std::sync::atomic::Ordering::Relaxed);
-                        link.completed.store(
-                            completed.saturating_sub(range.clone().count() as ShardCount),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                        debug!("sending shards {range:?}");
-                        self.send_shards(
-                            link.clone(),
-                            range.to_owned(),
-                            r_id,
-                            Recepients::One(r_ip),
-                            ctx,
-                        );
+                        is_aborted = link.is_aborted();
+                        if !is_aborted {
+                            let completed =
+                                link.completed.load(std::sync::atomic::Ordering::Relaxed);
+                            link.completed.store(
+                                completed.saturating_sub(range.clone().count() as ShardCount),
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                            debug!("sending shards {range:?}");
+                            self.send_shards(
+                                link.clone(),
+                                range.to_owned(),
+                                r_id,
+                                Recepients::One(r_ip),
+                                ctx,
+                            );
+                        }
                     } else {
                         self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                         error!("File not found. Aborting transmission!");
+                    }
+                    if is_aborted {
+                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                            .inspect_err(|e| error!("{e}"))
+                            .ok();
+                        debug!("Transmition aborted by user.");
+                        outbox.files.remove(&r_id);
                     }
                 } else if let Some(message) = outbox.get(r_ip, r_id) {
                     debug!("Message found..");
