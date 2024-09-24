@@ -201,7 +201,7 @@ impl UdpMessage {
                 command,
                 data,
             };
-            // outbox.add(msg.ip(), message.clone());
+            outbox.add(msg.ip(), message.clone());
             sender.send(message, recepients)?;
             outbox.files.insert(msg.id, link.clone());
 

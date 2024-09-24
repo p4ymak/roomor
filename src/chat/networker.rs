@@ -263,6 +263,7 @@ impl NetWorker {
                     msg.link.abort();
                 }
                 inbox.remove(&r_id);
+                outbox.remove(r_ip, r_id);
                 if let Some(link) = outbox.files.get(&r_id) {
                     link.abort();
                 }
