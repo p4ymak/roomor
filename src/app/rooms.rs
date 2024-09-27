@@ -490,7 +490,14 @@ impl ChatHistory {
             font_id.clone(),
             color,
         );
-        painter.rect_stroke(painter.clip_rect(), rounding, stroke);
+        painter.rect_stroke(
+            painter
+                .clip_rect()
+                .expand(-stroke_width)
+                .shrink2(egui::Vec2::new(stroke_width, 0.0)),
+            rounding,
+            stroke,
+        );
 
         if self.unread > 0 {
             // painter.text(
@@ -501,7 +508,7 @@ impl ChatHistory {
             //     ui.style().visuals.widgets.inactive.text_color(),
             // );
             painter.vline(
-                painter.clip_rect().right(),
+                painter.clip_rect().right() - stroke_width,
                 painter.clip_rect().y_range(),
                 Stroke::new(stroke_width * 4.0, active_fg.color),
             );

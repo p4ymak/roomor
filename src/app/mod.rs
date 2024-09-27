@@ -439,7 +439,7 @@ impl Roomor {
                     h.ctx().request_repaint();
                 }
                 h.separator();
-                egui::widgets::global_dark_light_mode_switch(h);
+                egui::widgets::global_theme_preference_switch(h);
             });
             ui.separator();
             if ui.button("Clear History").clicked() {
