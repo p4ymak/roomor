@@ -582,6 +582,7 @@ impl TextMessage {
                 }
             }
             let frame = egui::Frame::group(line.style())
+                .outer_margin(line.style().visuals.window_stroke.width)
                 .rounding(rounding)
                 .stroke(Stroke::new(
                     stroke_width(line),
@@ -607,8 +608,10 @@ impl TextMessage {
                                 });
                             }
                             _ => {
-                                v.label(peer.rich_name())
-                                    .on_hover_text_at_pointer(peer.ip().to_string());
+                                if self.is_public() {
+                                    v.label(peer.rich_name())
+                                        .on_hover_text_at_pointer(peer.ip().to_string());
+                                }
 
                                 self.draw_content(v);
                             }

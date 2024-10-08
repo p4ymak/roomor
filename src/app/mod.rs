@@ -1,12 +1,15 @@
 mod rooms;
 
 use self::rooms::Rooms;
-use crate::chat::{
-    limit_text,
-    message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
-    notifier::{Notifier, Repaintable},
-    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
+use crate::{
+    chat::{
+        limit_text,
+        message::MAX_NAME_SIZE,
+        networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+        notifier::{Notifier, Repaintable},
+        BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
+    },
+    DONATION_LINK, HOMEPAGE_LINK, SOURCE_LINK,
 };
 use eframe::{
     egui::{self, *},
@@ -14,6 +17,7 @@ use eframe::{
 };
 use flume::{Receiver, Sender};
 use log::{debug, error};
+use opener::open_browser;
 use rodio::{OutputStream, OutputStreamHandle};
 use rooms::RoomAction;
 use std::{
@@ -267,8 +271,9 @@ impl Roomor {
                     ui.label("");
                     ui.heading(format!("Roomor v{}", env!("CARGO_PKG_VERSION")));
                     ui.visuals_mut().hyperlink_color = ui.visuals().text_color();
-                    ui.hyperlink_to("by Roman Chumak", "http://www.p4ymak.su");
-                    ui.hyperlink_to("Source Code", "https://www.github.com/p4ymak/roomor");
+                    ui.hyperlink_to("by Roman Chumak", HOMEPAGE_LINK);
+                    ui.hyperlink_to("Source Code", SOURCE_LINK);
+                    ui.hyperlink_to("Donate", DONATION_LINK);
                 });
             });
         });
@@ -444,6 +449,10 @@ impl Roomor {
             ui.separator();
             if ui.button("Clear History").clicked() {
                 self.rooms.clear_history();
+                ui.close_menu();
+            }
+            if ui.button("Donate").clicked() {
+                open_browser(DONATION_LINK).ok();
                 ui.close_menu();
             }
             if ui.button("Exit").clicked() {

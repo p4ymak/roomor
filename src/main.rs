@@ -3,6 +3,10 @@ mod chat;
 use app::Roomor;
 use eframe::egui;
 
+pub const HOMEPAGE_LINK: &str = "https://www.p4ymak.su";
+pub const SOURCE_LINK: &str = "https://www.github.com/p4ymak/roomor";
+pub const DONATION_LINK: &str = "https://www.donationalerts.com/r/p4ymak";
+
 fn main() -> Result<(), eframe::Error> {
     #[cfg(debug_assertions)]
     {
@@ -30,7 +34,7 @@ fn main() -> Result<(), eframe::Error> {
             .with_resizable(true)
             .with_maximized(false)
             .with_drag_and_drop(true)
-            .with_inner_size([340.0, 600.0])
+            .with_inner_size([340.0, 620.0])
             .with_min_inner_size([280.0, 280.0]),
         ..Default::default()
     };
