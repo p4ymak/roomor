@@ -17,12 +17,12 @@ use eframe::{
 };
 use flume::{Receiver, Sender};
 use log::{debug, error};
-use opener::open_browser;
+use opener::{open, open_browser};
 use rodio::{OutputStream, OutputStreamHandle};
 use rooms::RoomAction;
 use std::{
     net::Ipv4Addr,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
@@ -126,6 +126,7 @@ pub struct Roomor {
     back_rx: Receiver<BackEvent>,
     back_tx: Sender<ChatEvent>,
     last_time: SystemTime,
+    downloads_path: PathBuf,
 }
 
 impl eframe::App for Roomor {
@@ -164,6 +165,7 @@ impl Default for Roomor {
         let user = UserSetup::default();
 
         let chat = UdpChat::new(user.ip(), front_tx);
+        let downloads_path = chat.downloads_path();
         let back_tx = chat.tx();
 
         Roomor {
@@ -179,6 +181,7 @@ impl Default for Roomor {
             back_tx,
             back_rx,
             last_time: SystemTime::now(),
+            downloads_path,
         }
     }
 }
@@ -449,6 +452,10 @@ impl Roomor {
             ui.separator();
             if ui.button("Clear History").clicked() {
                 self.rooms.clear_history();
+                ui.close_menu();
+            }
+            if ui.button("Open Downloads").clicked() {
+                open(&self.downloads_path).ok();
                 ui.close_menu();
             }
             if ui.button("Donate").clicked() {

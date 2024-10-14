@@ -7,7 +7,7 @@ use crate::chat::{
     ChatEvent, Content, FrontEvent, Recepients, TextMessage,
 };
 use eframe::{
-    egui::{self, Rounding, Stroke},
+    egui::{self, KeyboardShortcut, Modifiers, Rounding, Stroke},
     emath::Align2,
 };
 use flume::Sender;
@@ -389,14 +389,13 @@ impl ChatHistory {
                 .frame(false)
                 .desired_rows(if self.emoji_mode { 1 } else { 4 })
                 .desired_width(ui.available_rect_before_wrap().width())
-                .cursor_at_end(true),
+                .cursor_at_end(true)
+                .return_key(Some(KeyboardShortcut::new(
+                    Modifiers::SHIFT,
+                    egui::Key::Enter,
+                ))),
         );
         text_input.request_focus();
-        // FIXME
-        // if text_input.changed() && status == Presence::Unknown {
-        //     tx.send(ChatEvent::Front(FrontEvent::Ping(self.recepients)))
-        //         .ok();
-        // }
     }
 
     fn draw_list_entry(
@@ -437,17 +436,6 @@ impl ChatHistory {
         let max_rect = ui.max_rect();
         let font_size = ui.text_style_height(&egui::TextStyle::Body);
         let font_id = egui::FontId::proportional(font_size);
-        // let response = ui.interact(
-        //     egui::Rect {
-        //         min: max_rect.min,
-        //         max: egui::Pos2::new(
-        //             max_rect.width(),
-        //             ui.text_style_height(&egui::TextStyle::Body) * 1.5,
-        //         ),
-        //     },
-        //     egui::Id::new(name.to_string()),
-        //     egui::Sense::click(),
-        // );
 
         let (response, painter) = ui.allocate_painter(
             egui::Vec2::new(
@@ -476,12 +464,6 @@ impl ChatHistory {
             sw: rounding(ui) * 2.0,
             se: 0.0,
         };
-        // egui::Frame::default()
-        //     .stroke(stroke)
-        //     .rounding(rounding)
-        //     .show(ui, |ui| {
-        //         ui.heading(egui::RichText::new(name.clone()).color(color));
-        //     });
 
         painter.text(
             painter.clip_rect().left_center() + egui::Vec2::new(font_id.size, 0.0),
@@ -500,13 +482,6 @@ impl ChatHistory {
         );
 
         if self.unread > 0 {
-            // painter.text(
-            //     painter.clip_rect().right_center() - egui::Vec2::new(font_id.size, 0.0),
-            //     Align2::RIGHT_CENTER,
-            //     format!("[{}]", unread),
-            //     font_id,
-            //     ui.style().visuals.widgets.inactive.text_color(),
-            // );
             painter.vline(
                 painter.clip_rect().right() - stroke_width,
                 painter.clip_rect().y_range(),

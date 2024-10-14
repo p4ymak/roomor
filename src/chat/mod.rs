@@ -26,7 +26,7 @@ use std::{
     fs,
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,
@@ -378,6 +378,9 @@ impl UdpChat {
                 }
             }
         }
+    }
+    pub fn downloads_path(&self) -> PathBuf {
+        self.downloads_path.clone()
     }
 }
 
