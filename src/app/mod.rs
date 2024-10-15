@@ -1,3 +1,4 @@
+mod filetypes;
 mod rooms;
 
 use self::rooms::Rooms;
@@ -187,7 +188,12 @@ impl Default for Roomor {
 }
 
 impl Roomor {
-    pub fn new(_cc: &CreationContext) -> Self {
+    pub fn new(cc: &CreationContext) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
+        cc.egui_ctx.set_fonts(fonts);
+
         Roomor::default()
     }
 
@@ -325,8 +331,18 @@ impl Roomor {
                     self.rooms.side_panel_toggle(h);
                 });
                 // Notifications
-                atomic_button(&self.notification_sound, '🎵', h, "Sound Notifications");
-                atomic_button(&self.notification_d_bus, '⚑', h, "Pop Notifications");
+                atomic_button(
+                    &self.notification_sound,
+                    egui_phosphor::regular::MUSIC_NOTES,
+                    h,
+                    "Sound Notifications",
+                );
+                atomic_button(
+                    &self.notification_d_bus,
+                    egui_phosphor::regular::FLAG,
+                    h,
+                    "Pop Notifications",
+                );
                 self.settings_button(h);
 
                 // Online Summary
@@ -428,7 +444,7 @@ impl Roomor {
     }
 
     fn settings_button(&mut self, ui: &mut egui::Ui) {
-        ui.menu_button("✱", |ui| {
+        ui.menu_button(egui_phosphor::regular::GEAR_SIX, |ui| {
             ui.horizontal(|h| {
                 // GUI Settings
                 h.label("UI Zoom");
@@ -450,19 +466,35 @@ impl Roomor {
                 egui::widgets::global_theme_preference_switch(h);
             });
             ui.separator();
-            if ui.button("Clear History").clicked() {
+            if ui
+                .button(format!("{}  Clear History", egui_phosphor::regular::BROOM,))
+                .clicked()
+            {
                 self.rooms.clear_history();
                 ui.close_menu();
             }
-            if ui.button("Open Downloads").clicked() {
+
+            if ui
+                .button(format!(
+                    "{}  Open Downloads",
+                    egui_phosphor::regular::FOLDER_OPEN,
+                ))
+                .clicked()
+            {
                 open(&self.downloads_path).ok();
                 ui.close_menu();
             }
-            if ui.button("Donate").clicked() {
+            if ui
+                .button(format!("{}  Donate", egui_phosphor::regular::HEART,))
+                .clicked()
+            {
                 open_browser(DONATION_LINK).ok();
                 ui.close_menu();
             }
-            if ui.button("Exit").clicked() {
+            if ui
+                .button(format!("{}  Exit", egui_phosphor::regular::SIGN_OUT,))
+                .clicked()
+            {
                 self.exit();
                 ui.close_menu();
             }
@@ -552,9 +584,9 @@ impl Repaintable for egui::Context {
     }
 }
 
-fn atomic_button(value: &Arc<AtomicBool>, icon: char, ui: &mut egui::Ui, hover: &str) {
+fn atomic_button(value: &Arc<AtomicBool>, icon: &str, ui: &mut egui::Ui, hover: &str) {
     let val = value.load(std::sync::atomic::Ordering::Relaxed);
-    let mut icon = egui::RichText::new(icon).monospace();
+    let mut icon = egui::RichText::new(icon);
     if !val {
         icon = icon.weak();
     }

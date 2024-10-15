@@ -1,13 +1,12 @@
 // FIXME
 #![allow(dead_code)]
+use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
 use std::{
     fs::File,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64},
     time::SystemTime,
 };
-
-use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
 
 #[derive(Debug, Clone)]
 pub enum FileStatus {

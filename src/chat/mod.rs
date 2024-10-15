@@ -26,7 +26,7 @@ use std::{
     fs,
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
     thread::{self, JoinHandle},
     time::SystemTime,

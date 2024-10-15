@@ -16,7 +16,7 @@ eframe = "0.29"
 rfd = "0.15"
 human_bytes = "0.4.3"
 opener = "0.7.2"
-
+egui-phosphor = "0.7.3"
 flume = "0.11.0"
 
 whoami = "1.5.2"

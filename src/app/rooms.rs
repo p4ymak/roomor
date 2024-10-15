@@ -1,4 +1,4 @@
-use super::{EMOJI_SCALE, FONT_SCALE, PUBLIC};
+use super::{filetypes::file_ico, EMOJI_SCALE, FONT_SCALE, PUBLIC};
 use crate::chat::{
     file::FileLink,
     limit_text,
@@ -191,12 +191,22 @@ impl Rooms {
                     egui::Sense::click(),
                 )
                 .context_menu(|ui| {
-                    if ui.small_button("Clear History").clicked() {
+                    if ui
+                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
+                        .clicked()
+                    {
                         action = RoomAction::Clear;
                         ui.close_menu();
                     }
 
-                    if !self.is_active_public() && ui.button("Send File..").clicked() {
+                    if !self.is_active_public()
+                        && ui
+                            .button(format!(
+                                "{}  Send File",
+                                egui_phosphor::regular::FILE_ARROW_UP
+                            ))
+                            .clicked()
+                    {
                         action = RoomAction::File;
                         ui.close_menu();
                     }
@@ -260,8 +270,9 @@ impl Rooms {
             .draw_input(ui, status);
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
-        let side_ico = if self.side_panel_opened { "" } else { "" };
-        let side_ico = egui::RichText::new(side_ico).monospace();
+        // let side_ico = if self.side_panel_opened { "" } else { "" };
+        let side_ico = egui_phosphor::regular::SIDEBAR;
+        let side_ico = egui::RichText::new(side_ico);
         // if self.has_unread() {
         //     side_ico = side_ico.strong();
         // }
@@ -449,10 +460,8 @@ impl ChatHistory {
         let active_fg = ui.visuals().widgets.hovered.fg_stroke;
         let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
         let stroke_width = stroke_width(ui);
-        let stroke = if response.hovered() {
-            Stroke::new(stroke_width * 2.0, active_fg.color)
-        } else if is_active {
-            Stroke::new(stroke_width * 2.0, inactive_fg.color)
+        let stroke = if response.hovered() || is_active {
+            Stroke::new(stroke_width * 1.5, active_fg.color)
         } else {
             Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
         };
@@ -637,31 +646,41 @@ impl TextMessage {
                 ui.label(content);
             }
             Content::FileLink(link) => {
-                ui.label(&link.name);
-                ui.label(human_bytes(link.size as f64));
-                let width = ui.min_rect().width();
+                let file_ico = file_ico(&link.path, ui);
                 if link.is_aborted() && !link.is_ready() {
-                    ui.label("(X_X)");
+                    ui.label(
+                        egui::RichText::new(egui_phosphor::regular::FILE_DASHED)
+                            .size(ui.text_style_height(&egui::TextStyle::Body) * 4.0),
+                    );
                 } else if link.is_ready() {
-                    #[cfg(debug_assertions)]
-                    {
-                        let bandwidth = link.bandwidth();
-                        ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
-                    }
-                    if ui.link("Open").clicked() {
+                    if ui.link(file_ico).clicked() {
                         opener::open(&link.path).ok();
                     }
                 } else {
-                    let rounding =
-                        Rounding::same(rounding(ui) * ui.style().visuals.window_stroke.width);
-                    ui.add(
-                        egui::ProgressBar::new(link.progress())
-                            .rounding(rounding)
-                            .desired_width(width)
-                            .show_percentage(),
-                    );
-                    if ui.link("Cancel").clicked() {
-                        link.abort();
+                    ui.label(file_ico);
+                }
+                ui.label(&link.name);
+                ui.label(human_bytes(link.size as f64));
+                let width = ui.min_rect().width();
+                if !link.is_aborted() {
+                    if link.is_ready() {
+                        #[cfg(debug_assertions)]
+                        {
+                            let bandwidth = link.bandwidth();
+                            ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
+                        }
+                    } else {
+                        let rounding =
+                            Rounding::same(rounding(ui) * ui.style().visuals.window_stroke.width);
+                        ui.add(
+                            egui::ProgressBar::new(link.progress())
+                                .rounding(rounding)
+                                .desired_width(width)
+                                .show_percentage(),
+                        );
+                        if ui.link("Cancel").clicked() {
+                            link.abort();
+                        }
                     }
                 }
             }
