@@ -191,7 +191,6 @@ impl Roomor {
     pub fn new(cc: &CreationContext) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-
         cc.egui_ctx.set_fonts(fonts);
 
         Roomor::default()

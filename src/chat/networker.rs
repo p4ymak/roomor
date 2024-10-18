@@ -205,7 +205,7 @@ impl NetWorker {
                     self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                 }
                 message::Part::Init(_) => {
-                    debug!("incomint PartInit");
+                    debug!("incoming PartInit");
 
                     if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);

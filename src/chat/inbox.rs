@@ -173,7 +173,10 @@ impl InMessage {
                 networker.peers.online_status(Recepients::One(self.sender)),
                 Presence::Offline
             ) {
-                missed.into_iter().for_each(|range| {
+                for range in missed {
+                    if self.link.is_aborted() {
+                        break;
+                    }
                     debug!("Asked to repeat shards #{range:?}");
                     networker
                         .send(
@@ -181,7 +184,7 @@ impl InMessage {
                             Recepients::One(self.sender),
                         )
                         .ok();
-                });
+                }
             }
 
             Err("Missing Shards".into())
