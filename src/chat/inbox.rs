@@ -88,6 +88,12 @@ impl InMessage {
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
     ) -> bool {
+        if self.link.is_ready() {
+            return true;
+        }
+        if self.link.is_aborted() {
+            return false;
+        }
         self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
@@ -149,6 +155,7 @@ impl InMessage {
                     let path = &self.link.path;
                     debug!("Writing new file to {path:?}");
                     fs::write(path, data)?;
+
                     self.link.set_ready();
                     ctx.request_repaint();
                     Ok(())

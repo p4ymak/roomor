@@ -2,6 +2,8 @@ mod app;
 mod chat;
 use app::Roomor;
 use eframe::egui;
+#[cfg(test)]
+mod tests;
 
 pub const HOMEPAGE_LINK: &str = "https://www.p4ymak.su";
 pub const SOURCE_LINK: &str = "https://www.github.com/p4ymak/roomor";

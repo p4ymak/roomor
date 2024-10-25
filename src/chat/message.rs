@@ -46,6 +46,7 @@ impl Command {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Part {
     Single,
     Init(PartInit),
@@ -63,6 +64,7 @@ impl Part {
     }
 }
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct PartInit {
     total_checksum: CheckSum,
     count: ShardCount,
@@ -77,6 +79,7 @@ impl PartInit {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct UdpMessage {
     pub id: Id,
     pub public: bool,

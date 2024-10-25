@@ -405,6 +405,7 @@ impl Roomor {
         egui::TopBottomPanel::bottom("text intput")
             .max_height(max_height)
             .resizable(false)
+            .show_separator_line(true)
             .show(ctx, |ui| {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
                 egui::ScrollArea::vertical()
@@ -418,15 +419,19 @@ impl Roomor {
             .max_width(ctx.input(|i| i.screen_rect.width()) * 0.5)
             .default_width(font_size * 8.0)
             .resizable(true)
+            .show_separator_line(true)
             .show_animated(ctx, self.rooms.side_panel_opened, |ui| {
                 self.rooms.draw_list(ui);
             });
-        egui::SidePanel::left("Chats List Light")
-            .exact_width(font_size * 2.0)
-            .resizable(false)
-            .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
-                self.rooms.draw_list(ui);
-            });
+        if !self.rooms.side_panel_opened {
+            egui::SidePanel::left("Chats List Light")
+                .exact_width(font_size * 2.0)
+                .resizable(false)
+                .show_separator_line(true)
+                .show_animated(ctx, !self.rooms.side_panel_opened, |ui| {
+                    self.rooms.draw_list(ui);
+                });
+        }
         egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
             RoomAction::None => (),
             RoomAction::Clear => {
