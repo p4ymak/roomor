@@ -3,7 +3,9 @@ Minimalistic offline chat over local network.
 
 ![Welcome Screen](screenshots/00.png) 
 
-![Public Chat](screenshots/01.png) ![Private Chat](screenshots/02.png)
+![Dark Theme](screenshots/01.png) ![Light Theme](screenshots/02.png)
+
+![Emoji Mode](screenshots/03.png)
 
 ## Navigation
 **Shift + Arrows Up/Down** - Navigate through Chats List
@@ -12,7 +14,9 @@ Minimalistic offline chat over local network.
 
 **Shift + Esc** - Return to Welcome Screen
 
-Message text starts with **Space** enables emoji mode. 
+Message text starts with **Space** enables big text mode. 
+
+Message text starts with **/** enables emoji mode, **Esc** or right-click to exit.
 
 Message text starts with **http** enables link mode.
 
