@@ -12,6 +12,7 @@ pub enum FileTy {
     Font,
     Image,
     Text,
+    Torrent,
     #[default]
     Unknown,
     Video,
@@ -45,6 +46,8 @@ impl FileTy {
             "wasm" | "exe" | "dll" | "elf" | "bc" | "mach" | "class" | "dex" | "dey" | "der"
             | "obj" => FileTy::Application,
 
+            "torrent" => FileTy::Torrent,
+
             _ => FileTy::Unknown,
         }
     }
@@ -56,6 +59,7 @@ impl FileTy {
             FileTy::Audio => regular::FILE_AUDIO,
             FileTy::Video => regular::FILE_VIDEO,
             FileTy::Book | FileTy::Text | FileTy::Document => regular::FILE_TEXT,
+            FileTy::Torrent => regular::FILE_CLOUD,
             _ => regular::FILE,
         }
     }

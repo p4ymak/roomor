@@ -1,19 +1,30 @@
 use super::{filetypes::file_ico, EMOJI_SCALE, FONT_SCALE, PUBLIC};
-use crate::chat::{
-    file::FileLink,
-    limit_text,
-    message::MAX_EMOJI_SIZE,
-    peers::{Peer, PeersMap, Presence},
-    ChatEvent, Content, FrontEvent, Recepients, TextMessage,
+use crate::{
+    chat::{
+        file::FileLink,
+        limit_text,
+        message::MAX_EMOJI_SIZE,
+        peers::{Peer, PeersMap, Presence},
+        ChatEvent, Content, FrontEvent, Recepients, TextMessage,
+    },
+    emoji::EMOJI_LIST,
 };
 use eframe::{
-    egui::{self, KeyboardShortcut, Modifiers, Rounding, Stroke},
+    egui::{self, KeyboardShortcut, Modifiers, RichText, Rounding, Stroke},
     emath::Align2,
 };
+use egui_phosphor::regular;
 use flume::Sender;
 use human_bytes::human_bytes;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
 use timediff::TimeDiff;
+
+#[derive(PartialEq, Eq)]
+pub enum TextMode {
+    Normal,
+    Big,
+    Icon,
+}
 
 #[derive(PartialEq, Eq)]
 pub enum RoomAction {
@@ -86,18 +97,19 @@ impl Rooms {
         }
         let chat = self.get_mut_active();
         let mut trimmed = chat.input.trim().to_string();
-        if chat.emoji_mode {
+        if chat.mode == TextMode::Big {
             trimmed = trimmed.replace('\n', "");
         }
         (!trimmed.is_empty()).then_some(
             // && self.peers.values().any(|p| p.is_online()) {
             {
                 chat.input.clear();
-                if chat.emoji_mode {
-                    TextMessage::out_message(Content::Icon(trimmed), chat.recepients)
-                } else {
-                    TextMessage::out_message(Content::Text(trimmed), chat.recepients)
-                }
+                let content = match chat.mode {
+                    TextMode::Normal => Content::Text(trimmed),
+                    TextMode::Big => Content::Big(trimmed),
+                    TextMode::Icon => Content::Icon(trimmed),
+                };
+                TextMessage::out_message(content, chat.recepients)
             },
         )
     }
@@ -348,8 +360,8 @@ impl Rooms {
 
 pub struct ChatHistory {
     recepients: Recepients,
-    emoji_mode: bool,
-    input: String,
+    pub mode: TextMode,
+    pub input: String,
     history: Vec<TextMessage>,
     unread: usize,
 }
@@ -358,7 +370,7 @@ impl ChatHistory {
     pub fn new(recepients: Recepients) -> Self {
         ChatHistory {
             recepients,
-            emoji_mode: false,
+            mode: TextMode::Normal,
             input: String::new(),
             history: vec![],
             unread: 0,
@@ -367,7 +379,12 @@ impl ChatHistory {
 
     pub fn font_multiply(&self, ui: &mut egui::Ui) {
         for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-            let emoji_scale = if self.emoji_mode { 4.0 } else { 1.0 };
+            let emoji_scale = match self.mode {
+                TextMode::Normal => 1.0,
+                TextMode::Big => 4.0,
+                TextMode::Icon => 2.0,
+            };
+
             font_id.size *= FONT_SCALE * emoji_scale;
         }
     }
@@ -378,15 +395,21 @@ impl ChatHistory {
             ui.visuals_mut().override_text_color =
                 Some(ui.visuals().widgets.noninteractive.text_color());
         }
-        self.emoji_mode = self.input.starts_with(' ');
+        self.mode = if self.input.starts_with(' ') {
+            TextMode::Big
+        } else if self.input.starts_with('/') {
+            TextMode::Icon
+        } else {
+            TextMode::Normal
+        };
 
-        if self.emoji_mode {
+        if self.mode == TextMode::Big {
             limit_text(&mut self.input, MAX_EMOJI_SIZE);
         }
         self.font_multiply(ui);
 
         let len = self.input.len();
-        if len > 0 && self.emoji_mode {
+        if len > 0 && self.mode == TextMode::Big {
             let y = ui.max_rect().min.y;
             let rect = ui.clip_rect();
             ui.painter().hline(
@@ -395,18 +418,53 @@ impl ChatHistory {
                 ui.style().visuals.widgets.inactive.fg_stroke,
             );
         }
-        let text_input = ui.add(
-            egui::TextEdit::multiline(&mut self.input)
-                .frame(false)
-                .desired_rows(if self.emoji_mode { 1 } else { 4 })
-                .desired_width(ui.available_rect_before_wrap().width())
-                .cursor_at_end(true)
-                .return_key(Some(KeyboardShortcut::new(
-                    Modifiers::SHIFT,
-                    egui::Key::Enter,
-                ))),
-        );
-        text_input.request_focus();
+        if self.mode == TextMode::Icon {
+            self.draw_input_emoji(ui);
+        } else {
+            let text_input = ui.add(
+                egui::TextEdit::multiline(&mut self.input)
+                    .frame(false)
+                    .desired_rows(if self.mode == TextMode::Normal { 4 } else { 1 })
+                    .desired_width(ui.available_rect_before_wrap().width())
+                    .cursor_at_end(true)
+                    .return_key(Some(KeyboardShortcut::new(
+                        Modifiers::SHIFT,
+                        egui::Key::Enter,
+                    ))),
+            );
+            text_input.request_focus();
+            text_input.context_menu(|ui| {
+                if ui
+                    .button(RichText::new(regular::SMILEY).heading())
+                    .clicked()
+                {
+                    self.input = "/".to_string();
+                    ui.close_menu();
+                }
+            });
+        }
+    }
+
+    fn draw_input_emoji(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for emoji in EMOJI_LIST {
+                        let icon = ui.add(egui::Button::new(emoji).frame(false));
+                        if icon.clicked() {
+                            self.input = emoji.to_string();
+                            emulate_enter(ui);
+                        }
+                        if icon.secondary_clicked() {
+                            self.input.clear();
+                        }
+                    }
+                    if ui.response().secondary_clicked() {
+                        self.input.clear();
+                    }
+                });
+            });
     }
 
     fn draw_list_entry(
@@ -639,7 +697,7 @@ impl TextMessage {
                     ui.label(content);
                 }
             }
-            Content::Icon(content) => {
+            Content::Big(content) | Content::Icon(content) => {
                 for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
                     font_id.size *= FONT_SCALE * EMOJI_SCALE;
                 }
@@ -705,4 +763,15 @@ pub fn pretty_ago(ts: SystemTime) -> Option<String> {
         .ok()?
         .parse()
         .ok()
+}
+
+pub fn emulate_enter(ui: &egui::Ui) {
+    let event = egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: Some(egui::Key::Enter),
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    };
+    ui.ctx().input_mut(|w| w.raw.events.push(event));
 }

@@ -180,7 +180,8 @@ impl UdpMessage {
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
             Content::Text(text) => (Command::Text, be_u8_from_str(text)),
-            Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!(" {icon}"))),
+            Content::Big(big) => (Command::Text, be_u8_from_str(&format!(" {big}"))),
+            Content::Icon(icon) => (Command::Text, be_u8_from_str(&format!("/{icon}"))),
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
             Content::FileLink(link) => (Command::File, be_u8_from_str(&link.name)),

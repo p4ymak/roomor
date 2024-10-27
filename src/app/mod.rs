@@ -562,6 +562,17 @@ impl Roomor {
                         }
                     }
                 }
+                Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    modifiers: Modifiers::NONE,
+                    ..
+                } => {
+                    let active_room = self.rooms.get_mut_active();
+                    if active_room.mode == rooms::TextMode::Icon {
+                        active_room.input.clear();
+                    }
+                }
                 _ => (),
             })
         })

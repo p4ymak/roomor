@@ -57,6 +57,7 @@ impl Recepients {
 pub enum Content {
     Ping(String),
     Text(String),
+    Big(String),
     Icon(String),
     FileLink(Arc<FileLink>),
     FileData(PathBuf),
@@ -132,7 +133,7 @@ impl TextMessage {
             public: true,
             ip: Ipv4Addr::UNSPECIFIED,
             id: 0,
-            content: Content::Icon(String::from("RMЯ")),
+            content: Content::Big(String::from("RMЯ")),
             seen: Some(Seen::One),
         }
     }
@@ -148,10 +149,13 @@ impl TextMessage {
                 Command::Enter => Content::Ping(msg.read_text()),
                 Command::Text => {
                     let mut text = msg.read_text();
-                    let is_icon = text.starts_with(' ');
+                    let is_big = text.starts_with(' ');
+                    let is_icon = text.starts_with('/');
                     text = text.trim().to_string();
-                    if is_icon {
-                        Content::Icon(text)
+                    if is_big {
+                        Content::Big(text)
+                    } else if is_icon {
+                        Content::Icon(text.trim_start_matches('/').to_string())
                     } else {
                         Content::Text(text)
                     }
@@ -269,6 +273,7 @@ impl TextMessage {
                     preview
                 }
             }
+            Content::Big(big) => big.to_owned(),
             Content::Icon(icon) => icon.to_owned(),
             Content::FileLink(link) => link.name.to_owned(),
             _ => String::new(),
