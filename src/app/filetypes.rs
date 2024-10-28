@@ -21,8 +21,8 @@ pub enum FileTy {
 impl FileTy {
     pub fn from_ext(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {
-            "jpg" | "png" | "gif" | "webp" | "cr2" | "tif" | "bmp" | "heif" | "avif" | "jxr"
-            | "psd" | "ico" | "ora" => FileTy::Image,
+            "jpg" | "jpeg" | "png" | "gif" | "webp" | "cr2" | "tif" | "bmp" | "heif" | "avif"
+            | "jxr" | "psd" | "ico" | "ora" => FileTy::Image,
 
             "mp4" | "m4v" | "mkv" | "webm" | "mov" | "avi" | "wmv" | "mpg" | "flv" => FileTy::Video,
 
