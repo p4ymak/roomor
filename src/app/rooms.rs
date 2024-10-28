@@ -10,10 +10,9 @@ use crate::{
     emoji::EMOJI_LIST,
 };
 use eframe::{
-    egui::{self, KeyboardShortcut, Modifiers, RichText, Rounding, Stroke},
+    egui::{self, KeyboardShortcut, Modifiers, Rounding, Stroke},
     emath::Align2,
 };
-use egui_phosphor::regular;
 use flume::Sender;
 use human_bytes::human_bytes;
 use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
@@ -82,7 +81,7 @@ impl Rooms {
 
     pub fn is_able_to_send(&self) -> bool {
         match self.active_chat {
-            Recepients::One(_) => true, //self.peers.0.get(&ip).is_some_and(|p| !p.is_offline()),
+            Recepients::One(_) => true,
             _ => self.peers.0.values().any(|p| p.is_online()),
         }
     }
@@ -100,24 +99,17 @@ impl Rooms {
         if chat.mode == TextMode::Big {
             trimmed = trimmed.replace('\n', "");
         }
-        (!trimmed.is_empty()).then_some(
-            // && self.peers.values().any(|p| p.is_online()) {
-            {
-                chat.input.clear();
-                let content = match chat.mode {
-                    TextMode::Normal => Content::Text(trimmed),
-                    TextMode::Big => Content::Big(trimmed),
-                    TextMode::Icon => Content::Icon(trimmed),
-                };
-                TextMessage::out_message(content, chat.recepients)
-            },
-        )
+        (!trimmed.is_empty()).then_some({
+            chat.input.clear();
+            let content = match chat.mode {
+                TextMode::Normal => Content::Text(trimmed),
+                TextMode::Big => Content::Big(trimmed),
+                TextMode::Icon => Content::Icon(trimmed),
+            };
+            TextMessage::out_message(content, chat.recepients)
+        })
     }
     pub fn compose_file(&mut self, path: &Path) -> Option<TextMessage> {
-        // FIXME
-        // if !self.is_able_to_send() {
-        //     return None;
-        // }
         let link = Arc::new(FileLink::from_path(path)?);
         Some(TextMessage::out_message(
             Content::FileLink(link),
@@ -282,12 +274,8 @@ impl Rooms {
             .draw_input(ui, status);
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
-        // let side_ico = if self.side_panel_opened { "" } else { "" };
         let side_ico = egui_phosphor::regular::SIDEBAR;
         let side_ico = egui::RichText::new(side_ico);
-        // if self.has_unread() {
-        //     side_ico = side_ico.strong();
-        // }
         if ui.add(egui::Button::new(side_ico).frame(false)).clicked() {
             self.side_panel_opened = !self.side_panel_opened;
         }
@@ -391,10 +379,8 @@ impl ChatHistory {
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
         ui.visuals_mut().clip_rect_margin = 0.0;
-        if self.recepients == Recepients::All && status != Presence::Online {
-            ui.visuals_mut().override_text_color =
-                Some(ui.visuals().widgets.noninteractive.text_color());
-        }
+        let chat_interactive = !(self.recepients == Recepients::All && status != Presence::Online);
+
         self.mode = if self.input.starts_with(' ') {
             TextMode::Big
         } else if self.input.starts_with('/') {
@@ -426,6 +412,7 @@ impl ChatHistory {
                     .frame(false)
                     .desired_rows(if self.mode == TextMode::Normal { 4 } else { 1 })
                     .desired_width(ui.available_rect_before_wrap().width())
+                    .interactive(chat_interactive)
                     .cursor_at_end(true)
                     .return_key(Some(KeyboardShortcut::new(
                         Modifiers::SHIFT,
@@ -433,15 +420,9 @@ impl ChatHistory {
                     ))),
             );
             text_input.request_focus();
-            text_input.context_menu(|ui| {
-                if ui
-                    .button(RichText::new(regular::SMILEY).heading())
-                    .clicked()
-                {
-                    self.input = "/".to_string();
-                    ui.close_menu();
-                }
-            });
+            if text_input.secondary_clicked() && chat_interactive {
+                self.input = "/".to_string();
+            }
         }
     }
 

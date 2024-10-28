@@ -254,6 +254,7 @@ impl NetWorker {
                 let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                 self.incoming(r_ip);
                 outbox.remove(r_ip, txt_msg.id());
+                outbox.files.remove(&r_id);
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
             Command::Abort => {
@@ -291,6 +292,9 @@ impl NetWorker {
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
+                    if range.start() == &0 {
+                        outbox.remove(r_ip, r_id); // Remove Init Link
+                    }
                     let mut is_aborted = false;
                     if let Some(link) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();

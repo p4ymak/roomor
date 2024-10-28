@@ -1,6 +1,6 @@
 use egui_phosphor::regular;
 
-pub const EMOJI_LIST: [&str; 70] = [
+pub const EMOJI_LIST: [&str; 84] = [
     // smiles
     regular::SMILEY,
     regular::SMILEY_WINK,
@@ -10,6 +10,7 @@ pub const EMOJI_LIST: [&str; 70] = [
     regular::SMILEY_BLANK,
     regular::SMILEY_NERVOUS,
     regular::SMILEY_X_EYES,
+    regular::BABY,
     regular::SMILEY_MELTING,
     // reactions
     regular::THUMBS_UP,
@@ -19,6 +20,8 @@ pub const EMOJI_LIST: [&str; 70] = [
     regular::FIRE,
     regular::HEART,
     regular::CONFETTI,
+    regular::STAR,
+    regular::SHOOTING_STAR,
     // food
     regular::ACORN,
     regular::AVOCADO,
@@ -40,6 +43,7 @@ pub const EMOJI_LIST: [&str; 70] = [
     regular::PAPERCLIP,
     regular::PENCIL,
     regular::PEN_NIB,
+    regular::FEATHER,
     regular::GIFT,
     regular::CROWN,
     regular::MEDAL,
@@ -52,15 +56,22 @@ pub const EMOJI_LIST: [&str; 70] = [
     regular::BEACH_BALL,
     regular::HOCKEY,
     regular::GUITAR,
+    regular::PIANO_KEYS,
+    regular::PAINT_BRUSH,
+    regular::PALETTE,
     regular::HEADPHONES,
+    regular::GAME_CONTROLLER,
+    regular::UMBRELLA,
     regular::KEY,
     regular::BALLOON,
+    regular::TOOTH,
     // places
     regular::CAR_PROFILE,
     regular::ROCKET,
     regular::STEPS,
     regular::PARK,
     regular::MOUNTAINS,
+    regular::ISLAND,
     // animals
     regular::BIRD,
     regular::CAT,
@@ -78,4 +89,7 @@ pub const EMOJI_LIST: [&str; 70] = [
     regular::CLOVER,
     regular::LEAF,
     regular::GRAINS,
+    regular::TREE,
+    regular::TREE_EVERGREEN,
+    regular::TREE_PALM,
 ];
