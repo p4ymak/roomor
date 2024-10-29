@@ -8,15 +8,13 @@ Minimalistic offline chat over local network.
 ![Emoji Mode](screenshots/03.png)
 
 ## Navigation
-**Shift + Arrows Up/Down** - Navigate through Chats List
-
 **Shift + Tab** - Open/Close Chats List
 
 **Shift + Esc** - Return to Welcome Screen
 
 Message text starts with **Space** enables big text mode. 
 
-Message text starts with **/** enables emoji mode, **Esc** or right-click to exit.
+Message text starts with **/** or right-click on text input enables emoji mode, **Esc** or right-click to exit.
 
 Message text starts with **http** enables link mode.
 
