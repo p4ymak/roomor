@@ -31,7 +31,7 @@ impl Inbox {
             .filter(|m| {
                 SystemTime::now()
                     .duration_since(m.ts)
-                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.clamp(1, 10) as u32)
+                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
                 m.ask_for_missed(networker);
