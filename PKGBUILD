@@ -1,6 +1,6 @@
 # Maintainer: Roman Chumak <p4ymak@yandex.ru>
 pkgname=roomor
-pkgver=0.3.8
+pkgver=0.3.9
 pkgrel=1
 makedepends=('rust' 'cargo')
 arch=('i686' 'x86_64' 'armv6h' 'armv7h')
