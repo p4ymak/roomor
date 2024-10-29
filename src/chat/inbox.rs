@@ -8,14 +8,8 @@ use super::{
 use log::{debug, error, warn};
 use range_rover::range_rover;
 use std::{
-    collections::BTreeMap,
-    error::Error,
-    fs,
-    net::Ipv4Addr,
-    ops::RangeInclusive,
-    path::Path,
-    sync::Arc,
-    time::{Duration, SystemTime},
+    collections::BTreeMap, error::Error, fs, net::Ipv4Addr, ops::RangeInclusive, path::Path,
+    sync::Arc, time::SystemTime,
 };
 
 pub type Shard = Vec<u8>;
