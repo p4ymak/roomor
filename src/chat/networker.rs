@@ -244,6 +244,7 @@ impl NetWorker {
                         self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
+                        inbox.remove(&r_id);
                     }
                 }
 

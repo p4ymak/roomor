@@ -37,7 +37,7 @@ impl Inbox {
                 m.ask_for_missed(networker);
             });
     }
-    pub fn _retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
+    pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
         self.0.retain(|_, msg| {
             !(SystemTime::now()
                 .duration_since(msg.ts)
@@ -218,6 +218,7 @@ impl InMessage {
                     networker.peers.online_status(Recepients::One(self.sender)),
                     Presence::Online
                 ) {
+                    self.ts = SystemTime::now();
                     networker
                         .send(
                             UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
