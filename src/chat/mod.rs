@@ -359,7 +359,7 @@ impl UdpChat {
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
             // FIXME file request timer
-            self.inbox.retain(&mut self.networker, ctx, TIMEOUT_SECOND);
+            // self.inbox.retain(&mut self.networker, ctx, TIMEOUT_SECOND);
 
             match event {
                 ChatEvent::Front(front) => {
@@ -380,6 +380,7 @@ impl UdpChat {
                         r_msg,
                         &self.downloads_path,
                     );
+                    self.inbox.ask_for_shards(&mut self.networker, ctx, r_ip);
                 }
             }
         }

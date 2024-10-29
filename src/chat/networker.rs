@@ -285,7 +285,7 @@ impl NetWorker {
 
             Command::AskToRepeat => {
                 self.incoming(r_ip);
-                debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
+                debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 if r_id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))

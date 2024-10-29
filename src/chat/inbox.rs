@@ -1,7 +1,7 @@
 use super::{
     file::FileLink,
     message::{CheckSum, Command, Id, Part, ShardCount, UdpMessage, CRC},
-    networker::NetWorker,
+    networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     BackEvent, Content, Presence, Recepients, Seen, TextMessage,
 };
@@ -12,6 +12,7 @@ use std::{
     error::Error,
     fs,
     net::Ipv4Addr,
+    ops::RangeInclusive,
     path::Path,
     sync::Arc,
     time::{Duration, SystemTime},
@@ -23,14 +24,32 @@ pub type Shard = Vec<u8>;
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
-    pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
-        self.0.retain(|_, msg| {
-            !(SystemTime::now()
-                .duration_since(msg.ts)
-                .is_ok_and(|d| d > delta)
-                && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
-        });
+    pub fn ask_for_shards(
+        &mut self,
+        networker: &mut NetWorker,
+        ctx: &impl Repaintable,
+        ip: Ipv4Addr,
+    ) {
+        self.0
+            .values_mut()
+            .filter(|m| m.sender == ip)
+            .filter(|m| {
+                SystemTime::now()
+                    .duration_since(m.ts)
+                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt as u32)
+            })
+            .for_each(|m| {
+                m.combine(networker, ctx).ok();
+            });
     }
+    // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
+    //     self.0.retain(|_, msg| {
+    //         !(SystemTime::now()
+    //             .duration_since(msg.ts)
+    //             .is_ok_and(|d| d > delta)
+    //             && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
+    //     });
+    // }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
         self.0.insert(id, msg);
     }
@@ -111,22 +130,26 @@ impl InMessage {
         false
     }
 
-    pub fn combine(
-        &mut self,
-        networker: &mut NetWorker,
-        ctx: &impl Repaintable,
-    ) -> Result<(), Box<dyn Error + 'static>> {
-        debug!("Combining");
-        if self.link.is_ready() {
-            return Ok(());
-        }
-        let missed = range_rover(
+    pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
+        range_rover(
             self.shards
                 .iter()
                 .enumerate()
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
-        );
+        )
+    }
+
+    pub fn combine(
+        &mut self,
+        networker: &mut NetWorker,
+        ctx: &impl Repaintable,
+    ) -> Result<(), Box<dyn Error + 'static>> {
+        if self.link.is_ready() {
+            return Ok(());
+        }
+        debug!("Combining");
+        let missed = self.missed_shards();
         debug!("Shards count: {}", self.shards.len());
         if missed.is_empty() {
             let data = std::mem::take(&mut self.shards)

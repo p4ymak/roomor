@@ -183,48 +183,7 @@ impl Rooms {
             });
             ui.separator();
         }
-        let mut action = RoomAction::None;
-
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .auto_shrink([false; 2])
-            .show(ui, |ui| {
-                ui.interact(
-                    ui.clip_rect(),
-                    egui::Id::new("context menu"),
-                    egui::Sense::click(),
-                )
-                .context_menu(|ui| {
-                    if ui
-                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
-                        .clicked()
-                    {
-                        action = RoomAction::Clear;
-                        ui.close_menu();
-                    }
-
-                    if !self.is_active_public()
-                        && ui
-                            .button(format!(
-                                "{}  Send File",
-                                egui_phosphor::regular::FILE_ARROW_UP
-                            ))
-                            .clicked()
-                    {
-                        action = RoomAction::File;
-                        ui.close_menu();
-                    }
-                });
-
-                self.get_active().history.iter().for_each(|m| {
-                    let peer = m
-                        .is_incoming()
-                        .then_some(self.peers.0.get(&m.ip()))
-                        .flatten();
-                    m.draw(ui, peer, &self.peers);
-                });
-            });
-        action
+        self.get_active().draw_history(&self.peers, ui)
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
@@ -376,7 +335,46 @@ impl ChatHistory {
             font_id.size *= FONT_SCALE * emoji_scale;
         }
     }
+    pub fn draw_history(&self, peers: &PeersMap, ui: &mut egui::Ui) -> RoomAction {
+        let mut action = RoomAction::None;
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.interact(
+                    ui.clip_rect(),
+                    egui::Id::new("context menu"),
+                    egui::Sense::click(),
+                )
+                .context_menu(|ui| {
+                    if ui
+                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
+                        .clicked()
+                    {
+                        action = RoomAction::Clear;
+                        ui.close_menu();
+                    }
 
+                    if !self.recepients.is_public()
+                        && ui
+                            .button(format!(
+                                "{}  Send File",
+                                egui_phosphor::regular::FILE_ARROW_UP
+                            ))
+                            .clicked()
+                    {
+                        action = RoomAction::File;
+                        ui.close_menu();
+                    }
+                });
+
+                self.history.iter().for_each(|m| {
+                    let peer = m.is_incoming().then_some(peers.0.get(&m.ip())).flatten();
+                    m.draw(ui, peer, peers);
+                });
+            });
+        action
+    }
     pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
         ui.visuals_mut().clip_rect_margin = 0.0;
         let chat_interactive = !(self.recepients == Recepients::All && status != Presence::Online);
