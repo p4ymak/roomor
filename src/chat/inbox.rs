@@ -128,7 +128,7 @@ impl InMessage {
                 .map(|s| s.0 as ShardCount),
         );
         debug!("Shards count: {}", self.shards.len());
-        if self.shards.iter().all(|s| s.is_some()) {
+        if missed.is_empty() {
             let data = std::mem::take(&mut self.shards)
                 .into_iter()
                 .flatten()
