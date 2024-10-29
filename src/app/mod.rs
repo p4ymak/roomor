@@ -410,6 +410,7 @@ impl Roomor {
                 font_size = ui.text_style_height(&egui::TextStyle::Body);
                 egui::ScrollArea::vertical()
                     .min_scrolled_height(max_height)
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
                         self.rooms.draw_input(ui);
                     });

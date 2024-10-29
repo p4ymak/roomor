@@ -12,7 +12,7 @@ keywords = ["chat", "lan", "offline"]
 resolver = "2"
 
 [dependencies]
-eframe = "0.29"
+eframe = "0.29.1"
 rfd = "0.15"
 human_bytes = "0.4.3"
 opener = "0.7.2"
@@ -29,7 +29,7 @@ crc = "3.2.1"
 range_rover = "0.1.2"
 
 rodio = { version = "0.19.0", default-features = false }
-notify-rust = "4"
+notify-rust = "4.11"
 
 image = "0.25.2"
 

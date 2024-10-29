@@ -427,25 +427,21 @@ impl ChatHistory {
     }
 
     fn draw_input_emoji(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical()
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for emoji in EMOJI_LIST {
-                        let icon = ui.add(egui::Button::new(emoji).frame(false));
-                        if icon.clicked() {
-                            self.input = emoji.to_string();
-                            emulate_enter(ui);
-                        }
-                        if icon.secondary_clicked() {
-                            self.input.clear();
-                        }
-                    }
-                    if ui.response().secondary_clicked() {
-                        self.input.clear();
-                    }
-                });
-            });
+        ui.horizontal_wrapped(|ui| {
+            for emoji in EMOJI_LIST {
+                let icon = ui.add(egui::Button::new(emoji).frame(false));
+                if icon.clicked() {
+                    self.input = emoji.to_string();
+                    emulate_enter(ui);
+                }
+                if icon.secondary_clicked() {
+                    self.input.clear();
+                }
+            }
+            if ui.response().secondary_clicked() {
+                self.input.clear();
+            }
+        });
     }
 
     fn draw_list_entry(
