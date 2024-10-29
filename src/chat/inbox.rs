@@ -1,7 +1,7 @@
 use super::{
     file::FileLink,
     message::{CheckSum, Command, Id, Part, ShardCount, UdpMessage, CRC},
-    networker::{NetWorker, TIMEOUT_SECOND},
+    networker::NetWorker,
     notifier::Repaintable,
     BackEvent, Content, Presence, Recepients, Seen, TextMessage,
 };
@@ -19,37 +19,18 @@ use std::{
 };
 
 pub type Shard = Vec<u8>;
-// pub const MAX_ATTEMPTS: u8 = 10;
 
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
-    pub fn ask_for_shards(
-        &mut self,
-        networker: &mut NetWorker,
-        ctx: &impl Repaintable,
-        ip: Ipv4Addr,
-    ) {
-        self.0
-            .values_mut()
-            .filter(|m| m.sender == ip)
-            .filter(|m| {
-                SystemTime::now()
-                    .duration_since(m.ts)
-                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt as u32)
-            })
-            .for_each(|m| {
-                m.combine(networker, ctx).ok();
-            });
+    pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
+        self.0.retain(|_, msg| {
+            !(SystemTime::now()
+                .duration_since(msg.ts)
+                .is_ok_and(|d| d > delta * msg.attempt.max(1) as u32)
+                && (msg.combine(networker, ctx).is_ok()))
+        });
     }
-    // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
-    //     self.0.retain(|_, msg| {
-    //         !(SystemTime::now()
-    //             .duration_since(msg.ts)
-    //             .is_ok_and(|d| d > delta)
-    //             && (msg.combine(networker, ctx).is_ok())) // || msg.attempt < MAX_ATTEMPTS))
-    //     });
-    // }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
         self.0.insert(id, msg);
     }
@@ -212,12 +193,17 @@ impl InMessage {
                         break;
                     }
                     debug!("Asked to repeat shards #{range:?}");
-                    networker
-                        .send(
-                            UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                            Recepients::One(self.sender),
-                        )
-                        .ok();
+                    if matches!(
+                        networker.peers.online_status(Recepients::One(self.sender)),
+                        Presence::Online
+                    ) {
+                        networker
+                            .send(
+                                UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                                Recepients::One(self.sender),
+                            )
+                            .ok();
+                    }
                 }
             }
 
