@@ -117,6 +117,9 @@ impl InMessage {
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
         debug!("Combining");
+        if self.link.is_ready() {
+            return Ok(());
+        }
         let missed = range_rover(
             self.shards
                 .iter()
@@ -124,7 +127,7 @@ impl InMessage {
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
         );
-
+        debug!("Shards count: {}", self.shards.len());
         if self.shards.iter().all(|s| s.is_some()) {
             let data = std::mem::take(&mut self.shards)
                 .into_iter()
@@ -153,8 +156,9 @@ impl InMessage {
                 }
                 Command::File => {
                     let path = &self.link.path;
+                    debug!("Data lenght: {}", data.len());
                     debug!("Writing new file to {path:?}");
-                    fs::write(path, data)?;
+                    fs::write(path, data).inspect_err(|e| error!("{e}"))?;
 
                     self.link.set_ready();
                     ctx.request_repaint();
