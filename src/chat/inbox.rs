@@ -1,7 +1,7 @@
 use super::{
     file::FileLink,
     message::{CheckSum, Command, Id, Part, ShardCount, UdpMessage, CRC},
-    networker::NetWorker,
+    networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     BackEvent, Content, Presence, Recepients, Seen, TextMessage,
 };
@@ -19,11 +19,25 @@ use std::{
 };
 
 pub type Shard = Vec<u8>;
+// pub const MAX_ATTEMPTS: u8 = 10;
 
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
-    pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
+    pub fn wake_for_missed(&mut self, networker: &mut NetWorker, ip: Ipv4Addr) {
+        self.0
+            .values_mut()
+            .filter(|m| m.sender == ip)
+            .filter(|m| {
+                SystemTime::now()
+                    .duration_since(m.ts)
+                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.clamp(1, 10) as u32)
+            })
+            .for_each(|m| {
+                m.ask_for_missed(networker);
+            });
+    }
+    pub fn _retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
         self.0.retain(|_, msg| {
             !(SystemTime::now()
                 .duration_since(msg.ts)
@@ -172,42 +186,46 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            let terminal = missed
-                .last()
-                .map(|l| *l.end())
-                .unwrap_or(self.link.count.saturating_sub(1));
-            if terminal == self.terminal {
-                self.attempt = self.attempt.saturating_add(1);
-                warn!("New attempt: {}", self.attempt);
-            } else {
-                self.terminal = terminal;
-                warn!("New terminal: {}", self.terminal);
-            }
-            // TODO save outbox
-            if !matches!(
-                networker.peers.online_status(Recepients::One(self.sender)),
-                Presence::Offline
-            ) {
-                for range in missed {
-                    if self.link.is_aborted() {
-                        break;
-                    }
-                    debug!("Asked to repeat shards #{range:?}");
-                    if matches!(
-                        networker.peers.online_status(Recepients::One(self.sender)),
-                        Presence::Online
-                    ) {
-                        networker
-                            .send(
-                                UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                                Recepients::One(self.sender),
-                            )
-                            .ok();
-                    }
-                }
-            }
+            self.ask_for_missed(networker);
 
             Err("Missing Shards".into())
+        }
+    }
+    pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
+        let missed = self.missed_shards();
+        let terminal = missed
+            .last()
+            .map(|l| *l.end())
+            .unwrap_or(self.link.count.saturating_sub(1));
+        if terminal == self.terminal {
+            self.attempt = self.attempt.saturating_add(1);
+            warn!("New attempt: {}", self.attempt);
+        } else {
+            self.terminal = terminal;
+            warn!("New terminal: {}", self.terminal);
+        }
+        // TODO save outbox
+        if !matches!(
+            networker.peers.online_status(Recepients::One(self.sender)),
+            Presence::Offline
+        ) {
+            for range in missed {
+                if self.link.is_aborted() {
+                    break;
+                }
+                debug!("Asked to repeat shards #{range:?}");
+                if matches!(
+                    networker.peers.online_status(Recepients::One(self.sender)),
+                    Presence::Online
+                ) {
+                    networker
+                        .send(
+                            UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                            Recepients::One(self.sender),
+                        )
+                        .ok();
+                }
+            }
         }
     }
 }
