@@ -139,8 +139,8 @@ impl eframe::App for Roomor {
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
-            self.keep_alive();
             self.read_events();
+            self.keep_alive();
             self.draw(ctx);
         }
         self.handle_keys(ctx);

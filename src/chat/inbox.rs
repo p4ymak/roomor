@@ -37,14 +37,14 @@ impl Inbox {
                 m.ask_for_missed(networker);
             });
     }
-    pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
-        self.0.retain(|_, msg| {
-            !(SystemTime::now()
-                .duration_since(msg.ts)
-                .is_ok_and(|d| d > delta * msg.attempt.max(1) as u32)
-                && (msg.combine(networker, ctx).is_ok()))
-        });
-    }
+    // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
+    //     self.0.retain(|_, msg| {
+    //         !(SystemTime::now()
+    //             .duration_since(msg.ts)
+    //             .is_ok_and(|d| d > delta * msg.attempt.max(1) as u32)
+    //             && (msg.combine(networker, ctx).is_ok()))
+    //     });
+    // }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
         self.0.insert(id, msg);
     }

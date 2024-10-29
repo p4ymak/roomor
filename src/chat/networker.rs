@@ -93,35 +93,32 @@ impl NetWorker {
     }
 
     pub fn handle_back_event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
-        match event {
-            BackEvent::PeerJoined((ip, ref user_name)) => {
-                let new_comer = self.peers.peer_joined(ip, user_name.clone());
-                self.front_tx.send(event).ok();
+        match &event {
+            BackEvent::PeerJoined((ref ip, ref user_name)) => {
+                let new_comer = self.peers.peer_joined(*ip, user_name.clone());
                 if new_comer {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(ip))
+                    self.send(UdpMessage::greating(&self.name), Recepients::One(*ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 }
                 ctx.request_repaint();
             }
             BackEvent::PeerLeft(ip) => {
-                self.peers.remove(&ip);
-                self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
+                self.peers.remove(ip);
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
                 if matches!(msg.content, Content::Seen) {
-                    self.front_tx.send(BackEvent::Message(msg)).ok();
                     ctx.request_repaint();
                 } else {
                     let text = msg.get_text();
                     let name = self.peers.get_display_name(msg.ip());
                     let notification_text = format!("{name}: {text}");
-                    self.front_tx.send(BackEvent::Message(msg)).ok();
                     ctx.notify(&notification_text);
                 }
             }
-        }
+        };
+        self.front_tx.send(event).ok();
     }
 
     pub fn handle_front_event(
