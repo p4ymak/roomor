@@ -1,6 +1,6 @@
 // FIXME
 #![allow(dead_code)]
-use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
+use super::message::{Id, ShardCount, DATA_LIMIT_BYTES};
 use std::{
     fs::File,
     path::{Path, PathBuf},
@@ -49,10 +49,10 @@ impl FileLink {
         }
     }
 
-    pub fn from_path(path: &Path) -> Option<Self> {
+    pub fn from_path(id: Id, path: &Path) -> Option<Self> {
         let size = File::open(path).ok()?.metadata().ok()?.len();
         Some(FileLink {
-            id: new_id(),
+            id,
             time_start: SystemTime::now(),
             seconds_elapsed: AtomicU64::new(1),
             bandwidth: AtomicU64::new(0),

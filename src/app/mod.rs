@@ -5,7 +5,7 @@ use self::rooms::Rooms;
 use crate::{
     chat::{
         limit_text,
-        message::MAX_NAME_SIZE,
+        message::{new_id, MAX_NAME_SIZE},
         networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
         notifier::{Notifier, Repaintable},
         BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
@@ -23,7 +23,7 @@ use rodio::{OutputStream, OutputStreamHandle};
 use rooms::RoomAction;
 use std::{
     net::Ipv4Addr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
@@ -220,11 +220,15 @@ impl Roomor {
         }
     }
 
-    fn dispatch_file(&mut self, path: &Path) {
-        if let Some(link) = self.rooms.compose_file(path) {
-            self.back_tx
-                .send(ChatEvent::Front(FrontEvent::Message(link)))
-                .ok();
+    fn dispatch_files(&mut self, paths: &[PathBuf]) {
+        let mut id = new_id();
+        for path in paths {
+            if let Some(link) = self.rooms.compose_file(id, path) {
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Message(link)))
+                    .ok();
+            }
+            id += 1;
         }
     }
 
@@ -391,12 +395,13 @@ impl Roomor {
                     debug!("HOVERED");
                 }
                 if !i.raw.dropped_files.is_empty() {
-                    debug!("DROPPED");
-                }
-
-                if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
-                    debug!("Dropped file '{path:?}'");
-                    self.dispatch_file(&path);
+                    let paths = i
+                        .raw
+                        .dropped_files
+                        .iter()
+                        .filter_map(|f| f.path.clone())
+                        .collect::<Vec<PathBuf>>();
+                    self.dispatch_files(&paths);
                 }
             });
         }
@@ -439,9 +444,9 @@ impl Roomor {
                 self.rooms.get_mut_active().clear_history();
             }
             RoomAction::File => {
-                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     if !self.rooms.is_active_public() {
-                        self.dispatch_file(&path);
+                        self.dispatch_files(&paths);
                     }
                 }
             }
@@ -558,8 +563,8 @@ impl Roomor {
                     debug!("open file");
 
                     if self.chat_init.is_none() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.dispatch_file(&path);
+                        if let Some(path) = rfd::FileDialog::new().pick_files() {
+                            self.dispatch_files(&path);
                         }
                     }
                 }

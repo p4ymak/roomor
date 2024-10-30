@@ -205,13 +205,16 @@ impl TextMessage {
             Recepients::One(ip) => (false, ip),
             _ => (true, Ipv4Addr::BROADCAST), //FIXME ??
         };
-
+        let id = match content {
+            Content::FileLink(ref link) => link.id(),
+            _ => new_id(),
+        };
         TextMessage {
             timestamp: SystemTime::now(),
             incoming: false,
             public,
             ip,
-            id: new_id(),
+            id,
             content,
             seen: None,
         }

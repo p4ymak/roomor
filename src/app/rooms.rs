@@ -3,7 +3,7 @@ use crate::{
     chat::{
         file::FileLink,
         limit_text,
-        message::MAX_EMOJI_SIZE,
+        message::{Id, MAX_EMOJI_SIZE},
         peers::{Peer, PeersMap, Presence},
         ChatEvent, Content, FrontEvent, Recepients, TextMessage,
     },
@@ -109,8 +109,8 @@ impl Rooms {
             TextMessage::out_message(content, chat.recepients)
         })
     }
-    pub fn compose_file(&mut self, path: &Path) -> Option<TextMessage> {
-        let link = Arc::new(FileLink::from_path(path)?);
+    pub fn compose_file(&mut self, id: Id, path: &Path) -> Option<TextMessage> {
+        let link = Arc::new(FileLink::from_path(id, path)?);
         Some(TextMessage::out_message(
             Content::FileLink(link),
             self.active_chat,
