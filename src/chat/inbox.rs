@@ -132,7 +132,10 @@ impl InMessage {
             vec![],
             |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
                 if let Some(last) = r.last_mut() {
-                    if m.start().saturating_sub(*last.end()) <= m.clone().count() as ShardCount {
+                    let empty_len = m.start().saturating_sub(*last.end());
+                    if empty_len <= m.clone().count() as ShardCount
+                        || empty_len <= last.clone().count() as ShardCount
+                    {
                         *last = *last.start()..=*m.end();
                     } else {
                         r.push(m);
@@ -143,6 +146,7 @@ impl InMessage {
                 r
             },
         );
+
         missed
     }
 
