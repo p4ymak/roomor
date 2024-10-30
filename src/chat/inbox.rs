@@ -73,7 +73,7 @@ impl InMessage {
             } else {
                 String::new()
             };
-            let link = FileLink::new(&file_name, downloads_path, init.count());
+            let link = FileLink::new(msg.id, &file_name, downloads_path, init.count());
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,

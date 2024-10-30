@@ -31,11 +31,11 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(name: &str, dir: &Path, count: ShardCount) -> Self {
+    pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
         path.push(name);
         FileLink {
-            id: new_id(),
+            id,
             time_start: SystemTime::now(),
             seconds_elapsed: AtomicU64::new(1),
             bandwidth: AtomicU64::new(0),
