@@ -33,6 +33,7 @@ impl Inbox {
                         .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
+                debug!("Wake for missed");
                 m.combine(networker, ctx).ok();
             });
     }
@@ -50,9 +51,9 @@ impl Inbox {
     pub fn get_mut(&mut self, id: &Id) -> Option<&mut InMessage> {
         self.0.get_mut(id)
     }
-    pub fn remove(&mut self, id: &Id) {
-        self.0.remove(id);
-    }
+    // pub fn remove(&mut self, id: &Id) {
+    //     self.0.remove(id);
+    // }
 }
 
 pub struct InMessage {
@@ -111,13 +112,13 @@ impl InMessage {
             return;
         }
         if let Some(block) = self.shards.get_mut(position as usize) {
+            self.ts = SystemTime::now();
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
                 *block = Some(msg.data);
                 self.link
                     .completed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 ctx.request_repaint();
-                self.ts = SystemTime::now();
             }
         }
         if position == self.terminal {
