@@ -204,22 +204,27 @@ impl NetWorker {
                 message::Part::Init(_) => {
                     debug!("incoming PartInit");
                     // TODO move wake here?
-                    if !inbox.contains(&r_id) {
-                        if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
-                            let txt_msg = TextMessage::from_inmsg(&inmsg);
-                            self.send(
-                                UdpMessage::ask_to_repeat(
-                                    inmsg.id,
-                                    Part::AskRange(0..=inmsg.terminal),
-                                ),
-                                Recepients::One(r_ip),
-                            )
-                            .ok();
-                            if inmsg.command == Command::File {
-                                self.handle_back_event(BackEvent::Message(txt_msg), ctx);
-                            }
-                            inbox.insert(r_id, inmsg);
+                    if let Some(msg) = inbox.get_mut(&r_id) {
+                        if msg.link.is_ready() {
+                            self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
+                        } else if msg.link.is_aborted() {
+                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                                .inspect_err(|e| error!("{e}"))
+                                .ok();
                         }
+                    } else if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
+                        let txt_msg = TextMessage::from_inmsg(&inmsg);
+                        self.send(
+                            UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
+                            Recepients::One(r_ip),
+                        )
+                        .ok();
+                        if inmsg.command == Command::File {
+                            self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                        }
+                        inbox.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {
