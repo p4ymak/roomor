@@ -28,9 +28,10 @@ impl Inbox {
             .values_mut()
             .filter(|m| {
                 m.sender == ip
+                    && !(m.link.is_aborted() || m.link.is_ready())
                     && SystemTime::now()
                         .duration_since(m.ts)
-                        .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.max(1) as u32)
+                        .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
                 debug!("Wake for missed");
