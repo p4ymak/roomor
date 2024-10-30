@@ -106,7 +106,6 @@ impl InMessage {
         if self.link.is_aborted() {
             return false;
         }
-        self.ts = SystemTime::now();
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
                 *block = Some(msg.data);
@@ -114,6 +113,7 @@ impl InMessage {
                     .completed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 ctx.request_repaint();
+                self.ts = SystemTime::now();
             }
         }
         if position == self.terminal {
@@ -124,13 +124,29 @@ impl InMessage {
     }
 
     pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
-        range_rover(
+        let missed = range_rover(
             self.shards
                 .iter()
                 .enumerate()
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
-        )
+        );
+        let ranges = missed.into_iter().fold(
+            vec![],
+            |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
+                if let Some(last) = r.last_mut() {
+                    if m.start().saturating_sub(*last.end()) <= m.clone().count() as ShardCount {
+                        *last = *last.start()..=*m.end();
+                    } else {
+                        r.push(m);
+                    }
+                } else {
+                    r.push(m);
+                }
+                r
+            },
+        );
+        ranges
     }
 
     pub fn combine(
