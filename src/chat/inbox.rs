@@ -133,24 +133,24 @@ impl InMessage {
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
         );
-        let missed = missed.into_iter().fold(
-            vec![],
-            |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-                if let Some(last) = r.last_mut() {
-                    let empty_len = m.start().saturating_sub(*last.end());
-                    if empty_len <= m.clone().count() as ShardCount
-                        || empty_len <= last.clone().count() as ShardCount
-                    {
-                        *last = *last.start()..=*m.end();
-                    } else {
-                        r.push(m);
-                    }
-                } else {
-                    r.push(m);
-                }
-                r
-            },
-        );
+        // let missed = missed.into_iter().fold(
+        //     vec![],
+        //     |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
+        //         if let Some(last) = r.last_mut() {
+        //             let empty_len = m.start().saturating_sub(*last.end());
+        //             if empty_len <= m.clone().count() as ShardCount
+        //                 || empty_len <= last.clone().count() as ShardCount
+        //             {
+        //                 *last = *last.start()..=*m.end();
+        //             } else {
+        //                 r.push(m);
+        //             }
+        //         } else {
+        //             r.push(m);
+        //         }
+        //         r
+        //     },
+        // );
 
         missed
     }
@@ -217,11 +217,13 @@ impl InMessage {
             Err("Missing Shards".into())
         }
     }
+
     pub fn is_old_enough(&self) -> bool {
         SystemTime::now()
             .duration_since(self.ts)
             .is_ok_and(|d| d > TIMEOUT_SECOND)
     }
+
     pub fn send_seen(&self, networker: &mut NetWorker) {
         networker
             .send(
@@ -231,12 +233,14 @@ impl InMessage {
             .inspect_err(|e| error!("{e}"))
             .ok();
     }
+
     pub fn send_abort(&self, networker: &mut NetWorker) {
         networker
             .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
             .inspect_err(|e| error!("{e}"))
             .ok();
     }
+
     pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
         let missed = self.missed_shards();
 
@@ -251,31 +255,32 @@ impl InMessage {
             self.terminal = terminal;
             warn!("New terminal: {}", self.terminal);
         }
-        // TODO save outbox
-        if !matches!(
-            networker.peers.online_status(Recepients::One(self.sender)),
-            Presence::Offline
-        ) {
-            for range in missed {
-                if self.link.is_aborted() || self.link.is_ready() {
-                    break;
-                }
-                debug!("Asked to repeat shards #{range:?}");
 
-                self.ts = SystemTime::now();
-                networker
-                    .send(
-                        UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                        Recepients::One(self.sender),
-                    )
-                    .ok();
+        for range in missed {
+            if self.link.is_aborted()
+                || self.link.is_ready()
+                || matches!(
+                    networker.peers.online_status(Recepients::One(self.sender)),
+                    Presence::Offline
+                )
+            {
+                break;
             }
-            // networker
-            //     .send(
-            //         UdpMessage::ask_to_repeat(self.id, Part::AskRange(terminal..=terminal)),
-            //         Recepients::One(self.sender),
-            //     )
-            //     .ok();
+            debug!("Asked to repeat shards #{range:?}");
+
+            self.ts = SystemTime::now();
+            networker
+                .send(
+                    UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                    Recepients::One(self.sender),
+                )
+                .ok();
         }
+        // networker
+        //     .send(
+        //         UdpMessage::ask_to_repeat(self.id, Part::AskRange(terminal..=terminal)),
+        //         Recepients::One(self.sender),
+        //     )
+        //     .ok();
     }
 }
