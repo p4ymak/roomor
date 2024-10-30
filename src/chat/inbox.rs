@@ -21,11 +21,11 @@ impl Inbox {
     pub fn wake_for_missed(&mut self, networker: &mut NetWorker, ip: Ipv4Addr) {
         self.0
             .values_mut()
-            .filter(|m| m.sender == ip)
             .filter(|m| {
-                SystemTime::now()
-                    .duration_since(m.ts)
-                    .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.max(1) as u32)
+                m.sender == ip
+                    && SystemTime::now()
+                        .duration_since(m.ts)
+                        .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
                 m.ask_for_missed(networker);
@@ -204,22 +204,18 @@ impl InMessage {
             Presence::Offline
         ) {
             for range in missed {
-                if self.link.is_aborted() {
+                if self.link.is_aborted() || self.link.is_ready() {
                     break;
                 }
                 debug!("Asked to repeat shards #{range:?}");
-                if matches!(
-                    networker.peers.online_status(Recepients::One(self.sender)),
-                    Presence::Online
-                ) {
-                    self.ts = SystemTime::now();
-                    networker
-                        .send(
-                            UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                            Recepients::One(self.sender),
-                        )
-                        .ok();
-                }
+
+                self.ts = SystemTime::now();
+                networker
+                    .send(
+                        UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
+                        Recepients::One(self.sender),
+                    )
+                    .ok();
             }
         }
     }
