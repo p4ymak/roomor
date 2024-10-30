@@ -96,12 +96,14 @@ impl InMessage {
         msg: UdpMessage,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
-    ) -> bool {
+    ) {
         if self.link.is_ready() {
-            return true;
+            self.send_seen(networker);
+            return;
         }
         if self.link.is_aborted() {
-            return false;
+            self.send_abort(networker);
+            return;
         }
         if let Some(block) = self.shards.get_mut(position as usize) {
             if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
@@ -115,9 +117,8 @@ impl InMessage {
         }
         if position == self.terminal {
             warn!("Received terminal {position}");
-            return self.combine(networker, ctx).is_ok();
+            self.combine(networker, ctx).ok();
         }
-        false
     }
 
     pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
@@ -156,7 +157,7 @@ impl InMessage {
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
         if self.link.is_ready() {
-            return Ok(());
+            self.send_seen(networker);
         }
         debug!("Combining");
         let missed = self.missed_shards();
@@ -192,6 +193,7 @@ impl InMessage {
                     debug!("Data lenght: {}", data.len());
                     debug!("Writing new file to {path:?}");
                     fs::write(path, data).inspect_err(|e| error!("{e}"))?;
+                    self.send_seen(networker);
 
                     self.link.set_ready();
                     ctx.request_repaint();
@@ -205,6 +207,21 @@ impl InMessage {
 
             Err("Missing Shards".into())
         }
+    }
+    pub fn send_seen(&self, networker: &mut NetWorker) {
+        networker
+            .send(
+                UdpMessage::seen_id(self.id, false),
+                Recepients::One(self.sender),
+            )
+            .inspect_err(|e| error!("{e}"))
+            .ok();
+    }
+    pub fn send_abort(&self, networker: &mut NetWorker) {
+        networker
+            .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
+            .inspect_err(|e| error!("{e}"))
+            .ok();
     }
     pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
         let missed = self.missed_shards();

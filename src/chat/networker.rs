@@ -1,6 +1,6 @@
 use crate::chat::{
     inbox::InMessage,
-    message::{self, send_shards, Command, Part, ShardCount},
+    message::{self, send_shards, Command, ShardCount},
     TextMessage,
 };
 
@@ -205,40 +205,26 @@ impl NetWorker {
                     debug!("incoming PartInit");
                     // TODO move wake here?
                     if let Some(msg) = inbox.get_mut(&r_id) {
-                        if msg.link.is_aborted() {
-                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                        } else if msg.link.is_ready() || msg.combine(self, ctx).is_ok() {
-                            self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                        }
-                    } else if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
+                        msg.combine(self, ctx).ok();
+                    } else if let Some(mut inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
-                        self.send(
-                            UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
-                            Recepients::One(r_ip),
-                        )
-                        .ok();
+                        // self.send(
+                        //     UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
+                        //     Recepients::One(r_ip),
+                        // )
+                        // .ok();
                         if inmsg.command == Command::File {
                             self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                         }
+                        inmsg.combine(self, ctx).ok();
                         inbox.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {
-                    let mut is_completed = false;
                     let mut is_aborted = false;
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
+                        inmsg.insert(count, r_msg, self, ctx);
                         is_aborted = inmsg.link.is_aborted();
-                        if is_aborted {
-                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                        } else {
-                            is_completed = inmsg.insert(count, r_msg, self, ctx);
-                        }
                     } else {
                         self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
@@ -246,11 +232,6 @@ impl NetWorker {
                     }
                     if is_aborted {
                         inbox.remove(&r_id);
-                    }
-                    if is_completed {
-                        self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
                     }
                 }
 
