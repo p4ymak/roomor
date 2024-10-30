@@ -27,11 +27,8 @@ impl Inbox {
         self.0
             .values_mut()
             .filter(|m| {
-                m.sender == ip
-                    && !(m.link.is_aborted() || m.link.is_ready())
-                    && SystemTime::now()
-                        .duration_since(m.ts)
-                        .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
+                m.sender == ip && !(m.link.is_aborted() || m.link.is_ready()) && m.is_old_enough()
+                // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
                 debug!("Wake for missed");
@@ -219,6 +216,11 @@ impl InMessage {
 
             Err("Missing Shards".into())
         }
+    }
+    pub fn is_old_enough(&self) -> bool {
+        SystemTime::now()
+            .duration_since(self.ts)
+            .is_ok_and(|d| d > TIMEOUT_SECOND)
     }
     pub fn send_seen(&self, networker: &mut NetWorker) {
         networker

@@ -205,7 +205,9 @@ impl NetWorker {
                     debug!("incoming PartInit");
                     // TODO move wake here?
                     if let Some(msg) = inbox.get_mut(&r_id) {
-                        msg.combine(self, ctx).ok();
+                        if msg.is_old_enough() {
+                            msg.combine(self, ctx).ok();
+                        }
                     } else if let Some(mut inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
                         // self.send(
