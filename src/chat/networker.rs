@@ -203,6 +203,7 @@ impl NetWorker {
                 }
                 message::Part::Init(_) => {
                     debug!("incoming PartInit");
+                    // TODO move wake here?
                     if !inbox.contains(&r_id) {
                         if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                             let txt_msg = TextMessage::from_inmsg(&inmsg);
