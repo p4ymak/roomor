@@ -166,7 +166,9 @@ impl InMessage {
             self.send_seen(networker);
             return Ok(());
         }
-
+        if self.link.is_aborted() {
+            return Ok(());
+        }
         debug!("Combining");
         let missed = self.missed_shards();
         debug!("Shards count: {}", self.shards.len());
