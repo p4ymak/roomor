@@ -347,23 +347,22 @@ impl ChatHistory {
                     egui::Sense::click(),
                 )
                 .context_menu(|ui| {
-                    if ui
-                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
-                        .clicked()
-                    {
-                        action = RoomAction::Clear;
-                        ui.close_menu();
-                    }
-
                     if !self.recepients.is_public()
                         && ui
                             .button(format!(
-                                "{}  Send File",
+                                "{}  Send Files",
                                 egui_phosphor::regular::FILE_ARROW_UP
                             ))
                             .clicked()
                     {
                         action = RoomAction::File;
+                        ui.close_menu();
+                    }
+                    if ui
+                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
+                        .clicked()
+                    {
+                        action = RoomAction::Clear;
                         ui.close_menu();
                     }
                 });
