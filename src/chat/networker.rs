@@ -245,7 +245,7 @@ impl NetWorker {
                 if let Some(msg) = inbox.get_mut(&r_id) {
                     msg.link.abort();
                 }
-                inbox.remove(&r_id);
+                // inbox.remove(&r_id);
                 outbox.remove(r_ip, r_id);
                 if let Some(link) = outbox.files.get(&r_id) {
                     link.abort();
