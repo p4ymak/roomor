@@ -128,21 +128,21 @@ impl InMessage {
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
         );
-        // let missed = missed.into_iter().fold(
-        //     vec![],
-        //     |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-        //         if let Some(last) = r.last_mut() {
-        //             if m.start().saturating_sub(*last.end()) <= m.clone().count() as ShardCount {
-        //                 *last = *last.start()..=*m.end();
-        //             } else {
-        //                 r.push(m);
-        //             }
-        //         } else {
-        //             r.push(m);
-        //         }
-        //         r
-        //     },
-        // );
+        let missed = missed.into_iter().fold(
+            vec![],
+            |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
+                if let Some(last) = r.last_mut() {
+                    if m.start().saturating_sub(*last.end()) <= m.clone().count() as ShardCount {
+                        *last = *last.start()..=*m.end();
+                    } else {
+                        r.push(m);
+                    }
+                } else {
+                    r.push(m);
+                }
+                r
+            },
+        );
         missed
     }
 
