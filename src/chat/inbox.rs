@@ -23,6 +23,7 @@ impl Inbox {
             .values_mut()
             .filter(|m| {
                 m.sender == ip
+                    && !m.link.is_ready()
                     && SystemTime::now()
                         .duration_since(m.ts)
                         .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
@@ -187,6 +188,9 @@ impl InMessage {
     }
     pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
         let missed = self.missed_shards();
+        if missed.is_empty() {
+            return;
+        }
         let terminal = missed
             .last()
             .map(|l| *l.end())
