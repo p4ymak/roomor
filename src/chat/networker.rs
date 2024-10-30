@@ -221,17 +221,12 @@ impl NetWorker {
                     }
                 }
                 message::Part::Shard(count) => {
-                    let mut is_aborted = false;
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
                         inmsg.insert(count, r_msg, self, ctx);
-                        is_aborted = inmsg.link.is_aborted();
                     } else {
                         self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
-                    }
-                    if is_aborted {
-                        inbox.remove(&r_id);
                     }
                 }
 

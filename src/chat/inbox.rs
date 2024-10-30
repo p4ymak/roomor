@@ -108,6 +108,7 @@ impl InMessage {
         }
         if self.link.is_aborted() {
             self.send_abort(networker);
+            self.shards.clear();
             return;
         }
         if let Some(block) = self.shards.get_mut(position as usize) {
@@ -163,7 +164,9 @@ impl InMessage {
     ) -> Result<(), Box<dyn Error + 'static>> {
         if self.link.is_ready() {
             self.send_seen(networker);
+            return Ok(());
         }
+
         debug!("Combining");
         let missed = self.missed_shards();
         debug!("Shards count: {}", self.shards.len());
