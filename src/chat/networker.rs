@@ -203,18 +203,22 @@ impl NetWorker {
                 }
                 message::Part::Init(_) => {
                     debug!("incoming PartInit");
-
-                    if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
-                        let txt_msg = TextMessage::from_inmsg(&inmsg);
-                        self.send(
-                            UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
-                            Recepients::One(r_ip),
-                        )
-                        .ok();
-                        if inmsg.command == Command::File {
-                            self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                    if !inbox.contains(&r_id) {
+                        if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
+                            let txt_msg = TextMessage::from_inmsg(&inmsg);
+                            self.send(
+                                UdpMessage::ask_to_repeat(
+                                    inmsg.id,
+                                    Part::AskRange(0..=inmsg.terminal),
+                                ),
+                                Recepients::One(r_ip),
+                            )
+                            .ok();
+                            if inmsg.command == Command::File {
+                                self.handle_back_event(BackEvent::Message(txt_msg), ctx);
+                            }
+                            inbox.insert(r_id, inmsg);
                         }
-                        inbox.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {

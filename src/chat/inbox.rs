@@ -18,6 +18,9 @@ pub type Shard = Vec<u8>;
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
+    pub fn contains(&self, id: &Id) -> bool {
+        self.0.contains_key(id)
+    }
     pub fn wake_for_missed(&mut self, networker: &mut NetWorker, ip: Ipv4Addr) {
         self.0
             .values_mut()
