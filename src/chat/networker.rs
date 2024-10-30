@@ -205,12 +205,12 @@ impl NetWorker {
                     debug!("incoming PartInit");
                     // TODO move wake here?
                     if let Some(msg) = inbox.get_mut(&r_id) {
-                        if msg.link.is_ready() {
-                            self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
+                        if msg.link.is_aborted() {
+                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
                                 .inspect_err(|e| error!("{e}"))
                                 .ok();
-                        } else if msg.link.is_aborted() {
-                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                        } else if msg.link.is_ready() || msg.combine(self, ctx).is_ok() {
+                            self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                                 .inspect_err(|e| error!("{e}"))
                                 .ok();
                         }
