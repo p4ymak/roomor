@@ -28,13 +28,12 @@ impl Inbox {
             .values_mut()
             .filter(|m| {
                 m.sender == ip
-                    && !m.link.is_ready()
                     && SystemTime::now()
                         .duration_since(m.ts)
-                        .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
+                        .is_ok_and(|d| d > TIMEOUT_SECOND * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
-                m.combine(networker, ctx);
+                m.combine(networker, ctx).ok();
             });
     }
     // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
@@ -167,6 +166,7 @@ impl InMessage {
             return Ok(());
         }
         if self.link.is_aborted() {
+            self.send_abort(networker);
             return Ok(());
         }
         debug!("Combining");

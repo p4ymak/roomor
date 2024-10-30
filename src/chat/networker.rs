@@ -324,7 +324,7 @@ impl NetWorker {
                         .ok();
                     error!("Message not found. Aborting transmission!");
                 }
-            } // Command::File => todo!(),
+            }
         }
     }
 
