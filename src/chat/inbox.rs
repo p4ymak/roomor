@@ -18,7 +18,12 @@ pub type Shard = Vec<u8>;
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
-    pub fn wake_for_missed(&mut self, networker: &mut NetWorker, ip: Ipv4Addr) {
+    pub fn wake_for_missed(
+        &mut self,
+        networker: &mut NetWorker,
+        ctx: &impl Repaintable,
+        ip: Ipv4Addr,
+    ) {
         self.0
             .values_mut()
             .filter(|m| {
@@ -29,7 +34,7 @@ impl Inbox {
                         .is_ok_and(|d| d > TIMEOUT_SECOND) // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
-                m.ask_for_missed(networker);
+                m.ask_for_missed(networker, ctx);
             });
     }
     // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
@@ -181,14 +186,15 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            self.ask_for_missed(networker);
+            self.ask_for_missed(networker, ctx);
 
             Err("Missing Shards".into())
         }
     }
-    pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
+    pub fn ask_for_missed(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable) {
         let missed = self.missed_shards();
         if missed.is_empty() {
+            self.combine(networker, ctx);
             return;
         }
         let terminal = missed
