@@ -640,6 +640,7 @@ impl TextMessage {
             frame.response.on_hover_ui_at_pointer(|ui| {
                 ui.label(pretty_ago(self.time()).unwrap_or_default());
                 let seen_by = self.is_seen_by();
+                // if self.content()
                 if !seen_by.is_empty() {
                     ui.label("");
                     ui.label("Received by:");
@@ -647,6 +648,12 @@ impl TextMessage {
                         if let Some(peer) = peers.0.get(ip) {
                             ui.label(peer.rich_name());
                         }
+                    }
+                }
+                if let Content::FileLink(link) = self.content() {
+                    if link.is_ready() {
+                        let bandwidth = link.bandwidth();
+                        ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
                     }
                 }
             });

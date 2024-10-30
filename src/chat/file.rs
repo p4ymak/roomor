@@ -104,14 +104,14 @@ impl FileLink {
 
         let seconds = SystemTime::now()
             .duration_since(self.time_start)
-            .map(|d| d.as_secs())
-            .unwrap_or(1);
-        let bandwidth = self.size / seconds.max(1);
+            .map(|d| d.as_secs_f32())
+            .unwrap_or(f32::MIN_POSITIVE);
+        let bandwidth = self.size as f32 / seconds.max(f32::MIN_POSITIVE);
 
         self.seconds_elapsed
-            .store(seconds, std::sync::atomic::Ordering::Relaxed);
+            .store(seconds as u64, std::sync::atomic::Ordering::Relaxed);
         self.bandwidth
-            .store(bandwidth, std::sync::atomic::Ordering::Relaxed);
+            .store(bandwidth as u64, std::sync::atomic::Ordering::Relaxed);
     }
     pub fn is_aborted(&self) -> bool {
         self.is_aborted.load(std::sync::atomic::Ordering::Relaxed)

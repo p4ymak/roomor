@@ -376,7 +376,7 @@ pub fn send_shards(
     let file = fs::File::open(&link.path)?;
 
     for i in range {
-        if link.is_aborted() {
+        if link.is_aborted() || link.is_ready() {
             break;
         }
         let mut data = vec![0; DATA_LIMIT_BYTES];

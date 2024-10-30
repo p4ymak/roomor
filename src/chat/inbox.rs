@@ -18,7 +18,7 @@ pub type Shard = Vec<u8>;
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
-    pub fn wake_for_missed(
+    pub fn wake_for_missed_one(
         &mut self,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
@@ -133,24 +133,24 @@ impl InMessage {
                 .filter(|s| s.1.is_none())
                 .map(|s| s.0 as ShardCount),
         );
-        // let missed = missed.into_iter().fold(
-        //     vec![],
-        //     |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-        //         if let Some(last) = r.last_mut() {
-        //             let empty_len = m.start().saturating_sub(*last.end());
-        //             if empty_len <= m.clone().count() as ShardCount
-        //                 || empty_len <= last.clone().count() as ShardCount
-        //             {
-        //                 *last = *last.start()..=*m.end();
-        //             } else {
-        //                 r.push(m);
-        //             }
-        //         } else {
-        //             r.push(m);
-        //         }
-        //         r
-        //     },
-        // );
+        let missed = missed.into_iter().fold(
+            vec![],
+            |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
+                if let Some(last) = r.last_mut() {
+                    let empty_len = m.start().saturating_sub(*last.end());
+                    if empty_len <= m.clone().count() as ShardCount
+                    // || empty_len <= last.clone().count() as ShardCount
+                    {
+                        *last = *last.start()..=*m.end();
+                    } else {
+                        r.push(m);
+                    }
+                } else {
+                    r.push(m);
+                }
+                r
+            },
+        );
 
         missed
     }
@@ -212,8 +212,7 @@ impl InMessage {
             }
         } else {
             error!("Shards missing!");
-            self.ask_for_missed(networker);
-
+            self.ask_for_missed(networker, missed);
             Err("Missing Shards".into())
         }
     }
@@ -221,7 +220,7 @@ impl InMessage {
     pub fn is_old_enough(&self) -> bool {
         SystemTime::now()
             .duration_since(self.ts)
-            .is_ok_and(|d| d > TIMEOUT_SECOND)
+            .is_ok_and(|d| d > TIMEOUT_SECOND * self.attempt.max(1) as u32)
     }
 
     pub fn send_seen(&self, networker: &mut NetWorker) {
@@ -241,9 +240,11 @@ impl InMessage {
             .ok();
     }
 
-    pub fn ask_for_missed(&mut self, networker: &mut NetWorker) {
-        let missed = self.missed_shards();
-
+    pub fn ask_for_missed(
+        &mut self,
+        networker: &mut NetWorker,
+        missed: Vec<RangeInclusive<ShardCount>>,
+    ) {
         let terminal = missed
             .last()
             .map(|l| *l.end())
