@@ -239,12 +239,12 @@ impl InMessage {
                     )
                     .ok();
             }
-            networker
-                .send(
-                    UdpMessage::ask_to_repeat(self.id, Part::AskRange(terminal..=terminal)),
-                    Recepients::One(self.sender),
-                )
-                .ok();
+            // networker
+            //     .send(
+            //         UdpMessage::ask_to_repeat(self.id, Part::AskRange(terminal..=terminal)),
+            //         Recepients::One(self.sender),
+            //     )
+            //     .ok();
         }
     }
 }
