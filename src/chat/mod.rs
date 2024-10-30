@@ -384,7 +384,7 @@ impl UdpChat {
                         r_msg,
                         &self.downloads_path,
                     );
-                    self.inbox.wake_for_missed(&mut self.networker, r_ip);
+                    self.inbox.wake_for_missed(&mut self.networker, ctx, r_ip);
                 }
             }
         }
