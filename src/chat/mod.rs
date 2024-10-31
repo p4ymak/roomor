@@ -10,7 +10,7 @@ use self::{
     file::{FileEnding, FileLink},
     inbox::InMessage,
     message::{new_id, DATA_LIMIT_BYTES, MAX_PREVIEW_CHARS},
-    networker::{NetWorker, TIMEOUT_SECOND},
+    networker::NetWorker,
     notifier::Repaintable,
     outbox::Outbox,
 };
@@ -205,13 +205,16 @@ impl TextMessage {
             Recepients::One(ip) => (false, ip),
             _ => (true, Ipv4Addr::BROADCAST), //FIXME ??
         };
-
+        let id = match content {
+            Content::FileLink(ref link) => link.id(),
+            _ => new_id(),
+        };
         TextMessage {
             timestamp: SystemTime::now(),
             incoming: false,
             public,
             ip,
-            id: new_id(),
+            id,
             content,
             seen: None,
         }
@@ -358,9 +361,6 @@ impl UdpChat {
 
     pub fn receive(&mut self, ctx: &impl Repaintable) {
         for event in self.rx.iter() {
-            // FIXME file request timer
-            self.inbox.retain(&mut self.networker, ctx, TIMEOUT_SECOND);
-
             match event {
                 ChatEvent::Front(front) => {
                     match self
@@ -380,6 +380,8 @@ impl UdpChat {
                         r_msg,
                         &self.downloads_path,
                     );
+                    self.inbox
+                        .wake_for_missed_one(&mut self.networker, ctx, r_ip);
                 }
             }
         }

@@ -1,6 +1,6 @@
 // FIXME
 #![allow(dead_code)]
-use super::message::{new_id, Id, ShardCount, DATA_LIMIT_BYTES};
+use super::message::{Id, ShardCount, DATA_LIMIT_BYTES};
 use std::{
     fs::File,
     path::{Path, PathBuf},
@@ -31,11 +31,11 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(name: &str, dir: &Path, count: ShardCount) -> Self {
+    pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
         path.push(name);
         FileLink {
-            id: new_id(),
+            id,
             time_start: SystemTime::now(),
             seconds_elapsed: AtomicU64::new(1),
             bandwidth: AtomicU64::new(0),
@@ -49,10 +49,10 @@ impl FileLink {
         }
     }
 
-    pub fn from_path(path: &Path) -> Option<Self> {
+    pub fn from_path(id: Id, path: &Path) -> Option<Self> {
         let size = File::open(path).ok()?.metadata().ok()?.len();
         Some(FileLink {
-            id: new_id(),
+            id,
             time_start: SystemTime::now(),
             seconds_elapsed: AtomicU64::new(1),
             bandwidth: AtomicU64::new(0),
@@ -104,14 +104,14 @@ impl FileLink {
 
         let seconds = SystemTime::now()
             .duration_since(self.time_start)
-            .map(|d| d.as_secs())
-            .unwrap_or(1);
-        let bandwidth = self.size / seconds.max(1);
+            .map(|d| d.as_secs_f32())
+            .unwrap_or(f32::MIN_POSITIVE);
+        let bandwidth = self.size as f32 / seconds.max(f32::MIN_POSITIVE);
 
         self.seconds_elapsed
-            .store(seconds, std::sync::atomic::Ordering::Relaxed);
+            .store(seconds as u64, std::sync::atomic::Ordering::Relaxed);
         self.bandwidth
-            .store(bandwidth, std::sync::atomic::Ordering::Relaxed);
+            .store(bandwidth as u64, std::sync::atomic::Ordering::Relaxed);
     }
     pub fn is_aborted(&self) -> bool {
         self.is_aborted.load(std::sync::atomic::Ordering::Relaxed)

@@ -70,9 +70,10 @@ impl Repaintable for Notifier {
         }
         if self.d_bus.load(Ordering::Relaxed) {
             Notification::new()
+                .appname("Roomor")
                 .summary("Roomor")
                 .body(text)
-                .appname("roomor")
+                .auto_icon()
                 .show()
                 .ok();
         }

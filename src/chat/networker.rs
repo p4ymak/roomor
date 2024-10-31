@@ -1,6 +1,6 @@
 use crate::chat::{
     inbox::InMessage,
-    message::{self, send_shards, Command, Part, ShardCount},
+    message::{self, send_shards, Command, ShardCount},
     TextMessage,
 };
 
@@ -93,35 +93,32 @@ impl NetWorker {
     }
 
     pub fn handle_back_event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
-        match event {
-            BackEvent::PeerJoined((ip, ref user_name)) => {
-                let new_comer = self.peers.peer_joined(ip, user_name.clone());
-                self.front_tx.send(event).ok();
+        match &event {
+            BackEvent::PeerJoined((ref ip, ref user_name)) => {
+                let new_comer = self.peers.peer_joined(*ip, user_name.clone());
                 if new_comer {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(ip))
+                    self.send(UdpMessage::greating(&self.name), Recepients::One(*ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 }
                 ctx.request_repaint();
             }
             BackEvent::PeerLeft(ip) => {
-                self.peers.remove(&ip);
-                self.front_tx.send(BackEvent::PeerLeft(ip)).ok();
+                self.peers.remove(ip);
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
                 if matches!(msg.content, Content::Seen) {
-                    self.front_tx.send(BackEvent::Message(msg)).ok();
                     ctx.request_repaint();
                 } else {
                     let text = msg.get_text();
                     let name = self.peers.get_display_name(msg.ip());
                     let notification_text = format!("{name}: {text}");
-                    self.front_tx.send(BackEvent::Message(msg)).ok();
                     ctx.notify(&notification_text);
                 }
             }
-        }
+        };
+        self.front_tx.send(event).ok();
     }
 
     pub fn handle_front_event(
@@ -206,42 +203,24 @@ impl NetWorker {
                 }
                 message::Part::Init(_) => {
                     debug!("incoming PartInit");
-
-                    if let Some(inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
+                    if let Some(msg) = inbox.get_mut(&r_id) {
+                        if msg.is_old_enough() {
+                            msg.combine(self, ctx).ok();
+                        }
+                    } else if let Some(mut inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
-                        self.send(
-                            UdpMessage::ask_to_repeat(inmsg.id, Part::AskRange(0..=inmsg.terminal)),
-                            Recepients::One(r_ip),
-                        )
-                        .ok();
                         if inmsg.command == Command::File {
                             self.handle_back_event(BackEvent::Message(txt_msg), ctx);
                         }
+                        inmsg.combine(self, ctx).ok();
                         inbox.insert(r_id, inmsg);
                     }
                 }
                 message::Part::Shard(count) => {
-                    let mut is_completed = false;
-                    let mut is_aborted = false;
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
-                        is_aborted = inmsg.link.is_aborted();
-                        if is_aborted {
-                            self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                                .inspect_err(|e| error!("{e}"))
-                                .ok();
-                        } else {
-                            is_completed = inmsg.insert(count, r_msg, self, ctx);
-                        }
+                        inmsg.insert(count, r_msg, self, ctx);
                     } else {
                         self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-                    }
-                    if is_aborted {
-                        inbox.remove(&r_id);
-                    }
-                    if is_completed {
-                        self.send(UdpMessage::seen_id(r_id, false), Recepients::One(r_ip))
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                     }
@@ -251,6 +230,7 @@ impl NetWorker {
             },
 
             Command::Seen => {
+                debug!("SEEN! {}", r_id);
                 let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
                 self.incoming(r_ip);
                 outbox.remove(r_ip, txt_msg.id());
@@ -262,7 +242,7 @@ impl NetWorker {
                 if let Some(msg) = inbox.get_mut(&r_id) {
                     msg.link.abort();
                 }
-                inbox.remove(&r_id);
+                // inbox.remove(&r_id);
                 outbox.remove(r_ip, r_id);
                 if let Some(link) = outbox.files.get(&r_id) {
                     link.abort();
@@ -285,16 +265,16 @@ impl NetWorker {
 
             Command::AskToRepeat => {
                 self.incoming(r_ip);
-                debug!("Asked to repeat {r_id}, part: {:?}", r_msg.part);
+                debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 if r_id == 0 {
                     self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
-                    if range.start() == &0 {
-                        outbox.remove(r_ip, r_id); // Remove Init Link
-                    }
+                    // if range.start() == &0 {
+                    //     outbox.remove(r_ip, r_id); // Remove Init Link
+                    // }
                     let mut is_aborted = false;
                     if let Some(link) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();
@@ -341,7 +321,7 @@ impl NetWorker {
                         .ok();
                     error!("Message not found. Aborting transmission!");
                 }
-            } // Command::File => todo!(),
+            }
         }
     }
 

@@ -5,7 +5,7 @@ use self::rooms::Rooms;
 use crate::{
     chat::{
         limit_text,
-        message::MAX_NAME_SIZE,
+        message::{new_id, MAX_NAME_SIZE},
         networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
         notifier::{Notifier, Repaintable},
         BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
@@ -23,7 +23,7 @@ use rodio::{OutputStream, OutputStreamHandle};
 use rooms::RoomAction;
 use std::{
     net::Ipv4Addr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
     thread::{self, sleep, JoinHandle},
@@ -139,8 +139,8 @@ impl eframe::App for Roomor {
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
-            self.keep_alive();
             self.read_events();
+            self.keep_alive();
             self.draw(ctx);
         }
         self.handle_keys(ctx);
@@ -220,11 +220,15 @@ impl Roomor {
         }
     }
 
-    fn dispatch_file(&mut self, path: &Path) {
-        if let Some(link) = self.rooms.compose_file(path) {
-            self.back_tx
-                .send(ChatEvent::Front(FrontEvent::Message(link)))
-                .ok();
+    fn dispatch_files(&mut self, paths: &[PathBuf]) {
+        let mut id = new_id();
+        for path in paths {
+            if let Some(link) = self.rooms.compose_file(id, path) {
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Message(link)))
+                    .ok();
+            }
+            id += 1;
         }
     }
 
@@ -391,12 +395,13 @@ impl Roomor {
                     debug!("HOVERED");
                 }
                 if !i.raw.dropped_files.is_empty() {
-                    debug!("DROPPED");
-                }
-
-                if let Some(path) = i.raw.dropped_files.first().and_then(|f| f.path.to_owned()) {
-                    debug!("Dropped file '{path:?}'");
-                    self.dispatch_file(&path);
+                    let paths = i
+                        .raw
+                        .dropped_files
+                        .iter()
+                        .filter_map(|f| f.path.clone())
+                        .collect::<Vec<PathBuf>>();
+                    self.dispatch_files(&paths);
                 }
             });
         }
@@ -435,13 +440,10 @@ impl Roomor {
         }
         egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
             RoomAction::None => (),
-            RoomAction::Clear => {
-                self.rooms.get_mut_active().clear_history();
-            }
             RoomAction::File => {
-                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     if !self.rooms.is_active_public() {
-                        self.dispatch_file(&path);
+                        self.dispatch_files(&paths);
                     }
                 }
             }
@@ -507,7 +509,38 @@ impl Roomor {
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
+        ctx.input_mut(|i| {
+            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::O)) {
+                debug!("open file");
+
+                if self.chat_init.is_none() {
+                    if let Some(path) = rfd::FileDialog::new().pick_files() {
+                        self.dispatch_files(&path);
+                    }
+                }
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::ArrowUp,
+            )) {
+                self.rooms.list_go_up();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::ArrowDown,
+            )) {
+                self.rooms.list_go_down();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::Tab)) {
+                self.exit();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::Escape,
+            )) {
+                self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
+            }
+
             i.raw.events.iter().for_each(|event| match event {
                 Event::Key {
                     key: egui::Key::Enter,
@@ -519,50 +552,7 @@ impl Roomor {
                         self.dispatch_text();
                     }
                 }
-                Event::Key {
-                    key: egui::Key::Escape,
-                    pressed: true,
-                    modifiers: Modifiers::SHIFT,
-                    ..
-                } => {
-                    self.exit();
-                }
-                Event::Key {
-                    key: egui::Key::Tab,
-                    pressed: true,
-                    modifiers: Modifiers::SHIFT,
-                    ..
-                } => {
-                    self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
-                }
 
-                Event::Key {
-                    key: egui::Key::ArrowUp,
-                    pressed: true,
-                    modifiers: Modifiers::COMMAND,
-                    ..
-                } => self.rooms.list_go_up(),
-                Event::Key {
-                    key: egui::Key::ArrowDown,
-                    pressed: true,
-                    modifiers: Modifiers::COMMAND,
-                    ..
-                } => self.rooms.list_go_down(),
-
-                Event::Key {
-                    key: egui::Key::O,
-                    modifiers: egui::Modifiers::COMMAND,
-                    pressed: true,
-                    ..
-                } => {
-                    debug!("open file");
-
-                    if self.chat_init.is_none() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.dispatch_file(&path);
-                        }
-                    }
-                }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,
