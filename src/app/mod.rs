@@ -440,9 +440,6 @@ impl Roomor {
         }
         egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
             RoomAction::None => (),
-            RoomAction::Clear => {
-                self.rooms.get_mut_active().clear_history();
-            }
             RoomAction::File => {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     if !self.rooms.is_active_public() {
@@ -512,7 +509,38 @@ impl Roomor {
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
+        ctx.input_mut(|i| {
+            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::O)) {
+                debug!("open file");
+
+                if self.chat_init.is_none() {
+                    if let Some(path) = rfd::FileDialog::new().pick_files() {
+                        self.dispatch_files(&path);
+                    }
+                }
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::ArrowUp,
+            )) {
+                self.rooms.list_go_up();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::ArrowDown,
+            )) {
+                self.rooms.list_go_down();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::Tab)) {
+                self.exit();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND,
+                egui::Key::Escape,
+            )) {
+                self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
+            }
+
             i.raw.events.iter().for_each(|event| match event {
                 Event::Key {
                     key: egui::Key::Enter,
@@ -524,50 +552,7 @@ impl Roomor {
                         self.dispatch_text();
                     }
                 }
-                Event::Key {
-                    key: egui::Key::Escape,
-                    pressed: true,
-                    modifiers: Modifiers::SHIFT,
-                    ..
-                } => {
-                    self.exit();
-                }
-                Event::Key {
-                    key: egui::Key::Tab,
-                    pressed: true,
-                    modifiers: Modifiers::SHIFT,
-                    ..
-                } => {
-                    self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
-                }
 
-                Event::Key {
-                    key: egui::Key::ArrowUp,
-                    pressed: true,
-                    modifiers: Modifiers::COMMAND,
-                    ..
-                } => self.rooms.list_go_up(),
-                Event::Key {
-                    key: egui::Key::ArrowDown,
-                    pressed: true,
-                    modifiers: Modifiers::COMMAND,
-                    ..
-                } => self.rooms.list_go_down(),
-
-                Event::Key {
-                    key: egui::Key::O,
-                    modifiers: egui::Modifiers::COMMAND,
-                    pressed: true,
-                    ..
-                } => {
-                    debug!("open file");
-
-                    if self.chat_init.is_none() {
-                        if let Some(path) = rfd::FileDialog::new().pick_files() {
-                            self.dispatch_files(&path);
-                        }
-                    }
-                }
                 Event::Key {
                     key: egui::Key::Escape,
                     pressed: true,

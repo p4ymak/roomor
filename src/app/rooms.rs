@@ -28,7 +28,6 @@ pub enum TextMode {
 #[derive(PartialEq, Eq)]
 pub enum RoomAction {
     None,
-    Clear,
     File,
 }
 
@@ -341,32 +340,32 @@ impl ChatHistory {
             .stick_to_bottom(true)
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                ui.interact(
-                    ui.clip_rect(),
-                    egui::Id::new("context menu"),
-                    egui::Sense::click(),
-                )
-                .context_menu(|ui| {
-                    if !self.recepients.is_public()
-                        && ui
+                if !self.recepients.is_public() {
+                    ui.interact(
+                        ui.clip_rect(),
+                        egui::Id::new("context menu"),
+                        egui::Sense::click(),
+                    )
+                    .context_menu(|ui| {
+                        if ui
                             .button(format!(
                                 "{}  Send Files",
                                 egui_phosphor::regular::FILE_ARROW_UP
                             ))
                             .clicked()
-                    {
-                        action = RoomAction::File;
-                        ui.close_menu();
-                    }
-                    if ui
-                        .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
-                        .clicked()
-                    {
-                        action = RoomAction::Clear;
-                        ui.close_menu();
-                    }
-                });
-
+                        {
+                            action = RoomAction::File;
+                            ui.close_menu();
+                        }
+                        // if ui
+                        //     .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
+                        //     .clicked()
+                        // {
+                        //     action = RoomAction::Clear;
+                        //     ui.close_menu();
+                        // }
+                    });
+                }
                 self.history.iter().for_each(|m| {
                     let peer = m.is_incoming().then_some(peers.0.get(&m.ip())).flatten();
                     m.draw(ui, peer, peers);
@@ -497,6 +496,15 @@ impl ChatHistory {
         } else {
             Stroke::new(stroke_width, inactive_fg.color.linear_multiply(0.5))
         };
+        response.context_menu(|ui| {
+            if ui
+                .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
+                .clicked()
+            {
+                self.clear_history();
+                ui.close_menu();
+            }
+        });
         let clicked = response.clicked();
 
         let rounding = Rounding {
