@@ -8,9 +8,11 @@ Minimalistic offline chat over local network.
 ![Emoji Mode](screenshots/03.png)
 
 ## Navigation
-**Shift + Tab** - Open/Close Chats List
+**Ctrl + Esc** - Return to Welcome Screen.
 
-**Shift + Esc** - Return to Welcome Screen
+**Ctrl + Tab** - Open/Close Chats List.
+
+**Ctrl + Up/Down** - Move between chats.
 
 Message text starts with **Space** enables big text mode. 
 
@@ -18,7 +20,7 @@ Message text starts with **/** or right-click on text input enables emoji mode, 
 
 Message text starts with **http** enables link mode.
 
-Send files with Drag'n'Drop or Right Click on chat.
+Send files with Drag'n'Drop or Right Click on chat or **Ctrl + O**.
 
 ## Donate
 [Support development](https://www.donationalerts.com/r/p4ymak)
