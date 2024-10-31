@@ -513,7 +513,7 @@ impl Roomor {
             if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::O)) {
                 debug!("open file");
 
-                if self.chat_init.is_none() {
+                if self.chat_init.is_none() && !self.rooms.is_active_public() {
                     if let Some(path) = rfd::FileDialog::new().pick_files() {
                         self.dispatch_files(&path);
                     }
