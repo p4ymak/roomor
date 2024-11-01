@@ -183,8 +183,6 @@ impl UdpMessage {
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
             Content::FileLink(link) => (Command::File, be_u8_from_str(&link.name)),
-            Content::FileData(_) => todo!(),
-            Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
 

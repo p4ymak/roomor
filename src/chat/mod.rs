@@ -7,7 +7,7 @@ pub mod outbox;
 pub mod peers;
 
 use self::{
-    file::{FileEnding, FileLink},
+    file::FileLink,
     inbox::InMessage,
     message::{new_id, DATA_LIMIT_BYTES, MAX_PREVIEW_CHARS},
     networker::NetWorker,
@@ -60,8 +60,6 @@ pub enum Content {
     Big(String),
     Icon(String),
     FileLink(Arc<FileLink>),
-    FileData(PathBuf),
-    FileEnding(FileEnding),
     Exit,
     Seen,
     Empty,

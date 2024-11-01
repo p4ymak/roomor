@@ -1,5 +1,3 @@
-// FIXME
-#![allow(dead_code)]
 use super::message::{Id, ShardCount, DATA_LIMIT_BYTES};
 use std::{
     fs::File,
@@ -7,13 +5,6 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU64},
     time::SystemTime,
 };
-
-#[derive(Debug, Clone)]
-pub enum FileStatus {
-    Link,
-    InProgress,
-    Ready,
-}
 
 #[derive(Debug)]
 pub struct FileLink {
@@ -68,28 +59,6 @@ impl FileLink {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn to_text(&self) -> String {
-        format!("\n{}\n{}\n{}", self.id(), self.name, self.size)
-    }
-    pub fn from_text(text: &str) -> Option<Self> {
-        let mut lines = text.trim().lines();
-        let id = lines.next()?.parse::<u32>().ok()?;
-        let name = lines.next()?.to_string();
-        let size = lines.next()?.parse::<u64>().ok()?;
-        Some(FileLink {
-            id,
-            time_start: SystemTime::now(),
-            seconds_elapsed: AtomicU64::new(1),
-            bandwidth: AtomicU64::new(0),
-            name,
-            path: PathBuf::default(),
-            size,
-            count: size.div_ceil(DATA_LIMIT_BYTES as ShardCount),
-            completed: AtomicU64::new(0),
-            is_ready: AtomicBool::new(false),
-            is_aborted: AtomicBool::new(false),
-        })
-    }
     pub fn progress(&self) -> f32 {
         (self.completed.load(std::sync::atomic::Ordering::Relaxed) as f32 / self.count as f32)
             .min(0.99)
@@ -122,15 +91,4 @@ impl FileLink {
     pub fn bandwidth(&self) -> u64 {
         self.bandwidth.load(std::sync::atomic::Ordering::Relaxed)
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct FileData {
-    id: Id,
-    data: Vec<u8>,
-}
-#[derive(Debug, Clone)]
-pub struct FileEnding {
-    id: Id,
-    checksum: u32,
 }
