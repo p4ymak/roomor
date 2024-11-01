@@ -1,4 +1,6 @@
 # Roomor
+[![Latest version](https://img.shields.io/crates/v/roomor.svg)](https://crates.io/crates/roomor)
+
 Minimalistic offline chat over local network.
 
 ![Welcome Screen](screenshots/00.png) 
