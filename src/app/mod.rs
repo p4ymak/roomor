@@ -451,6 +451,8 @@ impl Roomor {
     }
 
     fn settings_button(&mut self, ui: &mut egui::Ui) {
+        ui.visuals_mut().button_frame = false;
+
         ui.menu_button(egui_phosphor::regular::GEAR_SIX, |ui| {
             ui.horizontal(|h| {
                 // GUI Settings

@@ -57,4 +57,4 @@ deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]
 osx_frameworks = ["SDL2"]
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1.12"
+windows_exe_info = "0.4"

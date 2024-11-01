@@ -1,11 +1,9 @@
 #[cfg(windows)]
-extern crate winres;
+extern crate windows_exe_info;
 
 #[cfg(windows)]
 fn main() {
-    let mut res = winres::WindowsResource::new();
-    res.set_icon("test.ico");
-    res.compile().unwrap();
+    windows_exe_info::icon::icon_ico(std::path::Path::new("../icon/roomor.ico"));
 }
 
 #[cfg(not(windows))]
