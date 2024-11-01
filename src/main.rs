@@ -18,18 +18,11 @@ fn main() -> Result<(), eframe::Error> {
         env_logger::init();
     }
 
-    let icon = egui::viewport::IconData {
-        rgba: image::load_from_memory(include_bytes!("../icon/128x128.png"))
-            .expect("Icon exists")
-            .to_rgba8()
-            .to_vec(),
-        width: 128,
-        height: 128,
-    };
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../icon/128x128.png"));
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_icon(icon)
+            .with_icon(icon.unwrap_or_default())
             .with_taskbar(true)
             .with_app_id("roomor")
             .with_decorations(true)
