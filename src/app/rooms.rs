@@ -186,6 +186,7 @@ impl Rooms {
     }
 
     pub fn draw_list(&mut self, ui: &mut egui::Ui) {
+        space(ui, 0.2);
         if self
             .chats
             .get_mut(&Recepients::All)
@@ -199,7 +200,7 @@ impl Rooms {
         {
             self.set_active(Recepients::All);
         }
-        ui.label("");
+        space(ui, 0.5);
         egui::ScrollArea::vertical().show(ui, |ui| {
             let mut clicked = None;
             for recepient in self.order.iter() {
@@ -476,14 +477,11 @@ impl ChatHistory {
         };
 
         let max_rect = ui.max_rect();
-        let font_size = ui.text_style_height(&egui::TextStyle::Body);
+        let font_size = text_height(ui);
         let font_id = egui::FontId::proportional(font_size);
 
         let (response, painter) = ui.allocate_painter(
-            egui::Vec2::new(
-                max_rect.width(),
-                ui.text_style_height(&egui::TextStyle::Body) * 1.5,
-            ),
+            egui::Vec2::new(max_rect.width(), font_size * 1.5),
             egui::Sense::click(),
         );
 
@@ -694,10 +692,11 @@ impl TextMessage {
             }
             Content::FileLink(link) => {
                 let file_ico = file_ico(&link.path, ui);
+                let font_size = text_height(ui);
                 if link.is_aborted() && !link.is_ready() {
                     ui.label(
                         egui::RichText::new(egui_phosphor::regular::FILE_DASHED)
-                            .size(ui.text_style_height(&egui::TextStyle::Body) * 4.0),
+                            .size(font_size * 4.0),
                     );
                 } else if link.is_ready() {
                     if ui.link(file_ico).clicked() {
@@ -735,7 +734,7 @@ impl TextMessage {
         }
     }
 }
-fn text_height(ui: &mut egui::Ui) -> f32 {
+pub fn text_height(ui: &egui::Ui) -> f32 {
     ui.text_style_height(&egui::TextStyle::Body)
 }
 fn rounding(ui: &mut egui::Ui) -> f32 {
@@ -763,4 +762,12 @@ pub fn emulate_enter(ui: &egui::Ui) {
         modifiers: Default::default(),
     };
     ui.ctx().input_mut(|w| w.raw.events.push(event));
+}
+
+pub fn space(ui: &mut egui::Ui, value: f32) {
+    let height = text_height(ui) * value;
+    ui.allocate_exact_size(
+        egui::Vec2::new(0., height),
+        egui::Sense::focusable_noninteractive(),
+    );
 }

@@ -7,10 +7,8 @@ use super::{
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::debug;
-use std::{
-    error::Error, fmt, fs, net::UdpSocket, ops::RangeInclusive, os::unix::fs::FileExt, sync::Arc,
-    time::SystemTime,
-};
+use std::{error::Error, fmt, net::UdpSocket, ops::RangeInclusive, sync::Arc, time::SystemTime};
+use system_interface::fs::FileIoExt;
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
@@ -185,8 +183,6 @@ impl UdpMessage {
             Content::Exit => (Command::Exit, vec![]),
             Content::Empty => (Command::Error, vec![]),
             Content::FileLink(link) => (Command::File, be_u8_from_str(&link.name)),
-            Content::FileData(_) => todo!(),
-            Content::FileEnding(_) => todo!(),
             Content::Seen => (Command::Seen, vec![]),
         };
 
@@ -373,7 +369,7 @@ pub fn send_shards(
     port: Port,
     ctx: impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
-    let file = fs::File::open(&link.path)?;
+    let file = std::fs::File::open(&link.path)?;
 
     for i in range {
         if link.is_aborted() || link.is_ready() {
