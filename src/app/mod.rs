@@ -20,7 +20,7 @@ use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
 use rodio::{OutputStream, OutputStreamHandle};
-use rooms::RoomAction;
+use rooms::{text_height, RoomAction};
 use std::{
     net::Ipv4Addr,
     path::PathBuf,
@@ -412,7 +412,7 @@ impl Roomor {
             .resizable(false)
             .show_separator_line(true)
             .show(ctx, |ui| {
-                font_size = ui.text_style_height(&egui::TextStyle::Body);
+                font_size = text_height(ui);
                 egui::ScrollArea::vertical()
                     .min_scrolled_height(max_height)
                     .auto_shrink([false, true])
@@ -607,18 +607,6 @@ fn atomic_button(value: &Arc<AtomicBool>, icon: &str, ui: &mut egui::Ui, hover: 
     }
 }
 
-// fn drag_mask(ui: &mut egui::Ui, mask: &mut u8) {
-//     ui.add(
-//         egui::DragValue::new(mask)
-//             .speed(1)
-//             .custom_formatter(|m, _| {
-//                 let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, m.min(32.0) as u8).expect("exists");
-//                 let mask = net.netmask().octets();
-//                 format!("{}.{}.{}.{}", mask[0], mask[1], mask[2], mask[3])
-//             })
-//             .custom_parser(|s| parse_netmask(s).map(|x| x as f64)),
-//     );
-// }
 fn drag_ip(ui: &mut egui::Ui, ip: &Ipv4Addr) {
     ui.add_enabled(
         false,

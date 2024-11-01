@@ -2,6 +2,8 @@ use eframe::egui::{self, RichText};
 use egui_phosphor::regular;
 use std::path::Path;
 
+use super::rooms::text_height;
+
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub enum FileTy {
     Application,
@@ -74,5 +76,5 @@ pub fn file_ico_str(path: &Path) -> &'static str {
 }
 
 pub fn file_ico(path: &Path, ui: &egui::Ui) -> RichText {
-    RichText::new(file_ico_str(path)).size(ui.text_style_height(&egui::TextStyle::Body) * 4.0)
+    RichText::new(file_ico_str(path)).size(text_height(ui) * 4.0)
 }

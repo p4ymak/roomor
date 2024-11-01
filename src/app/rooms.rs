@@ -734,7 +734,7 @@ impl TextMessage {
         }
     }
 }
-fn text_height(ui: &mut egui::Ui) -> f32 {
+pub fn text_height(ui: &egui::Ui) -> f32 {
     ui.text_style_height(&egui::TextStyle::Body)
 }
 fn rounding(ui: &mut egui::Ui) -> f32 {
