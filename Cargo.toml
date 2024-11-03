@@ -62,26 +62,9 @@ osx_frameworks = ["SDL2"]
 windows_exe_info = "0.4"
 
 [lib]
-crate_type=["lib", "cdylib"]
+crate-type=["lib", "cdylib"]
 
-[target.'cfg(target_os = "android")'.dependencies.eframe]
-eframe = {
-version = "0.29",
-default-features = false,
-features = [
-    "wgpu",
-    "android-native-activity",
-    "default_fonts",
-] }
-
-egui-winit = {
-version = "0.29",
-default-features = false,
-features = [
-    "clipboard",
-    "links",
-] }
-
-android_logger = {
-version = "0.13",
-default-features = false }
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { version = "0.29", default-features = false, features = [ "wgpu", "android-native-activity", "default_fonts" ] }
+egui-winit = { version = "0.29", default-features = false, features = [ "clipboard", "links" ] }
+android_logger = { version = "0.13", default-features = false }

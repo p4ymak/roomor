@@ -31,5 +31,6 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
         "Roomor",
         options,
         Box::new(|cc| Ok(Box::new(app::Roomor::new(cc)))),
-    );
+    )
+    .ok();
 }
