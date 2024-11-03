@@ -440,7 +440,9 @@ impl Roomor {
         }
         egui::CentralPanel::default().show(ctx, |ui| match self.rooms.draw_history(ui) {
             RoomAction::None => (),
-            RoomAction::File => {
+            RoomAction::File =>
+            {
+                #[cfg(not(target_os = "android"))]
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     if !self.rooms.is_active_public() {
                         self.dispatch_files(&paths);
@@ -512,6 +514,7 @@ impl Roomor {
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
         ctx.input_mut(|i| {
+            #[cfg(not(target_os = "android"))]
             if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::O)) {
                 debug!("open file");
 

@@ -14,7 +14,6 @@ build = "build.rs"
 
 [dependencies]
 eframe = "0.29.1"
-rfd = "0.15"
 human_bytes = "0.4.3"
 opener = "0.7.2"
 egui-phosphor = "0.7.3"
@@ -35,6 +34,9 @@ notify-rust = "4"
 
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.11.5"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd = "0.15"
 
 [profile.release]
 opt-level = 3
@@ -58,3 +60,28 @@ osx_frameworks = ["SDL2"]
 
 [target.'cfg(windows)'.build-dependencies]
 windows_exe_info = "0.4"
+
+[lib]
+crate_type=["lib", "cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies.eframe]
+eframe = {
+version = "0.29",
+default-features = false,
+features = [
+    "wgpu",
+    "android-native-activity",
+    "default_fonts",
+] }
+
+egui-winit = {
+version = "0.29",
+default-features = false,
+features = [
+    "clipboard",
+    "links",
+] }
+
+android_logger = {
+version = "0.13",
+default-features = false }
