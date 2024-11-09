@@ -157,12 +157,6 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(target_os = "android")]
-        if ctx.wants_keyboard_input() {
-            if let Some(android) = &self.android_app {
-                android.show_soft_input(true);
-            }
-        }
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -172,6 +166,12 @@ impl eframe::App for Roomor {
             self.draw(ctx);
         }
         self.handle_keys(ctx);
+        #[cfg(target_os = "android")]
+        // if ctx.wants_keyboard_input() {
+        if let Some(android) = &self.android_app {
+            android.show_soft_input(true);
+            // }
+        }
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn auto_save_interval(&self) -> std::time::Duration {

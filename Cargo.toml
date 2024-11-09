@@ -62,7 +62,7 @@ osx_frameworks = ["SDL2"]
 windows_exe_info = "0.4"
 
 [lib]
-crate-type = [ "lib", "cdylib" ]
+crate-type = [ "lib" , "cdylib" ]
 
 [target.'cfg(target_os = "android")'.dependencies.android_logger]
 version = "0.13"
@@ -88,10 +88,8 @@ features = [
 
 
 
-
 [package.metadata.android]
 package = "org.p4ymak.roomor"
-
 build_targets = [ "aarch64-linux-android" ]
 # build_targets = [ "armv7-linux-androideabi", "aarch64-linux-android", "i686-linux-android", "x86_64-linux-android" ]
 large_heap = true
@@ -101,13 +99,14 @@ large_heap = true
 
 apk_name = "Roomor"
 
-
 strip = "default"
 
 # Folder containing extra shared libraries intended to be dynamically loaded at runtime.
 # Files matching `libs_folder/${android_abi}/*.so` are added to the apk
 # according to the specified build_targets.
 # runtime_libs = "path/to/libs_folder"
+[package.metadata.android.application]
+label = "Roomor"
 
 [package.metadata.android.signing.release]
 # path = "relative/or/absolute/path/to/my.keystore"
@@ -120,9 +119,6 @@ min_sdk_version = 20
 target_sdk_version = 32
 max_sdk_version = 35
 
-
-[package.metadata.android.application.activity]
-launch_mode = "singleTop"
 
 [[package.metadata.android.uses_feature]]
 name = "android.hardware.wifi"
