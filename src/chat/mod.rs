@@ -289,12 +289,17 @@ impl UdpChat {
     pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         let sender = NetWorker::new(ip, front_tx);
+        // FIXME
+        #[cfg(not(target_os = "android"))]
         let downloads_path = UserDirs::new()
             .unwrap()
             .download_dir()
             .unwrap()
             .join("Roomor");
+        #[cfg(not(target_os = "android"))]
         fs::create_dir_all(&downloads_path).ok(); // FIXME
+        #[cfg(target_os = "android")]
+        let downloads_path = PathBuf::default();
 
         UdpChat {
             networker: sender,

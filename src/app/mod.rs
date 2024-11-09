@@ -19,6 +19,7 @@ use eframe::{
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
+#[cfg(not(target_os = "android"))]
 use rodio::{OutputStream, OutputStreamHandle};
 use rooms::{text_height, RoomAction};
 use std::{
@@ -53,6 +54,7 @@ impl Default for UserSetup {
                 Some("Couldn't get local IP!".to_string()),
             ),
         };
+
         UserSetup {
             init: true,
             name: whoami::username(),
@@ -95,6 +97,23 @@ impl UserSetup {
             ui.heading("Name");
             limit_text(&mut self.name, MAX_NAME_SIZE);
             ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
+            // ui.heading("Interface");
+            // egui::ComboBox::from_id_salt("interface")
+            //     .selected_text(
+            //         self.interface
+            //             .as_ref()
+            //             .map(|i| i.name.to_string())
+            //             .unwrap_or("No Net Interface".to_string()),
+            //     )
+            //     .show_ui(ui, |ui| {
+            //         for interface in self.interfaces.iter() {
+            //             ui.selectable_value(
+            //                 &mut self.interface,
+            //                 Some(interface.clone()),
+            //                 &interface.name,
+            //             );
+            //         }
+            //     });
             ui.heading("IPv4");
             drag_ip(ui, &self.ip);
             ui.heading("Port");
@@ -119,8 +138,9 @@ pub struct Roomor {
     chat_handle: Option<JoinHandle<()>>,
     pulse_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
-
+    #[cfg(not(target_os = "android"))]
     _audio: Option<OutputStream>,
+    #[cfg(not(target_os = "android"))]
     audio_handle: Option<OutputStreamHandle>,
     notification_sound: Arc<AtomicBool>,
     notification_d_bus: Arc<AtomicBool>,
@@ -128,6 +148,8 @@ pub struct Roomor {
     back_tx: Sender<ChatEvent>,
     last_time: SystemTime,
     downloads_path: PathBuf,
+    #[cfg(target_os = "android")]
+    android_app: Option<egui_winit::winit::platform::android::activity::AndroidApp>,
 }
 
 impl eframe::App for Roomor {
@@ -135,6 +157,12 @@ impl eframe::App for Roomor {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(target_os = "android")]
+        if ctx.wants_keyboard_input() {
+            if let Some(android) = &self.android_app {
+                android.show_soft_input(true);
+            }
+        }
         self.top_panel(ctx);
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -156,6 +184,7 @@ impl eframe::App for Roomor {
 
 impl Default for Roomor {
     fn default() -> Self {
+        #[cfg(not(target_os = "android"))]
         let (_audio, audio_handler) = match OutputStream::try_default() {
             Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
             Err(_) => (None, None),
@@ -175,7 +204,9 @@ impl Default for Roomor {
             chat_handle: None,
             pulse_handle: None,
             rooms: Rooms::new(back_tx.clone()),
+            #[cfg(not(target_os = "android"))]
             _audio,
+            #[cfg(not(target_os = "android"))]
             audio_handle: audio_handler,
             notification_sound,
             notification_d_bus,
@@ -183,6 +214,8 @@ impl Default for Roomor {
             back_rx,
             last_time: SystemTime::now(),
             downloads_path,
+            #[cfg(target_os = "android")]
+            android_app: None,
         }
     }
 }
@@ -194,6 +227,20 @@ impl Roomor {
         cc.egui_ctx.set_fonts(fonts);
 
         Roomor::default()
+    }
+    #[cfg(target_os = "android")]
+    pub fn new_android(
+        cc: &CreationContext,
+        app: egui_winit::winit::platform::android::activity::AndroidApp,
+    ) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        cc.egui_ctx.set_fonts(fonts);
+
+        Roomor {
+            android_app: Some(app),
+            ..Default::default()
+        }
     }
 
     fn keep_alive(&mut self) {
@@ -295,6 +342,7 @@ impl Roomor {
         if let Some(mut init) = self.chat_init.take() {
             let ctx = Notifier::new(
                 ctx,
+                #[cfg(not(target_os = "android"))]
                 self.audio_handle.clone(),
                 self.notification_sound.clone(),
                 self.notification_d_bus.clone(),
