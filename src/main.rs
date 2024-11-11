@@ -8,10 +8,6 @@ use eframe::egui;
 #[cfg(test)]
 mod tests;
 
-pub const HOMEPAGE_LINK: &str = "https://www.p4ymak.su";
-pub const SOURCE_LINK: &str = "https://www.github.com/p4ymak/roomor";
-pub const DONATION_LINK: &str = "https://www.donationalerts.com/r/p4ymak";
-
 fn main() -> Result<(), eframe::Error> {
     #[cfg(debug_assertions)]
     #[cfg(not(target_os = "android"))]

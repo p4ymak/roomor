@@ -12,6 +12,13 @@ keywords = ["chat", "lan", "offline"]
 resolver = "2"
 build = "build.rs"
 
+[lints.clippy]
+all = "warn"
+[env]
+CARGO_CFG_TARGET_OS = "android"
+[build]
+target = "triple"
+
 [dependencies]
 eframe = "0.29.1"
 human_bytes = "0.4.3"
@@ -31,6 +38,7 @@ crc = "3.2.1"
 range_rover = "0.1.2"
 
 log = { version = "0.4", features = ["std"] }
+
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 env_logger = "0.11.5"
@@ -107,6 +115,7 @@ strip = "default"
 # runtime_libs = "path/to/libs_folder"
 [package.metadata.android.application]
 label = "Roomor"
+# theme = "@android:style/Theme.DeviceDefault.ActionBar"
 
 [package.metadata.android.signing.release]
 # path = "relative/or/absolute/path/to/my.keystore"
@@ -119,6 +128,16 @@ min_sdk_version = 20
 target_sdk_version = 32
 max_sdk_version = 35
 
+
+
+[package.metadata.android.application.activity]
+config_changes = "orientation|keyboard|keyboardHidden|screenSize"
+window_soft_input_mode="stateVisible|adjustResize"
+windowSoftInputMode="stateVisible"
+
+[[package.metadata.android.uses_feature]]
+name = "android.software.input_methods"
+required = true
 
 [[package.metadata.android.uses_feature]]
 name = "android.hardware.wifi"

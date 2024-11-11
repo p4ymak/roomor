@@ -1,21 +1,19 @@
 mod filetypes;
 mod rooms;
-
 use self::rooms::Rooms;
-use crate::{
-    chat::{
-        limit_text,
-        message::{new_id, MAX_NAME_SIZE},
-        networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
-        notifier::{Notifier, Repaintable},
-        BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
-    },
-    DONATION_LINK, HOMEPAGE_LINK, SOURCE_LINK,
+use crate::chat::{
+    limit_text,
+    message::{new_id, MAX_NAME_SIZE},
+    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    notifier::{Notifier, Repaintable},
+    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
 use eframe::{
     egui::{self, *},
     CreationContext,
 };
+#[cfg(target_os = "android")]
+use egui_winit::winit::platform::android::activity::AndroidApp;
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
@@ -35,6 +33,9 @@ pub const ZOOM_STEP: f32 = 0.25;
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
 pub const PUBLIC: &str = "Everyone";
+pub const HOMEPAGE_LINK: &str = "https://www.p4ymak.su";
+pub const SOURCE_LINK: &str = "https://www.github.com/p4ymak/roomor";
+pub const DONATION_LINK: &str = "https://www.donationalerts.com/r/p4ymak";
 
 pub struct UserSetup {
     pub init: bool,
@@ -149,7 +150,7 @@ pub struct Roomor {
     last_time: SystemTime,
     downloads_path: PathBuf,
     #[cfg(target_os = "android")]
-    android_app: Option<egui_winit::winit::platform::android::activity::AndroidApp>,
+    android_app: Option<AndroidApp>,
 }
 
 impl eframe::App for Roomor {
@@ -165,13 +166,16 @@ impl eframe::App for Roomor {
             self.keep_alive();
             self.draw(ctx);
         }
-        self.handle_keys(ctx);
+
         #[cfg(target_os = "android")]
-        // if ctx.wants_keyboard_input() {
-        if let Some(android) = &self.android_app {
-            android.show_soft_input(true);
-            // }
+        if ctx.wants_keyboard_input() {
+            if let Some(android) = &self.android_app {
+                android.show_soft_input(false);
+            }
+        } else if let Some(android) = &self.android_app {
+            android.hide_soft_input(true);
         }
+        self.handle_keys(ctx);
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn auto_save_interval(&self) -> std::time::Duration {
@@ -229,10 +233,7 @@ impl Roomor {
         Roomor::default()
     }
     #[cfg(target_os = "android")]
-    pub fn new_android(
-        cc: &CreationContext,
-        app: egui_winit::winit::platform::android::activity::AndroidApp,
-    ) -> Self {
+    pub fn new_android(cc: &CreationContext, app: AndroidApp) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
