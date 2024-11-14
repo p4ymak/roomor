@@ -12,15 +12,11 @@ keywords = ["chat", "lan", "offline"]
 resolver = "2"
 build = "build.rs"
 
-[lints.clippy]
-all = "warn"
-[env]
-CARGO_CFG_TARGET_OS = "android"
-[build]
-target = "triple"
+
 
 [dependencies]
 eframe = "0.29.1"
+egui_keyboard = { path="../egui_keyboard" }
 human_bytes = "0.4.3"
 opener = "0.7.2"
 egui-phosphor = "0.7.3"
@@ -29,7 +25,8 @@ system-interface = "0.27.2"
 # network-interface = "2.0.0"
 
 whoami = "1.5.2"
-directories = "5.0.1"
+# directories = "5.0.1"
+robius-directories = "5.0"
 chrono = "0.4.38"
 timediff = "0.2.3"
 
@@ -70,7 +67,7 @@ osx_frameworks = ["SDL2"]
 windows_exe_info = "0.4"
 
 [lib]
-crate-type = [ "lib" , "cdylib" ]
+crate_type = [ "lib" , "cdylib" ]
 
 [target.'cfg(target_os = "android")'.dependencies.android_logger]
 version = "0.13"
@@ -80,16 +77,19 @@ default-features = false
 version = "0.29.1"
 default-features = false
 features = [
+    "accesskit",
     "glow",
-    "android-native-activity",
+    "android-game-activity",
     "default_fonts",
 ]
 
-# Used to get same winit used by eframe.
+
 [target.'cfg(target_os = "android")'.dependencies.egui-winit]
 version = "0.29.1"
 default-features = false
 features = [
+    "accesskit",
+    "android-game-activity",
     "clipboard",
     "links",
 ]
@@ -115,7 +115,20 @@ strip = "default"
 # runtime_libs = "path/to/libs_folder"
 [package.metadata.android.application]
 label = "Roomor"
-# theme = "@android:style/Theme.DeviceDefault.ActionBar"
+extract_native_libs = true
+theme = "@android:style/Theme.Black"
+app_category = "social"
+hardware_accelerated = true
+is_game = false
+resizeable_activity = true
+
+
+ui_options = "splitActionBarWhenNarrow"
+
+
+# See https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic
+uses_cleartext_traffic = true
+
 
 [package.metadata.android.signing.release]
 # path = "relative/or/absolute/path/to/my.keystore"
@@ -124,16 +137,29 @@ keystore_password = "android"
 
 
 [package.metadata.android.sdk]
-min_sdk_version = 20
+min_sdk_version = 24
 target_sdk_version = 32
 max_sdk_version = 35
 
+[[package.metadata.android.uses_feature]]
+name = "android.hardware.vulkan.level"
+required = true
+version = 0
 
+[[package.metadata.android.uses_feature]]
+name = "android.hardware.vulkan.compute"
+required = true
+version = 0
+
+[package.metadata.android.application.layout]
+gravity = "top"
 
 [package.metadata.android.application.activity]
-config_changes = "orientation|keyboard|keyboardHidden|screenSize"
-window_soft_input_mode="stateVisible|adjustResize"
-windowSoftInputMode="stateVisible"
+config_changes = "orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection"
+resizeable_activity = true
+screen_orientation = "portrait|nosensor"
+immersive = false
+launch_mode = "singleInstance"
 
 [[package.metadata.android.uses_feature]]
 name = "android.software.input_methods"
@@ -181,3 +207,6 @@ required = true
 name="android.permission.CHANGE_WIFI_MULTICAST_STATE"
 required = true
 # max_sdk_version = 35
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.WRITE_EXTERNAL_STORAGE"

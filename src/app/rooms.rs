@@ -761,7 +761,7 @@ pub fn emulate_enter(ui: &egui::Ui) {
         repeat: false,
         modifiers: Default::default(),
     };
-    ui.ctx().input_mut(|w| w.raw.events.push(event));
+    ui.ctx().input_mut(|w| w.events.push(event));
 }
 
 pub fn space(ui: &mut egui::Ui, value: f32) {

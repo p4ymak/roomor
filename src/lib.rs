@@ -19,14 +19,19 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
-    app.set_window_flags(
-        WindowManagerFlags::FORCE_NOT_FULLSCREEN,
-        WindowManagerFlags::empty(),
-    );
+
+    // app.set_window_flags(
+    //     WindowManagerFlags::LAYOUT_IN_SCREEN & WindowManagerFlags::LAYOUT_INSET_DECOR,
+    //     //     // WindowManagerFlags::LAYOUT_IN_SCREEN & WindowManagerFlags::LAYOUT_INSET_DECOR,
+    //     //     flags,
+    //     WindowManagerFlags::FULLSCREEN,
+    // );
+
     let android_app = app.clone();
 
     let options = eframe::NativeOptions {
-        event_loop_builder: Some(Box::new(|builder| {
+        renderer: eframe::Renderer::Glow,
+        event_loop_builder: Some(Box::new(move |builder| {
             builder.with_android_app(android_app);
         })),
         ..Default::default()

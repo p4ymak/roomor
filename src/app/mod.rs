@@ -12,6 +12,7 @@ use eframe::{
     egui::{self, *},
     CreationContext,
 };
+use egui_keyboard::Keyboard;
 #[cfg(target_os = "android")]
 use egui_winit::winit::platform::android::activity::AndroidApp;
 use flume::{Receiver, Sender};
@@ -151,6 +152,7 @@ pub struct Roomor {
     downloads_path: PathBuf,
     #[cfg(target_os = "android")]
     android_app: Option<AndroidApp>,
+    keyboard: Keyboard,
 }
 
 impl eframe::App for Roomor {
@@ -159,6 +161,20 @@ impl eframe::App for Roomor {
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.top_panel(ctx);
+
+        #[cfg(target_os = "android")]
+        if ctx.wants_keyboard_input() {
+            if let Some(app) = &self.android_app {
+                app.show_soft_input(true);
+            }
+        }
+        // if ctx.wants_keyboard_input() {
+        //     self.keyboard.show(ctx);
+        //     egui::TopBottomPanel::bottom("keyboard_panel")
+        //         .exact_height(self.keyboard.rect().height())
+        //         .show(ctx, |_| {});
+        // }
+
         if self.chat_init.is_some() {
             self.setup(ctx);
         } else {
@@ -167,14 +183,6 @@ impl eframe::App for Roomor {
             self.draw(ctx);
         }
 
-        #[cfg(target_os = "android")]
-        if ctx.wants_keyboard_input() {
-            if let Some(android) = &self.android_app {
-                android.show_soft_input(false);
-            }
-        } else if let Some(android) = &self.android_app {
-            android.hide_soft_input(true);
-        }
         self.handle_keys(ctx);
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
@@ -220,6 +228,7 @@ impl Default for Roomor {
             downloads_path,
             #[cfg(target_os = "android")]
             android_app: None,
+            keyboard: Keyboard::default(),
         }
     }
 }
@@ -376,6 +385,8 @@ impl Roomor {
     fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|h| {
+                #[cfg(target_os = "android")]
+                scale_text(h, 2.0);
                 h.horizontal(|h| {
                     if self.chat_init.is_some() {
                         h.disable();
@@ -595,7 +606,7 @@ impl Roomor {
                 self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
             }
 
-            i.raw.events.iter().for_each(|event| match event {
+            i.events.iter().for_each(|event| match event {
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
@@ -687,4 +698,11 @@ fn pulse(tx: Sender<ChatEvent>) {
             }
         }
     }
+}
+
+fn scale_text(ui: &mut Ui, factor: f32) {
+    ui.style_mut()
+        .text_styles
+        .values_mut()
+        .for_each(|s| s.size *= factor);
 }

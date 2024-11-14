@@ -15,12 +15,12 @@ use self::{
     outbox::Outbox,
 };
 use crate::{app::UserSetup, chat::peers::Presence};
-use directories::UserDirs;
 use eframe::Result;
 use flume::{Receiver, Sender};
 use inbox::Inbox;
 use log::error;
 use message::{Command, Id, UdpMessage};
+use robius_directories::UserDirs;
 use std::{
     error::Error,
     fs,
@@ -96,7 +96,7 @@ pub struct UdpChat {
     networker: NetWorker,
     outbox: Outbox,
     inbox: Inbox,
-    downloads_path: PathBuf,
+    pub downloads_path: PathBuf,
     thread_handle: Option<JoinHandle<()>>,
 }
 impl Drop for UdpChat {
@@ -289,7 +289,6 @@ impl UdpChat {
     pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         let sender = NetWorker::new(ip, front_tx);
-        // FIXME
         #[cfg(not(target_os = "android"))]
         let downloads_path = UserDirs::new()
             .unwrap()
