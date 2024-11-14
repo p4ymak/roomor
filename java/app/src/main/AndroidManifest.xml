@@ -4,7 +4,7 @@
         android:label="Roomor"
         android:allowBackup="true"
         android:resizeableActivity="true"
-
+        >
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection"
