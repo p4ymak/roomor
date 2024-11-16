@@ -166,6 +166,8 @@ impl eframe::App for Roomor {
         if ctx.wants_keyboard_input() {
             if let Some(app) = &self.android_app {
                 app.show_soft_input(true);
+                // let text = app.text_input_state().text;
+                // ctx.input_mut(|w| w.events.push(Event::Text(text)));
             }
         }
         // if ctx.wants_keyboard_input() {

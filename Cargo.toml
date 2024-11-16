@@ -67,7 +67,8 @@ osx_frameworks = ["SDL2"]
 windows_exe_info = "0.4"
 
 [lib]
-crate_type = [ "lib" , "cdylib" ]
+name="main"
+crate-type=["cdylib"]
 
 [target.'cfg(target_os = "android")'.dependencies.android_logger]
 version = "0.13"
@@ -88,12 +89,13 @@ features = [
 version = "0.29.1"
 default-features = false
 features = [
-    "accesskit",
-    "android-game-activity",
     "clipboard",
     "links",
 ]
 
+[target.'cfg(target_os = "android")'.dependencies.ndk]
+version = "0.9.0"
+features = [ "api-level-33" ]
 
 
 [package.metadata.android]
@@ -210,3 +212,6 @@ required = true
 
 [[package.metadata.android.uses_permission]]
 name = "android.permission.WRITE_EXTERNAL_STORAGE"
+
+
+

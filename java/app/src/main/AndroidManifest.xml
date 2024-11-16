@@ -21,7 +21,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.app.lib_name"
-                android:value="roomor" />
+                android:value="main" />
         </activity>
     </application>
 
