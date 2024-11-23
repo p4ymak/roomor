@@ -168,19 +168,11 @@ impl eframe::App for Roomor {
         self.top_panel(ctx);
 
         #[cfg(target_os = "android")]
-        if ctx.wants_keyboard_input() {
-            if let Some(app) = &self.android_app {
+        if let Some(app) = &self.android_app {
+            if ctx.wants_keyboard_input() {
                 app.show_soft_input(true);
-                // let text = app.text_input_state().text;
-                // ctx.input_mut(|w| w.events.push(Event::Text(text)));
             }
         }
-        // if ctx.wants_keyboard_input() {
-        //     self.keyboard.show(ctx);
-        //     egui::TopBottomPanel::bottom("keyboard_panel")
-        //         .exact_height(self.keyboard.rect().height())
-        //         .show(ctx, |_| {});
-        // }
 
         if self.chat_init.is_some() {
             self.setup(ctx);
@@ -191,27 +183,6 @@ impl eframe::App for Roomor {
         }
 
         self.handle_keys(ctx);
-        // #[cfg(target_os = "android")]
-        // if let Some(app) = &self.android_app {
-        //     ctx.output(|o| {
-        //         o.events.iter().for_each(|e| {
-        //             if let OutputEvent::TextSelectionChanged(widget) = e {
-        //                 if let Some(text) = &widget.current_text_value {
-        //                     let selection = widget.text_selection.clone().unwrap_or(0..=0);
-        //                     let state = TextInputState {
-        //                         text: text.to_string(),
-        //                         selection: TextSpan {
-        //                             start: *selection.start(),
-        //                             end: *selection.end(),
-        //                         },
-        //                         compose_region: None,
-        //                     };
-        //                     app.set_text_input_state(state);
-        //                 }
-        //             }
-        //         })
-        //     })
-        // }
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn auto_save_interval(&self) -> std::time::Duration {
