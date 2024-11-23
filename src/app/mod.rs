@@ -21,10 +21,9 @@ use egui_winit::winit::platform::android::activity::{
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
-use output::OutputEvent;
 #[cfg(not(target_os = "android"))]
 use rodio::{OutputStream, OutputStreamHandle};
-use rooms::{text_height, RoomAction};
+use rooms::{text_height, RoomAction, TextMode};
 use std::{
     net::Ipv4Addr,
     path::PathBuf,
@@ -172,6 +171,9 @@ impl eframe::App for Roomor {
             if ctx.wants_keyboard_input() {
                 app.show_soft_input(true);
             }
+            if self.rooms.get_active().mode == TextMode::Icon {
+                app.hide_soft_input(true);
+            }
         }
 
         if self.chat_init.is_some() {
@@ -279,7 +281,10 @@ impl Roomor {
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.enable_accesskit();
-
+        if let Some(native_ppp) = cc.egui_ctx.native_pixels_per_point() {
+            error!("NATIVE PPP: {native_ppp}");
+            cc.egui_ctx.set_pixels_per_point(native_ppp.round());
+        }
         Roomor {
             android_app: Some(app),
             ..Default::default()
@@ -444,6 +449,8 @@ impl Roomor {
                 // Online Summary
                 if self.chat_init.is_none() {
                     h.separator();
+                    #[cfg(target_os = "android")]
+                    scale_text(h, 0.5);
                     let summary = h.add(
                         egui::Label::new(format!(
                             "Online: {} / {}",
