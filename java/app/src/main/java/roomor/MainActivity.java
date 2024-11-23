@@ -5,6 +5,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+// import android.view.WindowManager;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.DisplayCutoutCompat;
@@ -31,7 +32,9 @@ public class MainActivity extends GameActivity {
       ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
       mlp.topMargin = insets.top;
       mlp.leftMargin = insets.left;
-      mlp.bottomMargin = insets.bottom;
+      mlp.bottomMargin = 
+      // insets.bottom +
+      windowInsets.getInsets(WindowInsetsCompat.Type.ime()).bottom ;
       mlp.rightMargin = insets.right;
       v.setLayoutParams(mlp);
 
@@ -39,6 +42,8 @@ public class MainActivity extends GameActivity {
     });
 
     WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+
+    // getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
     super.onCreate(savedInstanceState);
   }

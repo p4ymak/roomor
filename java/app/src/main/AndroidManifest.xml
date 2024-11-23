@@ -4,18 +4,21 @@
         android:label="Roomor"
         android:allowBackup="true"
         android:resizeableActivity="true"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection|uiMode"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         >
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="stateUnspecified|adjustResize"
-            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
