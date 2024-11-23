@@ -1,8 +1,0 @@
-2024-11-23 22:04:41,192 [main]                [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.DeviceChooserApplication - Starting application
- [DeviceChooserApplication.java:61]2024-11-23 22:04:41,331 [main]                [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.DeviceChooserApplication - 1 device was found by ADB
- [DeviceChooserApplication.java:70]2024-11-23 22:04:41,382 [main]                [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.DeviceChooserApplication - ant_dao_technology_limited-air1_pro-SW6LYTY9CEM7QGOZ was chosen
- [DeviceChooserApplication.java:80]2024-11-23 22:04:41,566 [main]                [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.AndroidScreencastApplication - Starting application.
- [AndroidScreencastApplication.java:70]2024-11-23 22:04:41,586 [Screen Capturer]     [34mINFO [0;39m com.github.xsavikx.androidscreencast.api.injector.ScreenCaptureRunnable - Starting screen capturing.
- [ScreenCaptureRunnable.java:68]2024-11-23 22:15:17,390 [Thread-1]            [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.AndroidScreencastApplication - Stopping application.
- [AndroidScreencastApplication.java:55]2024-11-23 22:15:17,405 [Thread-1]            [34mINFO [0;39m com.github.xsavikx.androidscreencast.app.AndroidScreencastApplication - Stopping application.
- [AndroidScreencastApplication.java:55]
