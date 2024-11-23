@@ -14,10 +14,14 @@ use eframe::{
 };
 use egui_keyboard::Keyboard;
 #[cfg(target_os = "android")]
-use egui_winit::winit::platform::android::activity::AndroidApp;
+use egui_winit::winit::platform::android::activity::{
+    input::{TextInputState, TextSpan},
+    AndroidApp,
+};
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
+use output::OutputEvent;
 #[cfg(not(target_os = "android"))]
 use rodio::{OutputStream, OutputStreamHandle};
 use rooms::{text_height, RoomAction};
@@ -99,6 +103,7 @@ impl UserSetup {
             ui.heading("Name");
             limit_text(&mut self.name, MAX_NAME_SIZE);
             ui.add(egui::TextEdit::singleline(&mut self.name).horizontal_align(Align::Center));
+
             // ui.heading("Interface");
             // egui::ComboBox::from_id_salt("interface")
             //     .selected_text(
@@ -186,6 +191,27 @@ impl eframe::App for Roomor {
         }
 
         self.handle_keys(ctx);
+        // #[cfg(target_os = "android")]
+        // if let Some(app) = &self.android_app {
+        //     ctx.output(|o| {
+        //         o.events.iter().for_each(|e| {
+        //             if let OutputEvent::TextSelectionChanged(widget) = e {
+        //                 if let Some(text) = &widget.current_text_value {
+        //                     let selection = widget.text_selection.clone().unwrap_or(0..=0);
+        //                     let state = TextInputState {
+        //                         text: text.to_string(),
+        //                         selection: TextSpan {
+        //                             start: *selection.start(),
+        //                             end: *selection.end(),
+        //                         },
+        //                         compose_region: None,
+        //                     };
+        //                     app.set_text_input_state(state);
+        //                 }
+        //             }
+        //         })
+        //     })
+        // }
     }
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn auto_save_interval(&self) -> std::time::Duration {
@@ -193,6 +219,39 @@ impl eframe::App for Roomor {
     }
     fn persist_egui_memory(&self) -> bool {
         false
+    }
+
+    // Handle Android Soft Input FIXME kinda hacky =/
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        #[cfg(target_os = "android")]
+        if let Some(app) = &self.android_app {
+            let text = app.text_input_state().text.to_string();
+            let event = match text.as_str() {
+                t if t.is_empty() => Event::Key {
+                    key: Key::Backspace,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                },
+                t if t.contains("\n") => Event::Key {
+                    key: Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                },
+                text => Event::Text(text[1..].to_string()),
+            };
+
+            raw_input.events.push(event);
+            let state = TextInputState {
+                text: String::from(" "),
+                selection: TextSpan { start: 1, end: 1 },
+                compose_region: None,
+            };
+            app.set_text_input_state(state);
+        }
     }
 }
 
@@ -248,6 +307,7 @@ impl Roomor {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.enable_accesskit();
 
         Roomor {
             android_app: Some(app),
