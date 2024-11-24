@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod filetypes;
 mod rooms;
 use self::rooms::Rooms;
@@ -8,11 +9,12 @@ use crate::chat::{
     notifier::{Notifier, Repaintable},
     BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
 };
+use directories::UserDirs;
 use eframe::{
     egui::{self, *},
     CreationContext,
 };
-use egui_keyboard::Keyboard;
+// use egui_keyboard::Keyboard;
 #[cfg(target_os = "android")]
 use egui_winit::winit::platform::android::activity::{
     input::{TextInputState, TextSpan},
@@ -23,8 +25,9 @@ use log::{debug, error};
 use opener::{open, open_browser};
 #[cfg(not(target_os = "android"))]
 use rodio::{OutputStream, OutputStreamHandle};
-use rooms::{text_height, RoomAction, TextMode};
+use rooms::{text_height, RoomAction};
 use std::{
+    fs,
     net::Ipv4Addr,
     path::PathBuf,
     str::FromStr,
@@ -156,7 +159,7 @@ pub struct Roomor {
     downloads_path: PathBuf,
     #[cfg(target_os = "android")]
     android_app: Option<AndroidApp>,
-    keyboard: Keyboard,
+    // keyboard: Keyboard,
 }
 
 impl eframe::App for Roomor {
@@ -171,7 +174,7 @@ impl eframe::App for Roomor {
             if ctx.wants_keyboard_input() {
                 app.show_soft_input(true);
             }
-            if self.rooms.get_active().mode == TextMode::Icon {
+            if self.rooms.get_active().mode == rooms::TextMode::Icon {
                 app.hide_soft_input(true);
             }
         }
@@ -195,8 +198,8 @@ impl eframe::App for Roomor {
     }
 
     // Handle Android Soft Input FIXME kinda hacky =/
+    #[cfg(target_os = "android")]
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        #[cfg(target_os = "android")]
         if let Some(app) = &self.android_app {
             let text = app.text_input_state().text.to_string();
             let event = match text.as_str() {
@@ -228,8 +231,8 @@ impl eframe::App for Roomor {
     }
 }
 
-impl Default for Roomor {
-    fn default() -> Self {
+impl Roomor {
+    fn default(downloads_path: PathBuf) -> Self {
         #[cfg(not(target_os = "android"))]
         let (_audio, audio_handler) = match OutputStream::try_default() {
             Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
@@ -240,8 +243,8 @@ impl Default for Roomor {
         let notification_d_bus = Arc::new(AtomicBool::new(true));
         let user = UserSetup::default();
 
-        let chat = UdpChat::new(user.ip(), front_tx);
-        let downloads_path = chat.downloads_path();
+        let chat = UdpChat::new(user.ip(), front_tx, downloads_path.clone());
+
         let back_tx = chat.tx();
 
         Roomor {
@@ -262,18 +265,22 @@ impl Default for Roomor {
             downloads_path,
             #[cfg(target_os = "android")]
             android_app: None,
-            keyboard: Keyboard::default(),
+            // keyboard: Keyboard::default(),
         }
     }
-}
 
-impl Roomor {
     pub fn new(cc: &CreationContext) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        let downloads_path = UserDirs::new()
+            .unwrap()
+            .download_dir()
+            .unwrap()
+            .join("Roomor");
+        fs::create_dir_all(&downloads_path).ok();
 
-        Roomor::default()
+        Roomor::default(downloads_path)
     }
     #[cfg(target_os = "android")]
     pub fn new_android(cc: &CreationContext, app: AndroidApp) -> Self {
@@ -281,13 +288,16 @@ impl Roomor {
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.enable_accesskit();
-        if let Some(native_ppp) = cc.egui_ctx.native_pixels_per_point() {
-            error!("NATIVE PPP: {native_ppp}");
-            cc.egui_ctx.set_pixels_per_point(native_ppp.round());
-        }
+        // if let Some(native_ppp) = cc.egui_ctx.native_pixels_per_point() {
+        //     error!("NATIVE PPP: {native_ppp}");
+        //     cc.egui_ctx.set_pixels_per_point(native_ppp.round());
+        // }
+
+        let downloads_path = PathBuf::from("/storage/emulated/0/Download").join("Roomor"); // FIXME hardcode
+        fs::create_dir_all(&downloads_path).ok();
         Roomor {
             android_app: Some(app),
-            ..Default::default()
+            ..Roomor::default(downloads_path)
         }
     }
 
@@ -444,7 +454,7 @@ impl Roomor {
                     h,
                     "Pop Notifications",
                 );
-                self.settings_button(h);
+                self.draw_settings_button(h);
 
                 // Online Summary
                 if self.chat_init.is_none() {
@@ -513,12 +523,15 @@ impl Roomor {
             .show_separator_line(true)
             .show(ctx, |ui| {
                 font_size = text_height(ui);
-                egui::ScrollArea::vertical()
-                    .min_scrolled_height(max_height)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        self.rooms.draw_input(ui);
-                    });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    self.draw_input_buttons(ui);
+                    egui::ScrollArea::vertical()
+                        .min_scrolled_height(max_height)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            self.rooms.draw_input(ui);
+                        });
+                });
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
@@ -552,7 +565,57 @@ impl Roomor {
         });
     }
 
-    fn settings_button(&mut self, ui: &mut egui::Ui) {
+    fn draw_input_buttons(&mut self, ui: &mut egui::Ui) {
+        let active_room = self.rooms.get_active();
+        if active_room.mode == rooms::TextMode::Icon {
+            return;
+        }
+        let is_text_empty = active_room.input.is_empty();
+        ui.horizontal(|ui| {
+            // FIXME hardcode scale for vertical center
+            for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
+                font_id.size *= 1.2 * FONT_SCALE;
+            }
+            #[cfg(not(target_os = "android"))]
+            if is_text_empty
+                && ui
+                    .add(
+                        egui::Button::new(RichText::new(egui_phosphor::regular::PAPERCLIP))
+                            .frame(false),
+                    )
+                    .clicked()
+            {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                    if !self.rooms.is_active_public() {
+                        self.dispatch_files(&paths);
+                    }
+                }
+            }
+            if is_text_empty
+                && ui
+                    .add(
+                        egui::Button::new(RichText::new(egui_phosphor::regular::SMILEY))
+                            .frame(false),
+                    )
+                    .clicked()
+            {
+                self.rooms.get_mut_active().input = String::from("/");
+            }
+
+            if !is_text_empty
+                && ui
+                    .add(
+                        egui::Button::new(RichText::new(egui_phosphor::regular::PAPER_PLANE_RIGHT))
+                            .frame(false),
+                    )
+                    .clicked()
+            {
+                self.dispatch_text();
+            }
+        });
+    }
+
+    fn draw_settings_button(&mut self, ui: &mut egui::Ui) {
         ui.visuals_mut().button_frame = false;
 
         ui.menu_button(egui_phosphor::regular::GEAR_SIX, |ui| {
@@ -679,7 +742,7 @@ impl Roomor {
             handle.join().expect("can't join chat thread on exit");
         }
         let (front_tx, back_rx) = flume::unbounded();
-        let chat = UdpChat::new(self.user.ip(), front_tx);
+        let chat = UdpChat::new(self.user.ip(), front_tx, self.downloads_path.clone());
         let back_tx = chat.tx();
         self.user.init = true;
         self.chat_init = Some(chat);

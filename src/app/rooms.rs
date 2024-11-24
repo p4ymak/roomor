@@ -349,10 +349,7 @@ impl ChatHistory {
                     )
                     .context_menu(|ui| {
                         if ui
-                            .button(format!(
-                                "{}  Send Files",
-                                egui_phosphor::regular::FILE_ARROW_UP
-                            ))
+                            .button(format!("{}  Send Files", egui_phosphor::regular::PAPERCLIP))
                             .clicked()
                         {
                             action = RoomAction::File;
@@ -408,13 +405,13 @@ impl ChatHistory {
                 egui::TextEdit::multiline(&mut self.input)
                     .frame(false)
                     .desired_rows(1)
-                    .desired_rows(
-                        if !cfg!(target_os = "android") && self.mode == TextMode::Normal {
-                            4
-                        } else {
-                            1
-                        },
-                    )
+                    // .desired_rows(
+                    //     if !cfg!(target_os = "android") && self.mode == TextMode::Normal {
+                    //         4
+                    //     } else {
+                    //         1
+                    //     },
+                    // )
                     .desired_width(ui.available_rect_before_wrap().width())
                     .interactive(chat_interactive)
                     .cursor_at_end(true)

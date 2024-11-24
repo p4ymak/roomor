@@ -1102,6 +1102,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "directories"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a49173b84e034382284f27f1af4dcbbd231ffa358c0fe316541a7337f376a35"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1301,13 +1310,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "winit",
-]
-
-[[package]]
-name = "egui_keyboard"
-version = "0.1.0"
-dependencies = [
- "egui",
 ]
 
 [[package]]
@@ -3252,27 +3254,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "robius-android-env"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "087fcb3061ccc432658a605cb868edd44e0efb08e7a159b486f02804a7616bef"
-dependencies = [
- "jni",
- "ndk-context",
-]
-
-[[package]]
-name = "robius-directories"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dd88aeb764f8040f6795a33699780929a378d1a320d36cf221d1a42807d0666"
-dependencies = [
- "dirs-sys",
- "jni",
- "robius-android-env",
-]
-
-[[package]]
 name = "rodio"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3289,10 +3270,10 @@ dependencies = [
  "android_logger",
  "chrono",
  "crc",
+ "directories",
  "eframe",
  "egui-phosphor",
  "egui-winit",
- "egui_keyboard",
  "enumn",
  "env_logger 0.11.5",
  "flume",
@@ -3303,7 +3284,6 @@ dependencies = [
  "opener",
  "range_rover",
  "rfd",
- "robius-directories",
  "rodio",
  "system-interface",
  "timediff",

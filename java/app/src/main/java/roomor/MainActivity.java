@@ -5,7 +5,6 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-// import android.view.WindowManager;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.DisplayCutoutCompat;
@@ -42,8 +41,6 @@ public class MainActivity extends GameActivity {
     });
 
     WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-
-    // getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
     super.onCreate(savedInstanceState);
   }

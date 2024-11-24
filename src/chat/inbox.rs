@@ -200,7 +200,8 @@ impl InMessage {
                 Command::File => {
                     let path = &self.link.path;
                     debug!("Data lenght: {}", data.len());
-                    debug!("Writing new file to {path:?}");
+                    // FIXME
+                    error!("Writing new file to {path:?}");
                     fs::write(path, data).inspect_err(|e| error!("{e}"))?;
                     self.send_seen(networker);
 

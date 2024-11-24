@@ -20,10 +20,8 @@ use flume::{Receiver, Sender};
 use inbox::Inbox;
 use log::error;
 use message::{Command, Id, UdpMessage};
-use robius_directories::UserDirs;
 use std::{
     error::Error,
-    fs,
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
     path::PathBuf,
@@ -286,19 +284,9 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>, downloads_path: PathBuf) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         let sender = NetWorker::new(ip, front_tx);
-        #[cfg(not(target_os = "android"))]
-        let downloads_path = UserDirs::new()
-            .unwrap()
-            .download_dir()
-            .unwrap()
-            .join("Roomor");
-        #[cfg(not(target_os = "android"))]
-        fs::create_dir_all(&downloads_path).ok(); // FIXME
-        #[cfg(target_os = "android")]
-        let downloads_path = PathBuf::default();
 
         UdpChat {
             networker: sender,
@@ -388,6 +376,7 @@ impl UdpChat {
             }
         }
     }
+    #[allow(dead_code)]
     pub fn downloads_path(&self) -> PathBuf {
         self.downloads_path.clone()
     }
