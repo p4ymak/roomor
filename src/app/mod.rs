@@ -4,7 +4,7 @@ mod rooms;
 use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
-    message::{new_id, MAX_NAME_SIZE},
+    message::MAX_NAME_SIZE,
     networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     peers::PeerId,
@@ -24,7 +24,6 @@ use egui_winit::winit::platform::android::activity::{
 use flume::{Receiver, Sender};
 use log::{debug, error};
 use opener::{open, open_browser};
-#[cfg(not(target_os = "android"))]
 use rodio::{OutputStream, OutputStreamHandle};
 use rooms::{text_height, RoomAction};
 use std::{
@@ -153,9 +152,7 @@ pub struct Roomor {
     chat_handle: Option<JoinHandle<()>>,
     pulse_handle: Option<JoinHandle<()>>,
     rooms: Rooms,
-    #[cfg(not(target_os = "android"))]
     _audio: Option<OutputStream>,
-    #[cfg(not(target_os = "android"))]
     audio_handle: Option<OutputStreamHandle>,
     notification_sound: Arc<AtomicBool>,
     notification_d_bus: Arc<AtomicBool>,
@@ -239,7 +236,6 @@ impl eframe::App for Roomor {
 
 impl Roomor {
     fn default(downloads_path: PathBuf) -> Self {
-        #[cfg(not(target_os = "android"))]
         let (_audio, audio_handler) = match OutputStream::try_default() {
             Ok((audio, audio_handler)) => (Some(audio), Some(audio_handler)),
             Err(_) => (None, None),
@@ -259,9 +255,7 @@ impl Roomor {
             chat_handle: None,
             pulse_handle: None,
             rooms: Rooms::new(back_tx.clone()),
-            #[cfg(not(target_os = "android"))]
             _audio,
-            #[cfg(not(target_os = "android"))]
             audio_handle: audio_handler,
             notification_sound,
             notification_d_bus,
@@ -394,7 +388,6 @@ impl Roomor {
         if let Some(mut init) = self.chat_init.take() {
             let ctx = Notifier::new(
                 ctx,
-                #[cfg(not(target_os = "android"))]
                 self.audio_handle.clone(),
                 self.notification_sound.clone(),
                 self.notification_d_bus.clone(),

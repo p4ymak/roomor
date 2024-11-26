@@ -20,7 +20,6 @@ where
 #[derive(Clone)]
 pub struct Notifier {
     ctx: Context,
-    #[cfg(not(target_os = "android"))]
     audio: Option<OutputStreamHandle>,
     play_audio: Arc<AtomicBool>,
     d_bus: Arc<AtomicBool>,
@@ -28,19 +27,17 @@ pub struct Notifier {
 impl Notifier {
     pub fn new(
         ctx: &Context,
-        #[cfg(not(target_os = "android"))] audio: Option<OutputStreamHandle>,
+        audio: Option<OutputStreamHandle>,
         play_audio: Arc<AtomicBool>,
         d_bus: Arc<AtomicBool>,
     ) -> Self {
         Notifier {
             ctx: ctx.clone(),
-            #[cfg(not(target_os = "android"))]
             audio,
             play_audio,
             d_bus,
         }
     }
-    #[cfg(not(target_os = "android"))]
     pub fn play_sound(&self) {
         if let Some(audio) = &self.audio {
             let mix = SineWave::new(432.0)
@@ -68,11 +65,9 @@ impl Repaintable for Notifier {
     fn notify(&self, text: &str) {
         self.ctx.request_repaint();
         if self.play_audio.load(Ordering::Relaxed) {
-            #[cfg(not(target_os = "android"))]
             self.play_sound();
         }
         if self.d_bus.load(Ordering::Relaxed) {
-            // #[cfg(not(target_os = "android"))]
             Notification::new()
                 .appname("Roomor")
                 .summary("Roomor")
