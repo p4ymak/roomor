@@ -136,9 +136,6 @@ impl PeersMap {
         });
     }
 
-    pub fn remove(&mut self, id: &PeerId) {
-        self.ids.remove(id);
-    }
     pub fn get_display_name(&self, id: PeerId) -> String {
         self.ids
             .get(&id)

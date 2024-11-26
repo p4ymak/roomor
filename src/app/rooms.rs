@@ -3,7 +3,7 @@ use crate::{
     chat::{
         file::FileLink,
         limit_text,
-        message::{Id, MAX_EMOJI_SIZE},
+        message::{new_id, Id, MAX_EMOJI_SIZE},
         peers::{Peer, PeerId, PeersMap, Presence},
         ChatEvent, Content, FrontEvent, TextMessage,
     },
@@ -15,8 +15,16 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
+};
 use timediff::TimeDiff;
+
+type ToSend = bool;
 
 #[derive(PartialEq, Eq)]
 pub enum TextMode {
@@ -54,6 +62,27 @@ impl Rooms {
         }
     }
 
+    pub fn dispatch_text(&mut self) {
+        if let Some(msg) = self.compose_message() {
+            self.back_tx
+                .send(ChatEvent::Front(FrontEvent::Message(msg)))
+                .ok();
+            self.get_mut_active().input.clear();
+        }
+    }
+
+    pub fn dispatch_files(&mut self, paths: &[PathBuf]) {
+        let mut id = new_id();
+        for path in paths {
+            if let Some(link) = self.compose_file(id, path) {
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Message(link)))
+                    .ok();
+            }
+            id += 1;
+        }
+    }
+
     pub fn clear_history(&mut self) {
         self.chats.values_mut().for_each(|h| h.clear_history());
     }
@@ -88,20 +117,15 @@ impl Rooms {
         if !self.is_able_to_send() {
             return None;
         }
-        let chat = self.get_mut_active();
-        let mut trimmed = chat.input.trim().to_string();
-        if chat.mode == TextMode::Big {
-            trimmed = trimmed.replace('\n', "");
-        }
-        (!trimmed.is_empty()).then_some({
-            chat.input.clear();
-            let content = match chat.mode {
-                TextMode::Normal => Content::Text(trimmed),
-                TextMode::Big => Content::Big(trimmed),
-                TextMode::Icon => Content::Icon(trimmed),
-            };
-            TextMessage::out_message(content, self.active_chat)
-        })
+        let text = &self.get_mut_active().input;
+
+        let content = match text.chars().nth(0) {
+            None => return None,
+            Some(' ') => Content::Big(text[1..].trim().to_string()),
+            Some('/') => Content::Icon(text[1..].trim().to_string()),
+            _ => Content::Text(text.trim().to_string()),
+        };
+        Some(TextMessage::out_message(content, self.active_chat))
     }
     pub fn compose_file(&mut self, id: Id, path: &Path) -> Option<TextMessage> {
         let link = Arc::new(FileLink::from_path(id, path)?);
@@ -234,10 +258,14 @@ impl Rooms {
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui) {
         let status = self.peers.online_status(self.active_chat);
-        self.chats
+        let to_send = self
+            .chats
             .get_mut(&self.active_chat)
             .expect("Active Exists")
             .draw_input(ui, status);
+        if to_send {
+            self.dispatch_text();
+        }
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
         let side_ico = egui_phosphor::regular::SIDEBAR;
@@ -381,10 +409,11 @@ impl ChatHistory {
             });
         action
     }
-    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
+
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) -> ToSend {
+        let mut to_send = false;
         ui.visuals_mut().clip_rect_margin = 0.0;
         let chat_interactive = !(self.peer_id.is_public() && status != Presence::Online);
-
         self.mode = if self.input.starts_with(' ') {
             TextMode::Big
         } else if self.input.starts_with('/') {
@@ -409,8 +438,13 @@ impl ChatHistory {
             );
         }
         if self.mode == TextMode::Icon {
-            self.draw_input_emoji(ui);
+            to_send = self.draw_input_emoji(ui);
         } else {
+            let return_key = if cfg!(not(target_os = "android")) {
+                Some(KeyboardShortcut::new(Modifiers::SHIFT, egui::Key::Enter))
+            } else {
+                Some(KeyboardShortcut::new(Modifiers::NONE, egui::Key::Enter))
+            };
             let text_input = ui.add(
                 egui::TextEdit::multiline(&mut self.input)
                     .frame(false)
@@ -423,29 +457,30 @@ impl ChatHistory {
                     //     },
                     // )
                     .desired_width(ui.available_rect_before_wrap().width())
-                    .interactive(chat_interactive)
+                    // .interactive(chat_interactive)
                     .cursor_at_end(true)
-                    .return_key(Some(KeyboardShortcut::new(
-                        Modifiers::SHIFT,
-                        egui::Key::Enter,
-                    ))),
+                    .return_key(return_key),
             );
+
             text_input.request_focus();
+
             if text_input.secondary_clicked() && chat_interactive {
                 self.input = "/".to_string();
             }
         }
+        to_send
     }
 
-    fn draw_input_emoji(&mut self, ui: &mut egui::Ui) {
+    fn draw_input_emoji(&mut self, ui: &mut egui::Ui) -> ToSend {
+        let mut to_send = false;
         ui.horizontal_wrapped(|ui| {
             for emoji in EMOJI_LIST {
                 let icon = ui.add(egui::Button::new(emoji).frame(false));
                 if icon.clicked() {
-                    self.input = emoji.to_string();
-                    emulate_enter(ui);
-                }
-                if icon.secondary_clicked() {
+                    self.input.push_str(emoji);
+                    to_send = true;
+                    log::debug!("EMOJI"); //DEBUG
+                } else if icon.secondary_clicked() {
                     self.input.clear();
                 }
             }
@@ -453,6 +488,7 @@ impl ChatHistory {
                 self.input.clear();
             }
         });
+        to_send
     }
 
     fn draw_list_entry(

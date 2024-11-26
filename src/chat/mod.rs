@@ -343,6 +343,7 @@ impl UdpChat {
                                 if message.from_peer_id != local_id {
                                     receiver.send(ChatEvent::Incoming(ip, message)).ok();
                                 } else if message.command == Command::Exit {
+                                    #[cfg(not(target_os = "android"))] // FIXME
                                     break;
                                 }
                             }
@@ -366,6 +367,7 @@ impl UdpChat {
                     }
                 }
                 ChatEvent::Incoming(r_ip, r_msg) => {
+                    let peer_id = r_msg.from_peer_id;
                     self.networker.handle_message(
                         &mut self.inbox,
                         &mut self.outbox,
@@ -375,7 +377,7 @@ impl UdpChat {
                         &self.downloads_path,
                     );
                     self.inbox
-                        .wake_for_missed_one(&mut self.networker, ctx, r_ip);
+                        .wake_for_missed_one(&mut self.networker, ctx, peer_id);
                 }
             }
         }

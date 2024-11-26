@@ -126,7 +126,7 @@ impl NetWorker {
                 ctx.request_repaint();
             }
             BackEvent::PeerLeft(peer_id) => {
-                self.peers.remove(peer_id);
+                self.peers.peer_exited(*peer_id);
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
@@ -227,6 +227,7 @@ impl NetWorker {
 
             Command::Exit => {
                 self.handle_back_event(BackEvent::PeerLeft(r_msg.from_peer_id), ctx);
+                inbox.peer_left(r_msg.from_peer_id);
             }
 
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
@@ -355,7 +356,7 @@ impl NetWorker {
                 } else {
                     not_found_text = true;
                 }
-                if not_found_file && not_found_text {
+                if not_found_file || not_found_text {
                     self.send(UdpMessage::abort(self.id, r_id), r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();

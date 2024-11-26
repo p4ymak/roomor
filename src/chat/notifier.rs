@@ -1,7 +1,5 @@
 use eframe::egui::Context;
-#[cfg(not(target_os = "android"))]
 use notify_rust::Notification;
-#[cfg(not(target_os = "android"))]
 use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
     sync::{
@@ -74,7 +72,7 @@ impl Repaintable for Notifier {
             self.play_sound();
         }
         if self.d_bus.load(Ordering::Relaxed) {
-            #[cfg(not(target_os = "android"))]
+            // #[cfg(not(target_os = "android"))]
             Notification::new()
                 .appname("Roomor")
                 .summary("Roomor")

@@ -25,18 +25,30 @@ impl Inbox {
         &mut self,
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
-        ip: Ipv4Addr,
+        peer_id: PeerId,
     ) {
         self.0
             .values_mut()
             .filter(|m| {
-                m.ip == ip && !(m.link.is_aborted() || m.link.is_ready()) && m.is_old_enough()
+                m.from_peer_id == peer_id
+                    && !(m.link.is_aborted() || m.link.is_ready())
+                    && m.is_old_enough()
                 // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
                 debug!("Wake for missed");
                 m.combine(networker, ctx).ok();
             });
+    }
+    pub fn peer_left(&mut self, peer_id: PeerId) {
+        self.0.retain(|_, msg| {
+            if msg.from_peer_id == peer_id {
+                msg.link.abort();
+                false
+            } else {
+                true
+            }
+        });
     }
     // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
     //     self.0.retain(|_, msg| {
@@ -60,7 +72,7 @@ impl Inbox {
 pub struct InMessage {
     pub ts: SystemTime,
     pub id: Id,
-    pub ip: Ipv4Addr,
+    pub _ip: Ipv4Addr,
     pub from_peer_id: PeerId,
     pub public: bool,
     pub command: Command,
@@ -85,7 +97,7 @@ impl InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
                 from_peer_id: msg.from_peer_id,
-                ip,
+                _ip: ip,
                 public: msg.public,
                 command: msg.command,
                 _total_checksum: init.checksum(),
@@ -209,10 +221,14 @@ impl InMessage {
                     debug!("Data lenght: {}", data.len());
                     // FIXME
                     error!("Writing new file to {path:?}");
-                    fs::write(path, data).inspect_err(|e| error!("{e}"))?;
-                    self.send_seen(networker);
-
-                    self.link.set_ready();
+                    let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
+                    if written {
+                        self.send_seen(networker);
+                        self.link.set_ready();
+                    } else {
+                        self.send_abort(networker);
+                        self.link.abort();
+                    }
                     ctx.request_repaint();
                     Ok(())
                 }

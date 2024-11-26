@@ -324,23 +324,11 @@ impl Roomor {
     }
 
     fn dispatch_text(&mut self) {
-        if let Some(msg) = self.rooms.compose_message() {
-            self.back_tx
-                .send(ChatEvent::Front(FrontEvent::Message(msg)))
-                .ok();
-        }
+        self.rooms.dispatch_text();
     }
 
     fn dispatch_files(&mut self, paths: &[PathBuf]) {
-        let mut id = new_id();
-        for path in paths {
-            if let Some(link) = self.rooms.compose_file(id, path) {
-                self.back_tx
-                    .send(ChatEvent::Front(FrontEvent::Message(link)))
-                    .ok();
-            }
-            id += 1;
-        }
+        self.rooms.dispatch_files(paths);
     }
 
     fn read_events(&mut self) {
@@ -526,7 +514,9 @@ impl Roomor {
             .show(ctx, |ui| {
                 font_size = text_height(ui);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    self.draw_input_buttons(ui);
+                    ui.add_enabled_ui(self.rooms.is_able_to_send(), |ui| {
+                        self.draw_input_buttons(ui);
+                    });
                     egui::ScrollArea::vertical()
                         .min_scrolled_height(max_height)
                         .auto_shrink([false, true])
@@ -569,6 +559,7 @@ impl Roomor {
 
     fn draw_input_buttons(&mut self, ui: &mut egui::Ui) {
         let active_room = self.rooms.get_active();
+
         if active_room.mode == rooms::TextMode::Icon {
             return;
         }
@@ -580,6 +571,7 @@ impl Roomor {
             }
             #[cfg(not(target_os = "android"))]
             if is_text_empty
+                && !self.rooms.is_active_public()
                 && ui
                     .add(
                         egui::Button::new(RichText::new(egui_phosphor::regular::PAPERCLIP))
@@ -588,9 +580,7 @@ impl Roomor {
                     .clicked()
             {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                    if !self.rooms.is_active_public() {
-                        self.dispatch_files(&paths);
-                    }
+                    self.dispatch_files(&paths);
                 }
             }
             if is_text_empty
@@ -712,6 +702,7 @@ impl Roomor {
             }
 
             i.events.iter().for_each(|event| match event {
+                #[cfg(not(target_os = "android"))]
                 Event::Key {
                     key: egui::Key::Enter,
                     pressed: true,
@@ -748,7 +739,7 @@ impl Roomor {
 
         *self = Roomor {
             #[cfg(target_os = "android")]
-            android_app: Some(self.android_app.clone()),
+            android_app: self.android_app.clone(),
             ..Roomor::default(downloads_path)
         };
     }
