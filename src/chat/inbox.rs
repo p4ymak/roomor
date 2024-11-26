@@ -219,8 +219,7 @@ impl InMessage {
                 Command::File => {
                     let path = &self.link.path;
                     debug!("Data lenght: {}", data.len());
-                    // FIXME
-                    error!("Writing new file to {path:?}");
+                    debug!("Writing new file to {path:?}");
                     let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
                     if written {
                         self.send_seen(networker);
@@ -235,7 +234,7 @@ impl InMessage {
                 _ => Ok(()),
             }
         } else {
-            error!("Shards missing!");
+            debug!("Shards missing!");
             self.ask_for_missed(networker, missed);
             Err("Missing Shards".into())
         }
