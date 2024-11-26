@@ -7,7 +7,8 @@ use crate::chat::{
     message::{new_id, MAX_NAME_SIZE},
     networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
-    BackEvent, ChatEvent, FrontEvent, Recepients, TextMessage, UdpChat,
+    peers::PeerId,
+    BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
 };
 use directories::UserDirs;
 use eframe::{
@@ -48,6 +49,7 @@ pub struct UserSetup {
     pub init: bool,
     name: String,
     ip: Ipv4Addr,
+    id: PeerId,
     port: u16,
     multicast: Ipv4Addr,
     multicast_str: String,
@@ -62,10 +64,11 @@ impl Default for UserSetup {
                 Some("Couldn't get local IP!".to_string()),
             ),
         };
-
+        let id = PeerId::new(&whoami::username(), &whoami::devicename());
         UserSetup {
             init: true,
             name: whoami::username(),
+            id,
             ip,
             port: 4444,
             multicast: IP_MULTICAST_DEFAULT,
@@ -77,6 +80,9 @@ impl Default for UserSetup {
 impl UserSetup {
     pub fn ip(&self) -> Ipv4Addr {
         self.ip
+    }
+    pub fn id(&self) -> PeerId {
+        self.id
     }
     pub fn name(&self) -> &str {
         &self.name
@@ -340,8 +346,8 @@ impl Roomor {
     fn read_events(&mut self) {
         for event in self.back_rx.try_iter() {
             match event {
-                BackEvent::PeerJoined((ip, name)) => {
-                    self.rooms.peer_joined(ip, name);
+                BackEvent::PeerJoined(ip, id, name) => {
+                    self.rooms.peer_joined(ip, id, name);
                 }
                 BackEvent::PeerLeft(ip) => {
                     self.rooms.peer_left(ip);
@@ -466,22 +472,18 @@ impl Roomor {
                             "Online: {} / {}",
                             self.rooms
                                 .peers
-                                .0
+                                .ids
                                 .values()
                                 .filter(|p| p.is_online())
                                 .count(),
-                            self.rooms.peers.0.len()
+                            self.rooms.peers.ids.len()
                         ))
                         .wrap_mode(TextWrapMode::Extend),
                     );
-                    if !self.rooms.peers.0.is_empty() {
+                    if !self.rooms.peers.ids.is_empty() {
                         summary.on_hover_ui(|h| {
-                            for (ip, peer) in self.rooms.peers.0.iter() {
-                                let name = match peer.name() {
-                                    Some(name) => format!("{ip} - {name}"),
-                                    None => format!("{ip}"),
-                                };
-                                let mut label = egui::RichText::new(name);
+                            for peer in self.rooms.peers.ids.values() {
+                                let mut label = egui::RichText::new(peer.display_name());
                                 if !peer.is_online() {
                                     label = label.weak();
                                 }
@@ -738,17 +740,17 @@ impl Roomor {
     }
     fn exit(&mut self) {
         self.back_tx.send(ChatEvent::Front(FrontEvent::Exit)).ok();
+
         if let Some(handle) = self.chat_handle.take() {
             handle.join().expect("can't join chat thread on exit");
         }
-        let (front_tx, back_rx) = flume::unbounded();
-        let chat = UdpChat::new(self.user.ip(), front_tx, self.downloads_path.clone());
-        let back_tx = chat.tx();
-        self.user.init = true;
-        self.chat_init = Some(chat);
-        self.back_tx = back_tx.clone();
-        self.back_rx = back_rx;
-        self.rooms.back_tx = back_tx;
+        let downloads_path = self.downloads_path.clone();
+
+        *self = Roomor {
+            #[cfg(target_os = "android")]
+            android_app: Some(self.android_app.clone()),
+            ..Roomor::default(downloads_path)
+        };
     }
 }
 
@@ -794,7 +796,7 @@ fn pulse(tx: Sender<ChatEvent>) {
             if delta > TIMEOUT_CHECK {
                 if delta > TIMEOUT_CHECK * 2 {
                     debug!("Pulse Ping");
-                    tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+                    tx.send(ChatEvent::Front(FrontEvent::Ping(PeerId::PUBLIC)))
                         .ok();
                 }
                 last_time = now;

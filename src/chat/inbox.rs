@@ -1,9 +1,12 @@
+use crate::chat::Destination;
+
 use super::{
     file::FileLink,
     message::{CheckSum, Command, Id, Part, ShardCount, UdpMessage, CRC},
     networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
-    BackEvent, Content, Presence, Recepients, Seen, TextMessage,
+    peers::PeerId,
+    BackEvent, Content, Presence, Seen, TextMessage,
 };
 use log::{debug, error, warn};
 use range_rover::range_rover;
@@ -27,7 +30,7 @@ impl Inbox {
         self.0
             .values_mut()
             .filter(|m| {
-                m.sender == ip && !(m.link.is_aborted() || m.link.is_ready()) && m.is_old_enough()
+                m.ip == ip && !(m.link.is_aborted() || m.link.is_ready()) && m.is_old_enough()
                 // * m.attempt.max(1) as u32)
             })
             .for_each(|m| {
@@ -57,7 +60,8 @@ impl Inbox {
 pub struct InMessage {
     pub ts: SystemTime,
     pub id: Id,
-    pub sender: Ipv4Addr,
+    pub ip: Ipv4Addr,
+    pub from_peer_id: PeerId,
     pub public: bool,
     pub command: Command,
     pub _total_checksum: CheckSum,
@@ -80,7 +84,8 @@ impl InMessage {
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
-                sender: ip,
+                from_peer_id: msg.from_peer_id,
+                ip,
                 public: msg.public,
                 command: msg.command,
                 _total_checksum: init.checksum(),
@@ -182,16 +187,18 @@ impl InMessage {
                 Command::Text => {
                     let text = String::from_utf8(data)?;
                     let txt_msg = TextMessage {
+                        dest: Destination::From(self.from_peer_id),
                         timestamp: self.ts,
-                        incoming: true,
                         public: self.public,
-                        ip: self.sender,
                         id: self.id,
                         content: Content::Text(text),
                         seen: Some(Seen::One),
                     };
                     networker
-                        .send(UdpMessage::seen_msg(&txt_msg), Recepients::One(self.sender))
+                        .send(
+                            UdpMessage::seen_msg(networker.id(), &txt_msg),
+                            self.from_peer_id,
+                        )
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                     networker.handle_back_event(BackEvent::Message(txt_msg), ctx);
@@ -227,8 +234,8 @@ impl InMessage {
     pub fn send_seen(&self, networker: &mut NetWorker) {
         networker
             .send(
-                UdpMessage::seen_id(self.id, false),
-                Recepients::One(self.sender),
+                UdpMessage::seen_id(networker.id(), self.id, false),
+                self.from_peer_id,
             )
             .inspect_err(|e| error!("{e}"))
             .ok();
@@ -236,7 +243,10 @@ impl InMessage {
 
     pub fn send_abort(&self, networker: &mut NetWorker) {
         networker
-            .send(UdpMessage::abort(self.id), Recepients::One(self.sender))
+            .send(
+                UdpMessage::abort(networker.id(), self.id),
+                self.from_peer_id,
+            )
             .inspect_err(|e| error!("{e}"))
             .ok();
     }
@@ -262,7 +272,7 @@ impl InMessage {
             if self.link.is_aborted()
                 || self.link.is_ready()
                 || matches!(
-                    networker.peers.online_status(Recepients::One(self.sender)),
+                    networker.peers.online_status(self.from_peer_id),
                     Presence::Offline
                 )
             {
@@ -271,10 +281,11 @@ impl InMessage {
             debug!("Asked to repeat shards #{range:?}");
 
             self.ts = SystemTime::now();
+
             networker
                 .send(
-                    UdpMessage::ask_to_repeat(self.id, Part::AskRange(range)),
-                    Recepients::One(self.sender),
+                    UdpMessage::ask_to_repeat(networker.id(), self.id, Part::AskRange(range)),
+                    self.from_peer_id,
                 )
                 .ok();
         }

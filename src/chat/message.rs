@@ -2,19 +2,23 @@ use super::{
     file::FileLink,
     networker::{send, NetWorker, Port},
     notifier::Repaintable,
+    peers::PeerId,
     Content, Outbox, Recepients, TextMessage,
 };
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
-use log::debug;
-use std::{error::Error, fmt, net::UdpSocket, ops::RangeInclusive, sync::Arc, time::SystemTime};
+use log::{debug, error};
+use std::{
+    error::Error, fmt, mem::size_of, net::UdpSocket, ops::RangeInclusive, sync::Arc,
+    time::SystemTime,
+};
 use system_interface::fs::FileIoExt;
 
 pub const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const MAX_EMOJI_SIZE: usize = 8;
-pub const MAX_NAME_SIZE: usize = 44;
+pub const MAX_NAME_SIZE: usize = 40;
 pub const MAX_PREVIEW_CHARS: usize = 13;
-pub const DATA_LIMIT_BYTES: usize = 960;
+pub const DATA_LIMIT_BYTES: usize = 956;
 
 pub type Id = u32;
 pub type CheckSum = u16;
@@ -79,6 +83,7 @@ impl PartInit {
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct UdpMessage {
+    pub from_peer_id: PeerId,
     pub id: Id,
     pub public: bool,
     pub part: Part,
@@ -112,11 +117,12 @@ impl fmt::Display for UdpMessage {
 }
 
 impl UdpMessage {
-    pub fn new_single(command: Command, data: Vec<u8>, public: bool) -> Self {
+    pub fn new_single(from_peer_id: PeerId, command: Command, data: Vec<u8>, public: bool) -> Self {
         let id = new_id();
         let total_checksum = CRC.checksum(&data);
         let checksum = total_checksum;
         UdpMessage {
+            from_peer_id,
             id,
             checksum,
             part: Part::Single,
@@ -126,20 +132,21 @@ impl UdpMessage {
         }
     }
 
-    pub fn enter(name: &str) -> Self {
-        UdpMessage::new_single(Command::Enter, be_u8_from_str(name), true)
+    pub fn enter(from_peer_id: PeerId, name: &str) -> Self {
+        UdpMessage::new_single(from_peer_id, Command::Enter, be_u8_from_str(name), true)
     }
-    pub fn greating(name: &str) -> Self {
-        UdpMessage::new_single(Command::Greating, be_u8_from_str(name), true)
+    pub fn greating(from_peer_id: PeerId, name: &str) -> Self {
+        UdpMessage::new_single(from_peer_id, Command::Greating, be_u8_from_str(name), true)
     }
-    pub fn exit() -> Self {
-        UdpMessage::new_single(Command::Exit, vec![], true)
+    pub fn exit(from_peer_id: PeerId) -> Self {
+        UdpMessage::new_single(from_peer_id, Command::Exit, vec![], true)
     }
-    pub fn seen_msg(msg: &TextMessage) -> Self {
-        UdpMessage::seen_id(msg.id, msg.public)
+    pub fn seen_msg(from_peer_id: PeerId, msg: &TextMessage) -> Self {
+        UdpMessage::seen_id(from_peer_id, msg.id, msg.public)
     }
-    pub fn seen_id(id: Id, public: bool) -> Self {
+    pub fn seen_id(from_peer_id: PeerId, id: Id, public: bool) -> Self {
         UdpMessage {
+            from_peer_id,
             id,
             checksum: 0,
             part: Part::Single,
@@ -148,8 +155,9 @@ impl UdpMessage {
             data: vec![],
         }
     }
-    pub fn abort(id: Id) -> Self {
+    pub fn abort(from_peer_id: PeerId, id: Id) -> Self {
         UdpMessage {
+            from_peer_id,
             id,
             public: false,
             part: Part::Single,
@@ -158,8 +166,9 @@ impl UdpMessage {
             data: vec![],
         }
     }
-    pub fn ask_to_repeat(id: Id, part: Part) -> Self {
+    pub fn ask_to_repeat(from_peer_id: PeerId, id: Id, part: Part) -> Self {
         UdpMessage {
+            from_peer_id,
             id,
             public: false,
             part,
@@ -174,7 +183,6 @@ impl UdpMessage {
         sender: &mut NetWorker,
         outbox: &mut Outbox,
     ) -> Result<(), Box<dyn Error + 'static>> {
-        let recepients = Recepients::from_ip(msg.ip(), msg.public);
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
             Content::Text(text) => (Command::Text, be_u8_from_str(text)),
@@ -186,11 +194,13 @@ impl UdpMessage {
             Content::Seen => (Command::Seen, vec![]),
         };
 
+        let peer_id = msg.peer_id();
         if let Content::FileLink(link) = &msg.content {
             let count = link.size.div_ceil(DATA_LIMIT_BYTES as u64);
             debug!("Count {count}");
             let total_checksum = 0;
             let message = UdpMessage {
+                from_peer_id: sender.id(),
                 id: msg.id,
                 part: Part::Init(PartInit {
                     total_checksum,
@@ -201,8 +211,9 @@ impl UdpMessage {
                 command,
                 data,
             };
-            outbox.add(msg.ip(), message.clone());
-            sender.send(message, recepients)?;
+
+            outbox.add(peer_id, message.clone());
+            sender.send(message, peer_id)?;
             outbox.files.insert(msg.id, link.clone());
 
             Ok(())
@@ -213,6 +224,7 @@ impl UdpMessage {
             let chunks = data.chunks(DATA_LIMIT_BYTES);
             if data.len() < DATA_LIMIT_BYTES {
                 let message = UdpMessage {
+                    from_peer_id: sender.id(),
                     id: msg.id,
                     part: Part::Single,
                     public: msg.public,
@@ -221,12 +233,13 @@ impl UdpMessage {
                     data,
                 };
                 if message.command == Command::Text && !msg.is_public() {
-                    outbox.add(msg.ip(), message.clone());
+                    outbox.add(peer_id, message.clone());
                 }
-                sender.send(message, recepients)?;
+                sender.send(message, peer_id)?;
                 Ok(())
             } else {
                 let message = UdpMessage {
+                    from_peer_id: sender.id(),
                     id: msg.id,
                     part: Part::Init(PartInit {
                         total_checksum,
@@ -238,13 +251,14 @@ impl UdpMessage {
                     data: vec![],
                 };
                 if message.command == Command::Text && !msg.is_public() {
-                    outbox.add(msg.ip(), message.clone());
+                    outbox.add(peer_id, message.clone());
                 }
-                sender.send(message, recepients)?;
+                sender.send(message, peer_id)?;
 
                 for (i, chunk) in chunks.enumerate() {
                     sender.send(
                         UdpMessage {
+                            from_peer_id: sender.id(),
                             id: msg.id,
                             part: Part::Shard(i as ShardCount),
                             checksum: CRC.checksum(chunk),
@@ -252,7 +266,7 @@ impl UdpMessage {
                             command,
                             data: chunk.to_vec(),
                         },
-                        recepients,
+                        peer_id,
                     )?;
                 }
                 Ok(())
@@ -260,39 +274,52 @@ impl UdpMessage {
         }
     }
 
-    pub fn from_be_bytes(bytes: &[u8]) -> Option<Self> {
-        let mut header = u8::from_be(*bytes.first()?);
+    pub fn from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error + 'static>> {
+        let mut header = u8::from_be(*bytes.first().ok_or("Empty header")?);
         let public = (header & 1) != 0;
         header >>= 1;
         let part_n = header & 3;
         header >>= 2;
+        let mut shift = 1;
         let command = Command::from_code(header);
-        let id = u32::from_be_bytes(bytes.get(1..=4)?.try_into().ok()?);
-        let checksum = u16::from_be_bytes(bytes.get(5..=6)?.try_into().ok()?);
+        let from_peer_id =
+            PeerId(u32::read_bytes(bytes, &mut shift).inspect_err(|e| error!("PeerId {e}"))?);
+        let id = u32::read_bytes(bytes, &mut shift).inspect_err(|e| error!("MessageId {e}"))?;
+        let checksum =
+            u16::read_bytes(bytes, &mut shift).inspect_err(|e| error!("Checksum {e}"))?;
         let (part, data) = match part_n {
             1 => (
                 Part::Init(PartInit {
-                    total_checksum: u16::from_be_bytes(bytes.get(7..=8)?.try_into().ok()?),
-                    count: u64::from_be_bytes(bytes.get(9..=16)?.try_into().ok()?),
+                    total_checksum: u16::read_bytes(bytes, &mut shift)
+                        .inspect_err(|e| error!("TotalChecksum {e}"))?,
+                    count: u64::read_bytes(bytes, &mut shift)
+                        .inspect_err(|e| error!("Count {e}"))?,
                 }),
-                bytes.get(17..)?.to_owned(),
+                bytes.get(shift..).unwrap_or_default().to_owned(),
             ),
             2 => (
                 Part::AskRange(
-                    u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)
-                        ..=u64::from_be_bytes(bytes.get(15..=22)?.try_into().ok()?),
+                    u64::read_bytes(bytes, &mut shift).inspect_err(|e| error!("RangeStart {e}"))?
+                        ..=u64::read_bytes(bytes, &mut shift)
+                            .inspect_err(|e| error!("RangeEnd {e}"))?,
                 ),
-                bytes.get(23..)?.to_owned(),
+                bytes.get(shift..).unwrap_or_default().to_owned(),
             ),
             3 => (
-                Part::Shard(u64::from_be_bytes(bytes.get(7..=14)?.try_into().ok()?)),
-                bytes.get(15..)?.to_owned(),
+                Part::Shard(
+                    u64::read_bytes(bytes, &mut shift).inspect_err(|e| error!("Shard {e}"))?,
+                ),
+                bytes.get(shift..).unwrap_or_default().to_owned(),
             ),
-            _ => (Part::Single, bytes.get(7..)?.to_owned()),
+            _ => (
+                Part::Single,
+                bytes.get(shift..).unwrap_or_default().to_owned(),
+            ),
         };
         // FIXME
         // if checksum == CRC.checksum(&data) || command == Command::Repeat {
-        Some(UdpMessage {
+        Ok(UdpMessage {
+            from_peer_id,
             id,
             checksum,
             part,
@@ -317,6 +344,7 @@ impl UdpMessage {
         let header = self.public as u8 | (self.part.to_code() << 1) | (self.command.to_code() << 3);
 
         bytes.push(header.to_be());
+        bytes.extend(self.from_peer_id.0.to_be_bytes());
         bytes.extend(self.id.to_be_bytes());
         bytes.extend(self.checksum.to_be_bytes());
         match &self.part {
@@ -360,7 +388,9 @@ pub fn new_id() -> Id {
         .as_secs() as u32
 }
 
+#[allow(clippy::too_many_arguments)] // FIXME
 pub fn send_shards(
+    peer_id: PeerId,
     link: Arc<FileLink>,
     range: RangeInclusive<ShardCount>,
     id: Id,
@@ -381,6 +411,7 @@ pub fn send_shards(
             &socket,
             port,
             UdpMessage {
+                from_peer_id: peer_id,
                 id,
                 part: Part::Shard(i),
                 checksum: CRC.checksum(&data),
@@ -396,4 +427,43 @@ pub fn send_shards(
     }
 
     Ok(())
+}
+
+trait FromBytes: Sized {
+    fn from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error + 'static>>;
+    fn read_bytes(bytes: &[u8], shift: &mut usize) -> Result<Self, Box<dyn Error + 'static>> {
+        let size = size_of::<Self>();
+        let slice = bytes.get(*shift..*shift + size);
+        let value = Self::from_be_bytes(slice.ok_or("Out of Range!")?)?;
+        *shift += size;
+        Ok(value)
+    }
+}
+
+impl FromBytes for u16 {
+    fn from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error + 'static>> {
+        Ok(u16::from_be_bytes(
+            bytes
+                .try_into()
+                .inspect_err(|e| error!("[u8;{}] {e}", bytes.len()))?,
+        ))
+    }
+}
+impl FromBytes for u32 {
+    fn from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error + 'static>> {
+        Ok(u32::from_be_bytes(
+            bytes
+                .try_into()
+                .inspect_err(|e| error!("[u8;{}] {e}", bytes.len()))?,
+        ))
+    }
+}
+impl FromBytes for u64 {
+    fn from_be_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error + 'static>> {
+        Ok(u64::from_be_bytes(
+            bytes
+                .try_into()
+                .inspect_err(|e| error!("[u8;{}] {e}", bytes.len()))?,
+        ))
+    }
 }
