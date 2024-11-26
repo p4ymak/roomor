@@ -121,9 +121,28 @@ impl Rooms {
 
         let content = match text.chars().nth(0) {
             None => return None,
-            Some(' ') => Content::Big(text[1..].trim().to_string()),
-            Some('/') => Content::Icon(text[1..].trim().to_string()),
-            _ => Content::Text(text.trim().to_string()),
+            Some(' ') => {
+                let trimmed = text[1..].trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Big(trimmed.to_string())
+            }
+
+            Some('/') => {
+                let trimmed = text[1..].trim().to_string();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Icon(trimmed.to_string())
+            }
+            _ => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Text(trimmed.to_string())
+            }
         };
         Some(TextMessage::out_message(content, self.active_chat))
     }

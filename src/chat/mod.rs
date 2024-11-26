@@ -61,6 +61,7 @@ impl std::fmt::Debug for Content {
         write!(f, "content")
     }
 }
+
 #[derive(Debug)]
 pub enum BackEvent {
     PeerJoined(Ipv4Addr, PeerId, Option<String>),
