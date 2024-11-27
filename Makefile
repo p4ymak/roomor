@@ -19,7 +19,7 @@ run-on-device: jni
 	adb uninstall local.roomor || true
 
 	cd java && ./gradlew installDebug
-	adb shell am start -n local.roomor/.MainActivity
+	adb shell am start -n co.p4ymak.roomor/.MainActivity
 	adb logcat -v color -s roomor *:e
 
 clean:

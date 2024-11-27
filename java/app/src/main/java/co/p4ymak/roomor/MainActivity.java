@@ -1,4 +1,4 @@
-package local.roomor;
+package co.p4ymak.roomor;
 
 import android.os.Bundle;
 import android.util.Log;

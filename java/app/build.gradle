@@ -3,12 +3,13 @@ plugins {
 }
 
 android {
-    namespace "local.roomor"
+    namespace "co.p4ymak.roomor"
     compileSdk 32
 
     defaultConfig {
+        applicationId "co.p4ymak.roomor"
         minSdk 28
-        targetSdk 32
+        targetSdk 35
         versionCode 1
         versionName "1"
     }
