@@ -11,7 +11,7 @@
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         >
         <activity
-            android:name=".MainActivity"
+            android:name="co.p4ymak.roomor.MainActivity"
             android:resizeableActivity="true"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection|uiMode"
             android:exported="true"
@@ -33,7 +33,7 @@
     <uses-feature android:name="android.software.input_methods" />
     <uses-feature android:name="android.hardware.wifi" />
     <uses-feature android:name="android.hardware.wifi.direct" />
-
+    <uses-feature android:name="android.hardware.opengles.aep" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

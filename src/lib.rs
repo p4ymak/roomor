@@ -23,6 +23,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     let android_app = app.clone();
 
     let options = eframe::NativeOptions {
+        multisampling: 2,
         renderer: eframe::Renderer::Glow,
         event_loop_builder: Some(Box::new(move |builder| {
             builder.with_android_app(android_app);
