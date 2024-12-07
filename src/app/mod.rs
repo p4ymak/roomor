@@ -694,13 +694,13 @@ impl Roomor {
             )) {
                 self.rooms.list_go_down();
             }
-            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::Tab)) {
-                self.exit();
-            }
             if i.consume_shortcut(&KeyboardShortcut::new(
                 Modifiers::COMMAND,
                 egui::Key::Escape,
             )) {
+                self.exit();
+            }
+            if i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, egui::Key::Tab)) {
                 self.rooms.side_panel_opened = !self.rooms.side_panel_opened;
             }
 
