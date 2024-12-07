@@ -1,6 +1,6 @@
 use egui_phosphor::regular;
 
-pub const EMOJI_LIST: [&str; 84] = [
+pub const EMOJI_LIST: [&str; 96] = [
     // smiles
     regular::SMILEY,
     regular::SMILEY_WINK,
@@ -31,6 +31,7 @@ pub const EMOJI_LIST: [&str; 84] = [
     regular::COFFEE,
     regular::CARROT,
     regular::CHERRIES,
+    regular::HAMBURGER,
     regular::PEPPER,
     regular::PIZZA,
     regular::POPCORN,
@@ -44,14 +45,17 @@ pub const EMOJI_LIST: [&str; 84] = [
     regular::PENCIL,
     regular::PEN_NIB,
     regular::FEATHER,
+    regular::ARCHIVE,
     regular::GIFT,
     regular::CROWN,
     regular::MEDAL,
+    regular::TROPHY,
     regular::ARMCHAIR,
     regular::WATCH,
     regular::BACKPACK,
     regular::BRIEFCASE,
     regular::BATHTUB,
+    regular::TOILET_PAPER,
     regular::BARBELL,
     regular::BEACH_BALL,
     regular::HOCKEY,
@@ -65,6 +69,15 @@ pub const EMOJI_LIST: [&str; 84] = [
     regular::KEY,
     regular::BALLOON,
     regular::TOOTH,
+    // weather
+    regular::CLOUD,
+    regular::CLOUD_SUN,
+    regular::CLOUD_MOON,
+    regular::CLOUD_FOG,
+    regular::CLOUD_LIGHTNING,
+    regular::CLOUD_RAIN,
+    regular::CLOUD_SNOW,
+    regular::MOON,
     // places
     regular::CAR_PROFILE,
     regular::ROCKET,

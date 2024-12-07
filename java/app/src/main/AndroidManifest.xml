@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:label="Roomor"
+        android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:resizeableActivity="true"
         android:windowSoftInputMode="adjustResize"

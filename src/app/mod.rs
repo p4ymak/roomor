@@ -187,6 +187,7 @@ impl eframe::App for Roomor {
         } else {
             self.read_events();
             self.keep_alive();
+            self.handle_dnd_files(ctx);
             self.draw(ctx);
         }
 
@@ -482,22 +483,6 @@ impl Roomor {
     }
 
     fn draw(&mut self, ctx: &egui::Context) {
-        if !self.rooms.is_active_public() {
-            ctx.input(|i| {
-                if !i.raw.hovered_files.is_empty() {
-                    debug!("HOVERED");
-                }
-                if !i.raw.dropped_files.is_empty() {
-                    let paths = i
-                        .raw
-                        .dropped_files
-                        .iter()
-                        .filter_map(|f| f.path.clone())
-                        .collect::<Vec<PathBuf>>();
-                    self.dispatch_files(&paths);
-                }
-            });
-        }
         let mut font_size = 10.0;
         let max_height = ctx.input(|i| i.screen_rect.height()) * 0.5;
         egui::TopBottomPanel::bottom("text intput")
@@ -506,17 +491,26 @@ impl Roomor {
             .show_separator_line(true)
             .show(ctx, |ui| {
                 font_size = text_height(ui);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    ui.add_enabled_ui(self.rooms.is_able_to_send(), |ui| {
-                        self.draw_input_buttons(ui);
-                    });
+                if self.rooms.get_active().mode == rooms::TextMode::Icon {
                     egui::ScrollArea::vertical()
                         .min_scrolled_height(max_height)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             self.rooms.draw_input(ui);
                         });
-                });
+                } else {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                        ui.add_enabled_ui(self.rooms.is_able_to_send(), |ui| {
+                            self.draw_input_buttons(ui);
+                        });
+                        egui::ScrollArea::vertical()
+                            .min_scrolled_height(max_height)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                self.rooms.draw_input(ui);
+                            });
+                    });
+                }
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
@@ -553,9 +547,6 @@ impl Roomor {
     fn draw_input_buttons(&mut self, ui: &mut egui::Ui) {
         let active_room = self.rooms.get_active();
 
-        if active_room.mode == rooms::TextMode::Icon {
-            return;
-        }
         let is_text_empty = active_room.input.is_empty();
         ui.horizontal(|ui| {
             // FIXME hardcode scale for vertical center
@@ -658,6 +649,25 @@ impl Roomor {
                 ui.close_menu();
             }
         });
+    }
+
+    fn handle_dnd_files(&mut self, ctx: &egui::Context) {
+        if !self.rooms.is_active_public() {
+            ctx.input(|i| {
+                if !i.raw.hovered_files.is_empty() {
+                    debug!("HOVERED");
+                }
+                if !i.raw.dropped_files.is_empty() {
+                    let paths = i
+                        .raw
+                        .dropped_files
+                        .iter()
+                        .filter_map(|f| f.path.clone())
+                        .collect::<Vec<PathBuf>>();
+                    self.dispatch_files(&paths);
+                }
+            });
+        }
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {

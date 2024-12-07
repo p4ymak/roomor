@@ -16,7 +16,7 @@ apk: jni
 	cd java && ./gradlew build --stacktrace
 
 run-on-device: jni
-	adb uninstall local.roomor || true
+	adb uninstall co.p4ymak.roomor || true
 
 	cd java && ./gradlew installDebug
 	adb shell am start -n co.p4ymak.roomor/.MainActivity
