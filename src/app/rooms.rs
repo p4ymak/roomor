@@ -3,9 +3,9 @@ use crate::{
     chat::{
         file::FileLink,
         limit_text,
-        message::{Id, MAX_EMOJI_SIZE},
-        peers::{Peer, PeersMap, Presence},
-        ChatEvent, Content, FrontEvent, Recepients, TextMessage,
+        message::{new_id, Id, MAX_EMOJI_SIZE},
+        peers::{Peer, PeerId, PeersMap, Presence},
+        ChatEvent, Content, FrontEvent, TextMessage,
     },
     emoji::EMOJI_LIST,
 };
@@ -15,8 +15,16 @@ use eframe::{
 };
 use flume::Sender;
 use human_bytes::human_bytes;
-use std::{collections::BTreeMap, net::Ipv4Addr, path::Path, sync::Arc, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
+};
 use timediff::TimeDiff;
+
+type ToSend = bool;
 
 #[derive(PartialEq, Eq)]
 pub enum TextMode {
@@ -32,10 +40,10 @@ pub enum RoomAction {
 }
 
 pub struct Rooms {
-    active_chat: Recepients,
+    active_chat: PeerId,
     pub peers: PeersMap,
-    order: Vec<Recepients>,
-    chats: BTreeMap<Recepients, ChatHistory>,
+    order: Vec<PeerId>,
+    chats: BTreeMap<PeerId, ChatHistory>,
     pub side_panel_opened: bool,
     pub back_tx: Sender<ChatEvent>,
 }
@@ -43,9 +51,9 @@ pub struct Rooms {
 impl Rooms {
     pub fn new(back_tx: Sender<ChatEvent>) -> Self {
         let mut chats = BTreeMap::new();
-        chats.insert(Recepients::All, ChatHistory::new(Recepients::All));
+        chats.insert(PeerId::PUBLIC, ChatHistory::new(PeerId::PUBLIC));
         Rooms {
-            active_chat: Recepients::All,
+            active_chat: PeerId::PUBLIC,
             peers: PeersMap::new(),
             order: vec![],
             chats,
@@ -54,18 +62,37 @@ impl Rooms {
         }
     }
 
+    pub fn dispatch_text(&mut self) {
+        if let Some(msg) = self.compose_message() {
+            self.back_tx
+                .send(ChatEvent::Front(FrontEvent::Message(msg)))
+                .ok();
+            self.get_mut_active().input.clear();
+        }
+    }
+
+    pub fn dispatch_files(&mut self, paths: &[PathBuf]) {
+        let mut id = new_id();
+        for path in paths {
+            if let Some(link) = self.compose_file(id, path) {
+                self.back_tx
+                    .send(ChatEvent::Front(FrontEvent::Message(link)))
+                    .ok();
+            }
+            id += 1;
+        }
+    }
+
     pub fn clear_history(&mut self) {
         self.chats.values_mut().for_each(|h| h.clear_history());
     }
 
     pub fn get_mut_public(&mut self) -> &mut ChatHistory {
-        self.chats.get_mut(&Recepients::All).expect("Public Exists")
+        self.chats.get_mut(&PeerId(0)).expect("Public Exists")
     }
 
-    pub fn get_mut_private(&mut self, ip: Ipv4Addr) -> &mut ChatHistory {
-        self.chats
-            .entry(Recepients::One(ip))
-            .or_insert(ChatHistory::new(Recepients::One(ip)))
+    pub fn get_mut_private(&mut self, id: PeerId) -> &mut ChatHistory {
+        self.chats.entry(id).or_insert(ChatHistory::new(id))
     }
 
     pub fn get_mut_active(&mut self) -> &mut ChatHistory {
@@ -79,10 +106,7 @@ impl Rooms {
     }
 
     pub fn is_able_to_send(&self) -> bool {
-        match self.active_chat {
-            Recepients::One(_) => true,
-            _ => self.peers.0.values().any(|p| p.is_online()),
-        }
+        !self.active_chat.is_public() || self.peers.ids.values().any(|p| p.is_online())
     }
 
     pub fn is_active_public(&self) -> bool {
@@ -93,64 +117,85 @@ impl Rooms {
         if !self.is_able_to_send() {
             return None;
         }
-        let chat = self.get_mut_active();
-        let mut trimmed = chat.input.trim().to_string();
-        if chat.mode == TextMode::Big {
-            trimmed = trimmed.replace('\n', "");
-        }
-        (!trimmed.is_empty()).then_some({
-            chat.input.clear();
-            let content = match chat.mode {
-                TextMode::Normal => Content::Text(trimmed),
-                TextMode::Big => Content::Big(trimmed),
-                TextMode::Icon => Content::Icon(trimmed),
-            };
-            TextMessage::out_message(content, chat.recepients)
-        })
+        let text = &self.get_mut_active().input;
+
+        let content = match text.chars().nth(0) {
+            None => return None,
+            Some(' ') => {
+                let trimmed = text[1..].trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Big(trimmed.to_string())
+            }
+
+            Some('/') => {
+                let trimmed = text[1..].trim().to_string();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Icon(trimmed.to_string())
+            }
+            _ => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                Content::Text(trimmed.to_string())
+            }
+        };
+        Some(TextMessage::out_message(content, self.active_chat))
     }
     pub fn compose_file(&mut self, id: Id, path: &Path) -> Option<TextMessage> {
         let link = Arc::new(FileLink::from_path(id, path)?);
+
         Some(TextMessage::out_message(
             Content::FileLink(link),
             self.active_chat,
         ))
     }
 
-    pub fn peer_joined(&mut self, ip: Ipv4Addr, name: Option<String>) {
-        if self.peers.peer_joined(ip, name.as_ref()) {
-            let msg = TextMessage::in_enter(ip, name.unwrap_or(ip.to_string()));
+    pub fn peer_joined(&mut self, ip: Ipv4Addr, id: PeerId, name: Option<String>) {
+        if self.peers.peer_joined(ip, id, name.as_ref()) {
+            let msg = TextMessage::in_enter(id, name.unwrap_or(ip.to_string()));
             self.get_mut_public().history.push(msg.clone());
-            self.get_mut_private(ip).history.push(msg);
+            self.get_mut_private(id).history.push(msg);
         }
     }
 
-    pub fn peer_left(&mut self, ip: Ipv4Addr) {
-        self.get_mut_public().history.push(TextMessage::in_exit(ip));
-        self.get_mut_private(ip)
+    pub fn peer_left(&mut self, id: PeerId) {
+        self.get_mut_public().history.push(TextMessage::in_exit(id));
+
+        self.get_mut_private(id)
             .history
-            .push(TextMessage::in_exit(ip));
-        self.peers.peer_exited(ip);
+            .push(TextMessage::in_exit(id));
+        self.peers.peer_exited(id);
     }
 
     pub fn take_message(&mut self, msg: TextMessage) {
-        let recepients = Recepients::from_ip(msg.ip(), msg.is_public());
+        let peer_id = if msg.is_public() {
+            PeerId::PUBLIC
+        } else {
+            msg.peer_id()
+        };
         let target_chat = self
             .chats
-            .entry(recepients)
-            .or_insert(ChatHistory::new(recepients));
+            .entry(peer_id)
+            .or_insert(ChatHistory::new(peer_id));
         if matches!(msg.content(), Content::Seen) {
             if let Some(found) = target_chat.history.iter_mut().rfind(|m| m.id() == msg.id()) {
                 if let Content::FileLink(link) = found.content() {
                     link.set_ready();
                 }
-                match recepients {
-                    Recepients::One(_) => found.seen_private(),
-                    _ => found.seen_public_by(msg.ip()),
+                if msg.is_public() {
+                    found.seen_public_by(msg.peer_id())
+                } else {
+                    found.seen_private();
                 }
             }
         } else {
             target_chat.history.push(msg);
-            if recepients != self.active_chat {
+            if peer_id != self.active_chat {
                 target_chat.unread += 1;
             }
         }
@@ -160,8 +205,8 @@ impl Rooms {
         let mut order = self
             .chats
             .values()
-            .filter(|v| v.recepients != Recepients::All)
-            .map(|c| (c.history.last().map(|m| m.time()), c.recepients))
+            .filter(|v| !v.peer_id.is_public())
+            .map(|c| (c.history.last().map(|m| m.time()), c.peer_id))
             .collect::<Vec<_>>();
         order.sort_by(|a, b| b.0.cmp(&a.0));
         self.order = order.into_iter().map(|o| o.1).collect();
@@ -174,9 +219,14 @@ impl Rooms {
     pub fn draw_history(&self, ui: &mut egui::Ui) -> RoomAction {
         if !self.side_panel_opened {
             ui.vertical_centered(|ui| {
-                let name = match self.active_chat {
-                    Recepients::One(ip) => self.peers.0.get(&ip).expect("Peer exists").rich_name(),
-                    _ => self.peers.rich_public(),
+                let name = if self.active_chat.is_public() {
+                    self.peers.rich_public()
+                } else {
+                    self.peers
+                        .ids
+                        .get(&self.active_chat)
+                        .expect("Peer exists")
+                        .rich_name()
                 };
                 ui.label(name);
             });
@@ -189,7 +239,7 @@ impl Rooms {
         space(ui, 0.2);
         if self
             .chats
-            .get_mut(&Recepients::All)
+            .get_mut(&PeerId::PUBLIC)
             .expect("Public exists")
             .draw_list_entry(
                 ui,
@@ -198,7 +248,7 @@ impl Rooms {
                 self.side_panel_opened,
             )
         {
-            self.set_active(Recepients::All);
+            self.set_active(PeerId::PUBLIC);
         }
         space(ui, 0.5);
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -227,10 +277,14 @@ impl Rooms {
 
     pub fn draw_input(&mut self, ui: &mut egui::Ui) {
         let status = self.peers.online_status(self.active_chat);
-        self.chats
+        let to_send = self
+            .chats
             .get_mut(&self.active_chat)
             .expect("Active Exists")
             .draw_input(ui, status);
+        if to_send {
+            self.dispatch_text();
+        }
     }
     pub fn side_panel_toggle(&mut self, ui: &mut egui::Ui) {
         let side_ico = egui_phosphor::regular::SIDEBAR;
@@ -241,7 +295,7 @@ impl Rooms {
     }
 
     pub fn list_go_up(&mut self) {
-        let active = if self.active_chat == Recepients::All {
+        let active = if self.active_chat.is_public() {
             self.order.last().cloned().unwrap_or_default()
         } else {
             let active_id = self
@@ -250,11 +304,11 @@ impl Rooms {
                 .position(|k| k == &self.active_chat)
                 .unwrap_or_default();
             match active_id {
-                0 => Recepients::All,
+                0 => PeerId::PUBLIC,
                 _ => self
                     .order
                     .get(active_id.saturating_sub(1))
-                    .unwrap_or(&Recepients::All)
+                    .unwrap_or(&PeerId::PUBLIC)
                     .to_owned(),
             }
         };
@@ -262,7 +316,7 @@ impl Rooms {
     }
 
     pub fn list_go_down(&mut self) {
-        let active = if self.active_chat == Recepients::All {
+        let active = if self.active_chat.is_public() {
             self.order.first().cloned().unwrap_or_default()
         } else {
             let active_id = self
@@ -272,41 +326,41 @@ impl Rooms {
                 .unwrap_or_default();
             self.order
                 .get(active_id.saturating_add(1))
-                .unwrap_or(&Recepients::All)
+                .unwrap_or(&PeerId::PUBLIC)
                 .to_owned()
         };
         self.set_active(active);
     }
 
-    fn set_active(&mut self, recepients: Recepients) {
-        self.active_chat = recepients;
-        if let Recepients::All = recepients {
-            self.peers.0.values_mut().for_each(|p| {
+    fn set_active(&mut self, peer_id: PeerId) {
+        self.active_chat = peer_id;
+        if peer_id.is_public() {
+            self.peers.ids.values_mut().for_each(|p| {
                 if !p.is_offline() {
                     p.set_presence(Presence::Unknown);
                 }
             });
         }
         self.back_tx
-            .send(ChatEvent::Front(FrontEvent::Ping(recepients)))
+            .send(ChatEvent::Front(FrontEvent::Ping(peer_id)))
             .ok();
 
         self.get_mut_active().unread = 0;
     }
 
     pub fn update_peers_online(&mut self, tx: &Sender<ChatEvent>) {
-        self.peers.0.values_mut().for_each(|p| {
+        self.peers.ids.values_mut().for_each(|p| {
             if !p.is_offline() {
                 p.set_presence(Presence::Unknown);
             }
         });
-        tx.send(ChatEvent::Front(FrontEvent::Ping(Recepients::All)))
+        tx.send(ChatEvent::Front(FrontEvent::Ping(PeerId::PUBLIC)))
             .ok();
     }
 }
 
 pub struct ChatHistory {
-    recepients: Recepients,
+    peer_id: PeerId,
     pub mode: TextMode,
     pub input: String,
     history: Vec<TextMessage>,
@@ -314,9 +368,9 @@ pub struct ChatHistory {
 }
 
 impl ChatHistory {
-    pub fn new(recepients: Recepients) -> Self {
+    pub fn new(peer_id: PeerId) -> Self {
         ChatHistory {
-            recepients,
+            peer_id,
             mode: TextMode::Normal,
             input: String::new(),
             history: vec![],
@@ -341,7 +395,7 @@ impl ChatHistory {
             .stick_to_bottom(true)
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                if !self.recepients.is_public() {
+                if !self.peer_id.is_public() {
                     ui.interact(
                         ui.clip_rect(),
                         egui::Id::new("context menu"),
@@ -349,10 +403,7 @@ impl ChatHistory {
                     )
                     .context_menu(|ui| {
                         if ui
-                            .button(format!(
-                                "{}  Send Files",
-                                egui_phosphor::regular::FILE_ARROW_UP
-                            ))
+                            .button(format!("{}  Send Files", egui_phosphor::regular::PAPERCLIP))
                             .clicked()
                         {
                             action = RoomAction::File;
@@ -368,16 +419,20 @@ impl ChatHistory {
                     });
                 }
                 self.history.iter().for_each(|m| {
-                    let peer = m.is_incoming().then_some(peers.0.get(&m.ip())).flatten();
+                    let peer = m
+                        .is_incoming()
+                        .then_some(peers.ids.get(&m.peer_id()))
+                        .flatten();
                     m.draw(ui, peer, peers);
                 });
             });
         action
     }
-    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) {
-        ui.visuals_mut().clip_rect_margin = 0.0;
-        let chat_interactive = !(self.recepients == Recepients::All && status != Presence::Online);
 
+    pub fn draw_input(&mut self, ui: &mut egui::Ui, status: Presence) -> ToSend {
+        let mut to_send = false;
+        ui.visuals_mut().clip_rect_margin = 0.0;
+        let chat_interactive = !(self.peer_id.is_public() && status != Presence::Online);
         self.mode = if self.input.starts_with(' ') {
             TextMode::Big
         } else if self.input.starts_with('/') {
@@ -402,36 +457,49 @@ impl ChatHistory {
             );
         }
         if self.mode == TextMode::Icon {
-            self.draw_input_emoji(ui);
+            to_send = self.draw_input_emoji(ui);
         } else {
+            let return_key = if cfg!(not(target_os = "android")) {
+                Some(KeyboardShortcut::new(Modifiers::SHIFT, egui::Key::Enter))
+            } else {
+                Some(KeyboardShortcut::new(Modifiers::NONE, egui::Key::Enter))
+            };
             let text_input = ui.add(
                 egui::TextEdit::multiline(&mut self.input)
                     .frame(false)
-                    .desired_rows(if self.mode == TextMode::Normal { 4 } else { 1 })
+                    .desired_rows(1)
+                    // .desired_rows(
+                    //     if !cfg!(target_os = "android") && self.mode == TextMode::Normal {
+                    //         4
+                    //     } else {
+                    //         1
+                    //     },
+                    // )
                     .desired_width(ui.available_rect_before_wrap().width())
-                    .interactive(chat_interactive)
+                    // .interactive(chat_interactive)
                     .cursor_at_end(true)
-                    .return_key(Some(KeyboardShortcut::new(
-                        Modifiers::SHIFT,
-                        egui::Key::Enter,
-                    ))),
+                    .return_key(return_key),
             );
+
             text_input.request_focus();
+
             if text_input.secondary_clicked() && chat_interactive {
                 self.input = "/".to_string();
             }
         }
+        to_send
     }
 
-    fn draw_input_emoji(&mut self, ui: &mut egui::Ui) {
+    fn draw_input_emoji(&mut self, ui: &mut egui::Ui) -> ToSend {
+        let mut to_send = false;
         ui.horizontal_wrapped(|ui| {
             for emoji in EMOJI_LIST {
                 let icon = ui.add(egui::Button::new(emoji).frame(false));
                 if icon.clicked() {
-                    self.input = emoji.to_string();
-                    emulate_enter(ui);
-                }
-                if icon.secondary_clicked() {
+                    self.input.push_str(emoji);
+                    to_send = true;
+                    log::debug!("EMOJI"); //DEBUG
+                } else if icon.secondary_clicked() {
                     self.input.clear();
                 }
             }
@@ -439,33 +507,18 @@ impl ChatHistory {
                 self.input.clear();
             }
         });
+        to_send
     }
 
     fn draw_list_entry(
         &mut self,
         ui: &mut egui::Ui,
-        active_chat: &mut Recepients,
+        active_chat: &mut PeerId,
         peers: &PeersMap,
         side_panel_opened: bool,
     ) -> bool {
-        let (name, color) = match self.recepients {
-            Recepients::One(ip) => {
-                if let Some(peer) = peers.0.get(&ip) {
-                    (
-                        peers.get_display_name(ip),
-                        if peer.is_online() {
-                            ui.visuals().strong_text_color()
-                        } else if peer.is_offline() {
-                            ui.visuals().weak_text_color()
-                        } else {
-                            ui.visuals().text_color()
-                        },
-                    )
-                } else {
-                    return false;
-                }
-            }
-            _ => (PUBLIC.to_string(), {
+        let (name, color) = if self.peer_id.is_public() {
+            (PUBLIC.to_string(), {
                 if peers.any_online() {
                     ui.visuals().strong_text_color()
                 } else if peers.all_offline() {
@@ -473,7 +526,20 @@ impl ChatHistory {
                 } else {
                     ui.visuals().text_color()
                 }
-            }),
+            })
+        } else if let Some(peer) = peers.ids.get(&self.peer_id) {
+            (
+                peer.display_name(),
+                if peer.is_online() {
+                    ui.visuals().strong_text_color()
+                } else if peer.is_offline() {
+                    ui.visuals().weak_text_color()
+                } else {
+                    ui.visuals().text_color()
+                },
+            )
+        } else {
+            return false;
         };
 
         let max_rect = ui.max_rect();
@@ -485,7 +551,7 @@ impl ChatHistory {
             egui::Sense::click(),
         );
 
-        let is_active = *active_chat == self.recepients;
+        let is_active = *active_chat == self.peer_id;
         let active_fg = ui.visuals().widgets.hovered.fg_stroke;
         let inactive_fg = ui.visuals().widgets.inactive.fg_stroke;
         let stroke_width = stroke_width(ui);
@@ -549,12 +615,12 @@ impl ChatHistory {
                 hover_lines.push(format!("Last message {}", ago));
             }
         }
-        if let Recepients::One(ip) = self.recepients {
-            let peer = peers.0.get(&ip).expect("Peer exists");
+        if !self.peer_id.is_public() {
+            let peer = peers.ids.get(&self.peer_id).expect("Peer exists");
             if let Some(ago) = pretty_ago(peer.last_time()) {
                 hover_lines.push(format!("Last seen {}", ago));
             }
-            hover_lines.push(format!("{ip}"));
+            hover_lines.push(format!("{}", peer.ip()));
         }
         if !hover_lines.is_empty() {
             response.on_hover_ui_at_pointer(|ui| {
@@ -613,7 +679,7 @@ impl TextMessage {
                 .show(line, |ui| {
                     if let Some(peer) = incoming {
                         ui.vertical(|v| match self.content() {
-                            Content::Ping(_) => {
+                            Content::Ping(..) => {
                                 v.horizontal(|h| {
                                     h.label(peer.rich_name())
                                         .on_hover_text_at_pointer(peer.ip().to_string());
@@ -650,8 +716,8 @@ impl TextMessage {
                 if !seen_by.is_empty() {
                     ui.label("");
                     ui.label("Received by:");
-                    for ip in seen_by.iter() {
-                        if let Some(peer) = peers.0.get(ip) {
+                    for peer_id in seen_by.iter() {
+                        if let Some(peer) = peers.ids.get(peer_id) {
                             ui.label(peer.rich_name());
                         }
                     }
@@ -761,7 +827,7 @@ pub fn emulate_enter(ui: &egui::Ui) {
         repeat: false,
         modifiers: Default::default(),
     };
-    ui.ctx().input_mut(|w| w.raw.events.push(event));
+    ui.ctx().input_mut(|w| w.events.push(event));
 }
 
 pub fn space(ui: &mut egui::Ui, value: f32) {

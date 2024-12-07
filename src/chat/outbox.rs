@@ -1,14 +1,15 @@
-use std::{collections::BTreeMap, net::Ipv4Addr, sync::Arc, time::SystemTime};
+use std::{collections::BTreeMap, sync::Arc, time::SystemTime};
 
 use super::{
     file::FileLink,
     message::{Id, UdpMessage},
     networker::TIMEOUT_CHECK,
+    peers::PeerId,
 };
 
 #[derive(Default)]
 pub struct Outbox {
-    pub texts: BTreeMap<Ipv4Addr, Vec<OutMessage>>,
+    pub texts: BTreeMap<PeerId, Vec<OutMessage>>,
     pub files: BTreeMap<Id, Arc<FileLink>>,
 }
 
@@ -28,26 +29,26 @@ impl OutMessage {
     }
 }
 impl Outbox {
-    pub fn add(&mut self, ip: Ipv4Addr, msg: UdpMessage) {
+    pub fn add(&mut self, peer_id: PeerId, msg: UdpMessage) {
         self.texts
-            .entry(ip)
+            .entry(peer_id)
             .and_modify(|h| h.push(OutMessage::new(msg.clone())))
             .or_insert(vec![OutMessage::new(msg)]);
     }
-    pub fn remove(&mut self, ip: Ipv4Addr, id: Id) {
+    pub fn remove(&mut self, peer_id: PeerId, id: Id) {
         self.texts
-            .entry(ip)
+            .entry(peer_id)
             .and_modify(|h| h.retain(|m| m.id() != id));
     }
-    pub fn get(&self, ip: Ipv4Addr, id: Id) -> Option<&UdpMessage> {
+    pub fn get(&self, peer_id: PeerId, id: Id) -> Option<&UdpMessage> {
         self.texts
-            .get(&ip)
+            .get(&peer_id)
             .and_then(|h| h.iter().find(|m| m.id() == id))
             .map(|m| &m.msg)
     }
-    pub fn undelivered(&mut self, ip: Ipv4Addr) -> Vec<&UdpMessage> {
+    pub fn undelivered(&mut self, id: PeerId) -> Vec<&UdpMessage> {
         let now = SystemTime::now();
-        if let Some(history) = self.texts.get_mut(&ip) {
+        if let Some(history) = self.texts.get_mut(&id) {
             history
                 .iter_mut()
                 .filter_map(|msg| {

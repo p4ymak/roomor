@@ -38,7 +38,6 @@ impl Notifier {
             d_bus,
         }
     }
-
     pub fn play_sound(&self) {
         if let Some(audio) = &self.audio {
             let mix = SineWave::new(432.0)

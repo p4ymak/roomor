@@ -15,15 +15,14 @@ use self::{
     outbox::Outbox,
 };
 use crate::{app::UserSetup, chat::peers::Presence};
-use directories::UserDirs;
 use eframe::Result;
 use flume::{Receiver, Sender};
 use inbox::Inbox;
 use log::error;
 use message::{Command, Id, UdpMessage};
+use peers::PeerId;
 use std::{
     error::Error,
-    fs,
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
     path::PathBuf,
@@ -39,13 +38,6 @@ pub enum Recepients {
     All,
 }
 impl Recepients {
-    pub fn from_ip(ip: Ipv4Addr, public: bool) -> Self {
-        if !public {
-            Recepients::One(ip)
-        } else {
-            Recepients::All
-        }
-    }
     pub fn is_public(&self) -> bool {
         matches!(self, Recepients::All)
     }
@@ -69,16 +61,17 @@ impl std::fmt::Debug for Content {
         write!(f, "content")
     }
 }
+
 #[derive(Debug)]
 pub enum BackEvent {
-    PeerJoined((Ipv4Addr, Option<String>)),
-    PeerLeft(Ipv4Addr),
+    PeerJoined(Ipv4Addr, PeerId, Option<String>),
+    PeerLeft(PeerId),
     Message(TextMessage),
 }
 
 #[derive(Debug)]
 pub enum FrontEvent {
-    Ping(Recepients),
+    Ping(PeerId),
     Exit,
     Message(TextMessage),
 }
@@ -86,17 +79,18 @@ pub enum FrontEvent {
 #[derive(Debug)]
 pub enum ChatEvent {
     Front(FrontEvent),
-    Incoming((Ipv4Addr, UdpMessage)),
+    Incoming(Ipv4Addr, UdpMessage),
 }
 
 pub struct UdpChat {
     pub name: String,
+    pub id: PeerId,
     tx: Sender<ChatEvent>,
     rx: Receiver<ChatEvent>,
     networker: NetWorker,
     outbox: Outbox,
     inbox: Inbox,
-    downloads_path: PathBuf,
+    pub downloads_path: PathBuf,
     thread_handle: Option<JoinHandle<()>>,
 }
 impl Drop for UdpChat {
@@ -109,16 +103,25 @@ impl Drop for UdpChat {
 #[derive(Debug, Clone)]
 pub enum Seen {
     One,
-    Many(Vec<Ipv4Addr>),
+    Many(Vec<PeerId>),
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum Destination {
+    From(PeerId),
+    To(PeerId),
+}
+impl Destination {
+    pub fn is_incoming(&self) -> bool {
+        matches!(self, Destination::From(_))
+    }
+}
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TextMessage {
     timestamp: SystemTime,
-    incoming: bool,
     public: bool,
-    ip: Ipv4Addr,
+    dest: Destination,
     id: Id,
     content: Content,
     seen: Option<Seen>,
@@ -127,21 +130,19 @@ impl TextMessage {
     pub fn logo() -> Self {
         TextMessage {
             timestamp: SystemTime::now(),
-            incoming: true,
             public: true,
-            ip: Ipv4Addr::UNSPECIFIED,
+            dest: Destination::From(PeerId::PUBLIC),
             id: 0,
             content: Content::Big(String::from("RMЯ")),
             seen: Some(Seen::One),
         }
     }
 
-    pub fn from_udp(ip: Ipv4Addr, msg: &UdpMessage, incoming: bool) -> Self {
+    pub fn from_udp(msg: &UdpMessage) -> Self {
         TextMessage {
             timestamp: SystemTime::now(),
-            incoming,
             public: msg.public,
-            ip,
+            dest: Destination::From(msg.from_peer_id),
             id: msg.id,
             content: match msg.command {
                 Command::Enter => Content::Ping(msg.read_text()),
@@ -163,16 +164,15 @@ impl TextMessage {
                 Command::Seen => Content::Seen,
                 _ => Content::Empty,
             },
-            seen: incoming.then_some(Seen::One),
+            seen: Some(Seen::One),
         }
     }
 
     pub fn from_inmsg(inmsg: &InMessage) -> Self {
         TextMessage {
             timestamp: inmsg.ts,
-            incoming: true,
             public: inmsg.public,
-            ip: inmsg.sender,
+            dest: Destination::From(inmsg.from_peer_id),
             id: inmsg.id,
             content: Content::FileLink(inmsg.link.clone()),
             seen: Some(Seen::One),
@@ -183,55 +183,51 @@ impl TextMessage {
         self.public
     }
     pub fn is_incoming(&self) -> bool {
-        self.incoming
+        self.dest.is_incoming()
     }
 
-    pub fn in_enter(ip: Ipv4Addr, name: String) -> Self {
+    pub fn in_enter(peer_id: PeerId, name: String) -> Self {
         TextMessage {
             timestamp: SystemTime::now(),
-            incoming: true,
             public: true,
-            ip,
+            dest: Destination::From(peer_id),
             id: 0,
             content: Content::Ping(name),
             seen: Some(Seen::One),
         }
     }
 
-    pub fn out_message(content: Content, recipients: Recepients) -> Self {
-        let (public, ip) = match recipients {
-            Recepients::One(ip) => (false, ip),
-            _ => (true, Ipv4Addr::BROADCAST), //FIXME ??
-        };
+    pub fn out_message(content: Content, peer_id: PeerId) -> Self {
         let id = match content {
             Content::FileLink(ref link) => link.id(),
             _ => new_id(),
         };
         TextMessage {
             timestamp: SystemTime::now(),
-            incoming: false,
-            public,
-            ip,
+            public: peer_id.is_public(),
+            dest: Destination::To(peer_id),
             id,
             content,
             seen: None,
         }
     }
 
-    pub fn in_exit(ip: Ipv4Addr) -> Self {
+    pub fn in_exit(peer_id: PeerId) -> Self {
         TextMessage {
             timestamp: SystemTime::now(),
-            incoming: true,
             public: true,
-            ip,
+            dest: Destination::From(peer_id),
             id: 0,
             content: Content::Exit,
             seen: Some(Seen::One),
         }
     }
 
-    pub fn ip(&self) -> Ipv4Addr {
-        self.ip
+    pub fn peer_id(&self) -> PeerId {
+        match self.dest {
+            Destination::From(id) => id,
+            Destination::To(id) => id,
+        }
     }
     pub fn id(&self) -> Id {
         self.id
@@ -239,17 +235,17 @@ impl TextMessage {
     pub fn seen_private(&mut self) {
         self.seen = Some(Seen::One);
     }
-    pub fn seen_public_by(&mut self, ip: Ipv4Addr) {
+    pub fn seen_public_by(&mut self, id: PeerId) {
         if let Some(Seen::Many(peers)) = &mut self.seen {
-            peers.push(ip);
+            peers.push(id);
         } else {
-            self.seen = Some(Seen::Many(vec![ip]));
+            self.seen = Some(Seen::Many(vec![id]));
         }
     }
     pub fn is_seen(&self) -> bool {
         self.seen.is_some()
     }
-    pub fn is_seen_by(&self) -> &[Ipv4Addr] {
+    pub fn is_seen_by(&self) -> &[PeerId] {
         if let Some(Seen::Many(peers)) = &self.seen {
             peers
         } else {
@@ -286,18 +282,13 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>, downloads_path: PathBuf) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
         let sender = NetWorker::new(ip, front_tx);
-        let downloads_path = UserDirs::new()
-            .unwrap()
-            .download_dir()
-            .unwrap()
-            .join("Roomor");
-        fs::create_dir_all(&downloads_path).ok(); // FIXME
 
         UdpChat {
             networker: sender,
+            id: PeerId::default(),
             name: String::new(),
             tx,
             rx,
@@ -312,7 +303,9 @@ impl UdpChat {
     }
     pub fn prelude(&mut self, user: &UserSetup) -> Result<(), Box<dyn Error + 'static>> {
         self.name = user.name().to_string();
+        self.id = user.id();
         self.networker.port = user.port();
+        self.networker.set_id(user.id());
         self.networker.name = user.name().to_string();
         self.networker.connect(user.multicast())?;
         self.listen();
@@ -321,7 +314,7 @@ impl UdpChat {
 
     pub fn run(&mut self, ctx: &impl Repaintable) {
         self.networker
-            .send(UdpMessage::enter(&self.name), Recepients::All)
+            .send(UdpMessage::enter(self.id, &self.name), PeerId::PUBLIC)
             .inspect_err(|e| error!("{e}"))
             .ok();
         self.receive(ctx);
@@ -329,7 +322,7 @@ impl UdpChat {
 
     fn listen(&mut self) {
         self.thread_handle = self.networker.socket.as_ref().map(|socket| {
-            let local_ip = self.networker.ip;
+            let local_id = self.networker.id(); // FIXME maybe need update
             let socket = Arc::clone(socket);
             let receiver = self.tx.clone();
             thread::Builder::new()
@@ -341,12 +334,17 @@ impl UdpChat {
                             socket.recv_from(&mut buf)
                         {
                             let ip = *src_addr_v4.ip();
-                            if let Some(message) =
-                                UdpMessage::from_be_bytes(&buf[..number_of_bytes])
+                            if let Ok(message) = UdpMessage::from_be_bytes(&buf[..number_of_bytes])
                             {
-                                if ip != local_ip {
-                                    receiver.send(ChatEvent::Incoming((ip, message))).ok();
+                                log::debug!(
+                                    "{:?} From PeerId {}",
+                                    message.command,
+                                    message.from_peer_id.0
+                                );
+                                if message.from_peer_id != local_id {
+                                    receiver.send(ChatEvent::Incoming(ip, message)).ok();
                                 } else if message.command == Command::Exit {
+                                    #[cfg(not(target_os = "android"))] // FIXME
                                     break;
                                 }
                             }
@@ -369,7 +367,8 @@ impl UdpChat {
                         ControlFlow::Break(_) => break,
                     }
                 }
-                ChatEvent::Incoming((r_ip, r_msg)) => {
+                ChatEvent::Incoming(r_ip, r_msg) => {
+                    let peer_id = r_msg.from_peer_id;
                     self.networker.handle_message(
                         &mut self.inbox,
                         &mut self.outbox,
@@ -379,11 +378,12 @@ impl UdpChat {
                         &self.downloads_path,
                     );
                     self.inbox
-                        .wake_for_missed_one(&mut self.networker, ctx, r_ip);
+                        .wake_for_missed_one(&mut self.networker, ctx, peer_id);
                 }
             }
         }
     }
+    #[allow(dead_code)]
     pub fn downloads_path(&self) -> PathBuf {
         self.downloads_path.clone()
     }

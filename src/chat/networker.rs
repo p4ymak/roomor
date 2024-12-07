@@ -8,7 +8,7 @@ use super::{
     file::FileLink,
     message::{Id, UdpMessage},
     notifier::Repaintable,
-    peers::PeersMap,
+    peers::{PeerId, PeersMap},
     BackEvent, Content, FrontEvent, Inbox, Outbox, Recepients,
 };
 use flume::Sender;
@@ -31,24 +31,32 @@ pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 pub type Port = u16;
 
 pub struct NetWorker {
+    id: PeerId,
     pub name: String,
     pub socket: Option<Arc<UdpSocket>>,
-    pub ip: Ipv4Addr,
+    pub _ip: Ipv4Addr,
     pub port: Port,
     pub peers: PeersMap,
     pub front_tx: Sender<BackEvent>,
 }
 
 impl NetWorker {
-    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(_ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
         NetWorker {
+            id: PeerId::default(),
             name: String::new(),
             socket: None,
-            ip,
+            _ip,
             port: 4444,
             peers: PeersMap::new(),
             front_tx,
         }
+    }
+    pub fn set_id(&mut self, id: PeerId) {
+        self.id = id;
+    }
+    pub fn id(&self) -> PeerId {
+        self.id
     }
     pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.port))?;
@@ -60,13 +68,26 @@ impl NetWorker {
         Ok(())
     }
 
-    pub fn send(&self, message: UdpMessage, addrs: Recepients) -> std::io::Result<usize> {
+    pub fn send(&self, message: UdpMessage, peer_id: PeerId) -> std::io::Result<usize> {
+        let recepients = if message.public {
+            Recepients::All
+        } else {
+            let ip = self
+                .peers
+                .ids
+                .get(&peer_id)
+                .map(|p| p.ip())
+                .expect("Peer doesn't exist!");
+            Recepients::One(ip)
+        };
         if let Some(socket) = &self.socket {
-            send(socket, self.port, message, addrs)
+            debug!("Send to ID: {} IPs: {:?}", peer_id.0, recepients);
+            send(socket, self.port, message, recepients)
         } else {
             Ok(0)
         }
     }
+
     pub fn send_shards(
         &self,
         link: Arc<FileLink>,
@@ -79,32 +100,33 @@ impl NetWorker {
             let socket = socket.clone();
             let port = self.port;
             let ctx = ctx.clone();
+            let peer_id = self.id();
 
             thread::Builder::new()
                 .name("shard_sender".to_string())
-                .spawn(
-                    move || match send_shards(link, range, id, recepients, socket, port, ctx) {
+                .spawn(move || {
+                    match send_shards(peer_id, link, range, id, recepients, socket, port, ctx) {
                         Ok(_) => (),
                         Err(err) => error!("{err}"),
-                    },
-                )
+                    }
+                })
                 .ok();
         }
     }
 
     pub fn handle_back_event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
         match &event {
-            BackEvent::PeerJoined((ref ip, ref user_name)) => {
-                let new_comer = self.peers.peer_joined(*ip, user_name.clone());
+            BackEvent::PeerJoined(ref ip, ref peer_id, ref user_name) => {
+                let new_comer = self.peers.peer_joined(*ip, *peer_id, user_name.as_ref());
                 if new_comer {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(*ip))
+                    self.send(UdpMessage::greating(self.id, &self.name), *peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 }
                 ctx.request_repaint();
             }
-            BackEvent::PeerLeft(ip) => {
-                self.peers.remove(ip);
+            BackEvent::PeerLeft(peer_id) => {
+                self.peers.peer_exited(*peer_id);
                 ctx.request_repaint();
             }
             BackEvent::Message(msg) => {
@@ -112,7 +134,7 @@ impl NetWorker {
                     ctx.request_repaint();
                 } else {
                     let text = msg.get_text();
-                    let name = self.peers.get_display_name(msg.ip());
+                    let name = self.peers.get_display_name(msg.peer_id());
                     let notification_text = format!("{name}: {text}");
                     ctx.notify(&notification_text);
                 }
@@ -136,15 +158,15 @@ impl NetWorker {
                 self.front_tx.send(BackEvent::Message(msg)).ok();
                 ctx.request_repaint();
             }
-            FrontEvent::Ping(recepients) => {
-                debug!("Ping {recepients:?}");
-                self.send(UdpMessage::enter(&self.name), recepients)
+            FrontEvent::Ping(peer_id) => {
+                debug!("Ping {peer_id:?}");
+                self.send(UdpMessage::enter(self.id, &self.name), peer_id)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
             }
             FrontEvent::Exit => {
                 debug!("I'm Exit");
-                self.send(UdpMessage::exit(), Recepients::All)
+                self.send(UdpMessage::exit(self.id()), PeerId::PUBLIC)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
 
@@ -163,7 +185,8 @@ impl NetWorker {
         r_msg: UdpMessage,
         downloads_path: &Path,
     ) {
-        if r_ip == self.ip {
+        if r_msg.from_peer_id == self.id {
+            debug!("Loop");
             return;
         }
         // debug!("Received {:?} from {r_ip}", r_msg.command);
@@ -171,32 +194,47 @@ impl NetWorker {
 
         match r_msg.command {
             Command::Enter | Command::Greating => {
-                let user_name = String::from_utf8_lossy(&r_msg.data);
+                let user_name = r_msg.read_text();
+
                 self.handle_back_event(
-                    BackEvent::PeerJoined((r_ip, Some(user_name.to_string()))),
+                    BackEvent::PeerJoined(r_ip, r_msg.from_peer_id, Some(user_name)),
                     ctx,
                 );
                 if r_msg.command == Command::Enter {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
+                    self.send(
+                        UdpMessage::greating(self.id, &self.name),
+                        r_msg.from_peer_id,
+                    )
+                    .inspect_err(|e| error!("{e}"))
+                    .ok();
+                }
+
+                for undelivered in outbox.undelivered(r_msg.from_peer_id) {
+                    self.send(undelivered.clone(), r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 }
-                for undelivered in outbox.undelivered(r_ip) {
-                    self.send(undelivered.clone(), Recepients::One(r_ip))
-                        .inspect_err(|e| error!("{e}"))
-                        .ok();
-                }
+
+                // } else {
+                //     self.send(
+                //         UdpMessage::greating(self.id, &self.name),
+                //         Recepients::One(r_ip),
+                //     )
+                //     .inspect_err(|e| error!("{e}"))
+                //     .ok();
+                // }
             }
 
             Command::Exit => {
-                self.handle_back_event(BackEvent::PeerLeft(r_ip), ctx);
+                self.handle_back_event(BackEvent::PeerLeft(r_msg.from_peer_id), ctx);
+                inbox.peer_left(r_msg.from_peer_id);
             }
 
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
                 message::Part::Single => {
-                    let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
-                    self.incoming(r_ip); // FIXME
-                    self.send(UdpMessage::seen_msg(&txt_msg), Recepients::One(r_ip))
+                    let txt_msg = TextMessage::from_udp(&r_msg);
+                    self.incoming(r_msg.from_peer_id, r_ip); // FIXME
+                    self.send(UdpMessage::seen_msg(self.id, &txt_msg), r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                     self.handle_back_event(BackEvent::Message(txt_msg), ctx);
@@ -220,7 +258,7 @@ impl NetWorker {
                     if let Some(inmsg) = inbox.get_mut(&r_id) {
                         inmsg.insert(count, r_msg, self, ctx);
                     } else {
-                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                        self.send(UdpMessage::abort(self.id, r_id), r_msg.from_peer_id)
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                     }
@@ -231,9 +269,9 @@ impl NetWorker {
 
             Command::Seen => {
                 debug!("SEEN! {}", r_id);
-                let txt_msg = TextMessage::from_udp(r_ip, &r_msg, true);
-                self.incoming(r_ip);
-                outbox.remove(r_ip, txt_msg.id());
+                let txt_msg = TextMessage::from_udp(&r_msg);
+                self.incoming(r_msg.from_peer_id, r_ip);
+                outbox.remove(r_msg.from_peer_id, txt_msg.id());
                 outbox.files.remove(&r_id);
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
@@ -243,38 +281,42 @@ impl NetWorker {
                     msg.link.abort();
                 }
                 // inbox.remove(&r_id);
-                outbox.remove(r_ip, r_id);
+
+                outbox.remove(r_msg.from_peer_id, r_id);
                 if let Some(link) = outbox.files.get(&r_id) {
                     link.abort();
                 }
                 outbox.files.remove(&r_id);
             }
             Command::Error => {
-                self.incoming(r_ip);
+                self.incoming(r_msg.from_peer_id, r_ip);
                 self.send(
                     UdpMessage::new_single(
+                        self.id,
                         Command::AskToRepeat,
                         r_msg.id.to_be_bytes().to_vec(),
                         r_msg.public,
                     ),
-                    Recepients::One(r_ip),
+                    r_msg.from_peer_id,
                 )
                 .inspect_err(|e| error!("{e}"))
                 .ok();
             }
 
             Command::AskToRepeat => {
-                self.incoming(r_ip);
+                self.incoming(r_msg.from_peer_id, r_ip);
                 debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
+                let mut not_found_text = false;
+                let mut not_found_file = false;
                 if r_id == 0 {
-                    self.send(UdpMessage::greating(&self.name), Recepients::One(r_ip))
-                        .inspect_err(|e| error!("{e}"))
-                        .ok();
+                    self.send(
+                        UdpMessage::greating(self.id, &self.name),
+                        r_msg.from_peer_id,
+                    )
+                    .inspect_err(|e| error!("{e}"))
+                    .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
-                    // if range.start() == &0 {
-                    //     outbox.remove(r_ip, r_id); // Remove Init Link
-                    // }
                     let mut is_aborted = false;
                     if let Some(link) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();
@@ -295,55 +337,76 @@ impl NetWorker {
                             );
                         }
                     } else {
-                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
-                            .inspect_err(|e| error!("{e}"))
-                            .ok();
-                        error!("File not found. Aborting transmission!");
+                        not_found_file = true;
                     }
                     if is_aborted {
-                        self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                        self.send(UdpMessage::abort(self.id, r_id), r_msg.from_peer_id)
                             .inspect_err(|e| error!("{e}"))
                             .ok();
                         debug!("Transmition aborted by user.");
                         outbox.files.remove(&r_id);
                     }
-                } else if let Some(message) = outbox.get(r_ip, r_id) {
+                } else if let Some(message) = outbox.get(r_msg.from_peer_id, r_id) {
                     debug!("Message found..");
-
                     let mut message = message.clone();
                     message.command = Command::Repeat;
-                    self.send(message, Recepients::One(r_ip))
+                    self.send(message, r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
                 } else {
-                    self.send(UdpMessage::abort(r_id), Recepients::One(r_ip))
+                    not_found_text = true;
+                }
+                if not_found_file || not_found_text {
+                    self.send(UdpMessage::abort(self.id, r_id), r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
-                    error!("Message not found. Aborting transmission!");
+                    error!("Message or File not found. Aborting transmission!");
                 }
             }
         }
     }
 
-    pub fn incoming(&mut self, ip: Ipv4Addr) {
-        self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
-        match self.peers.0.get_mut(&ip) {
+    // pub fn incoming(&mut self, ip: Ipv4Addr) {
+    //     // self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
+    //     match self.peers.get_by_ip_mut(&ip) {
+    //         None => {
+    //             // let noname: Option<&str> = None;
+    //             // self.peers.peer_joined(ip, noname);
+    //             self.send(UdpMessage::enter(self.id, &self.name), Recepients::One(ip))
+    //                 .inspect_err(|e| error!("{e}"))
+    //                 .ok();
+    //         }
+    //         Some(peer) => {
+    //             peer.set_last_time(SystemTime::now());
+    //             self.front_tx
+    //                 .send(BackEvent::PeerJoined(ip, peer.id(), peer.name().cloned()))
+    //                 .ok();
+    //         }
+    //     };
+    // }
+    pub fn incoming(&mut self, peer_id: PeerId, ip: Ipv4Addr) {
+        let mut ask_name = false;
+        match self.peers.ids.get_mut(&peer_id) {
             None => {
-                let noname: Option<&str> = None;
-                self.peers.peer_joined(ip, noname);
-                self.send(UdpMessage::enter(&self.name), Recepients::One(ip))
-                    .inspect_err(|e| error!("{e}"))
-                    .ok();
+                let noname: Option<&String> = None;
+                self.peers.peer_joined(ip, peer_id, noname);
+                ask_name = true;
             }
             Some(peer) => {
                 peer.set_last_time(SystemTime::now());
                 if !peer.has_name() {
-                    self.send(UdpMessage::enter(&self.name), Recepients::One(ip))
-                        .inspect_err(|e| error!("{e}"))
-                        .ok();
+                    ask_name = true;
                 }
             }
         };
+        if ask_name {
+            self.send(UdpMessage::enter(self.id, &self.name), peer_id)
+                .inspect_err(|e| error!("{e}"))
+                .ok();
+        }
+        self.front_tx
+            .send(BackEvent::PeerJoined(ip, peer_id, None))
+            .ok();
     }
 }
 

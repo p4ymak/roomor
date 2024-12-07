@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="Roomor"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:resizeableActivity="true"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection|uiMode"
+        android:supportsRtl="true"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
+        >
+        <activity
+            android:name="co.p4ymak.roomor.MainActivity"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|layoutDirection|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
+        >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="main" />
+        </activity>
+    </application>
+
+    <uses-feature android:name="android.software.input_methods" />
+    <uses-feature android:name="android.hardware.wifi" />
+    <uses-feature android:name="android.hardware.wifi.direct" />
+    <uses-feature android:name="android.hardware.opengles.aep" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.NET_RAW" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+</manifest>
