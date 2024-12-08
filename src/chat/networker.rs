@@ -23,19 +23,21 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+pub type Port = u16;
+
 pub const TIMEOUT_ALIVE: Duration = Duration::from_secs(60);
 pub const TIMEOUT_CHECK: Duration = Duration::from_secs(10);
 pub const TIMEOUT_SECOND: Duration = Duration::from_secs(1);
+pub const PORT_DEFAULT: Port = 4444;
 pub const IP_MULTICAST_DEFAULT: Ipv4Addr = Ipv4Addr::new(225, 225, 225, 225);
 pub const IP_UNSPECIFIED: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
-pub type Port = u16;
 
 pub struct NetWorker {
     id: PeerId,
     pub name: String,
     pub socket: Option<Arc<UdpSocket>>,
+    pub multicast: SocketAddrV4,
     pub _ip: Ipv4Addr,
-    pub port: Port,
     pub peers: PeersMap,
     pub front_tx: Sender<BackEvent>,
 }
@@ -46,8 +48,8 @@ impl NetWorker {
             id: PeerId::default(),
             name: String::new(),
             socket: None,
+            multicast: SocketAddrV4::new(IP_MULTICAST_DEFAULT, PORT_DEFAULT),
             _ip,
-            port: 4444,
             peers: PeersMap::new(),
             front_tx,
         }
@@ -59,11 +61,12 @@ impl NetWorker {
         self.id
     }
     pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
-        let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.port))?;
+        let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.multicast.port()))?;
         socket.set_broadcast(true)?;
         socket.set_multicast_loop_v4(true)?;
         socket.join_multicast_v4(&multicast, &IP_UNSPECIFIED)?;
         socket.set_nonblocking(false)?;
+        self.multicast.set_ip(multicast);
         self.socket = Some(Arc::new(socket));
         Ok(())
     }
@@ -82,7 +85,7 @@ impl NetWorker {
         };
         if let Some(socket) = &self.socket {
             debug!("Send to ID: {} IPs: {:?}", peer_id.0, recepients);
-            send(socket, self.port, message, recepients)
+            send(socket, self.multicast, message, recepients)
         } else {
             Ok(0)
         }
@@ -98,14 +101,23 @@ impl NetWorker {
     ) {
         if let Some(socket) = &self.socket {
             let socket = socket.clone();
-            let port = self.port;
+            let multicast_port = self.multicast;
             let ctx = ctx.clone();
             let peer_id = self.id();
 
             thread::Builder::new()
                 .name("shard_sender".to_string())
                 .spawn(move || {
-                    match send_shards(peer_id, link, range, id, recepients, socket, port, ctx) {
+                    match send_shards(
+                        peer_id,
+                        link,
+                        range,
+                        id,
+                        recepients,
+                        socket,
+                        multicast_port,
+                        ctx,
+                    ) {
                         Ok(_) => (),
                         Err(err) => error!("{err}"),
                     }
@@ -189,9 +201,8 @@ impl NetWorker {
             debug!("Loop");
             return;
         }
-        // debug!("Received {:?} from {r_ip}", r_msg.command);
         let r_id = r_msg.id;
-
+        self.incoming(r_msg.from_peer_id, r_ip);
         match r_msg.command {
             Command::Enter | Command::Greating => {
                 let user_name = r_msg.read_text();
@@ -233,7 +244,6 @@ impl NetWorker {
             Command::Text | Command::File | Command::Repeat => match r_msg.part {
                 message::Part::Single => {
                     let txt_msg = TextMessage::from_udp(&r_msg);
-                    self.incoming(r_msg.from_peer_id, r_ip); // FIXME
                     self.send(UdpMessage::seen_msg(self.id, &txt_msg), r_msg.from_peer_id)
                         .inspect_err(|e| error!("{e}"))
                         .ok();
@@ -270,7 +280,6 @@ impl NetWorker {
             Command::Seen => {
                 debug!("SEEN! {}", r_id);
                 let txt_msg = TextMessage::from_udp(&r_msg);
-                self.incoming(r_msg.from_peer_id, r_ip);
                 outbox.remove(r_msg.from_peer_id, txt_msg.id());
                 outbox.files.remove(&r_id);
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
@@ -289,7 +298,6 @@ impl NetWorker {
                 outbox.files.remove(&r_id);
             }
             Command::Error => {
-                self.incoming(r_msg.from_peer_id, r_ip);
                 self.send(
                     UdpMessage::new_single(
                         self.id,
@@ -304,7 +312,6 @@ impl NetWorker {
             }
 
             Command::AskToRepeat => {
-                self.incoming(r_msg.from_peer_id, r_ip);
                 debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 let mut not_found_text = false;
@@ -366,24 +373,6 @@ impl NetWorker {
         }
     }
 
-    // pub fn incoming(&mut self, ip: Ipv4Addr) {
-    //     // self.front_tx.send(BackEvent::PeerJoined((ip, None))).ok();
-    //     match self.peers.get_by_ip_mut(&ip) {
-    //         None => {
-    //             // let noname: Option<&str> = None;
-    //             // self.peers.peer_joined(ip, noname);
-    //             self.send(UdpMessage::enter(self.id, &self.name), Recepients::One(ip))
-    //                 .inspect_err(|e| error!("{e}"))
-    //                 .ok();
-    //         }
-    //         Some(peer) => {
-    //             peer.set_last_time(SystemTime::now());
-    //             self.front_tx
-    //                 .send(BackEvent::PeerJoined(ip, peer.id(), peer.name().cloned()))
-    //                 .ok();
-    //         }
-    //     };
-    // }
     pub fn incoming(&mut self, peer_id: PeerId, ip: Ipv4Addr) {
         let mut ask_name = false;
         match self.peers.ids.get_mut(&peer_id) {
@@ -429,14 +418,14 @@ pub fn get_my_ipv4() -> Option<Ipv4Addr> {
 
 pub fn send(
     socket: &Arc<UdpSocket>,
-    port: Port,
+    multicast: SocketAddrV4,
     message: UdpMessage,
     addrs: Recepients,
 ) -> std::io::Result<usize> {
     let bytes = message.to_be_bytes();
     let result = match addrs {
-        Recepients::All => socket.send_to(&bytes, SocketAddrV4::new(IP_MULTICAST_DEFAULT, port)),
-        Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, port)),
+        Recepients::All => socket.send_to(&bytes, multicast),
+        Recepients::One(ip) => socket.send_to(&bytes, SocketAddrV4::new(ip, multicast.port())),
     };
     match &result {
         Ok(_num) => (), // debug!("Sent {num} bytes of '{:?}' to {addrs:?}", message.command),

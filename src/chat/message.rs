@@ -1,6 +1,6 @@
 use super::{
     file::FileLink,
-    networker::{send, NetWorker, Port},
+    networker::{send, NetWorker},
     notifier::Repaintable,
     peers::PeerId,
     Content, Outbox, Recepients, TextMessage,
@@ -9,7 +9,12 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
 use log::{debug, error};
 use std::{
-    error::Error, fmt, mem::size_of, net::UdpSocket, ops::RangeInclusive, sync::Arc,
+    error::Error,
+    fmt,
+    mem::size_of,
+    net::{SocketAddrV4, UdpSocket},
+    ops::RangeInclusive,
+    sync::Arc,
     time::SystemTime,
 };
 use system_interface::fs::FileIoExt;
@@ -396,7 +401,7 @@ pub fn send_shards(
     id: Id,
     recepients: Recepients,
     socket: Arc<UdpSocket>,
-    port: Port,
+    multicast: SocketAddrV4,
     ctx: impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
     let file = std::fs::File::open(&link.path)?;
@@ -409,7 +414,7 @@ pub fn send_shards(
         file.read_at(&mut data, DATA_LIMIT_BYTES as u64 * i)?;
         send(
             &socket,
-            port,
+            multicast,
             UdpMessage {
                 from_peer_id: peer_id,
                 id,

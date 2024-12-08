@@ -304,7 +304,7 @@ impl UdpChat {
     pub fn prelude(&mut self, user: &UserSetup) -> Result<(), Box<dyn Error + 'static>> {
         self.name = user.name().to_string();
         self.id = user.id();
-        self.networker.port = user.port();
+        self.networker.multicast.set_port(user.port());
         self.networker.set_id(user.id());
         self.networker.name = user.name().to_string();
         self.networker.connect(user.multicast())?;

@@ -5,7 +5,7 @@ use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
     message::MAX_NAME_SIZE,
-    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
+    networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, PORT_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     peers::PeerId,
     BackEvent, ChatEvent, FrontEvent, TextMessage, UdpChat,
@@ -69,7 +69,7 @@ impl Default for UserSetup {
             name: whoami::username(),
             id,
             ip,
-            port: 4444,
+            port: PORT_DEFAULT,
             multicast: IP_MULTICAST_DEFAULT,
             multicast_str: format!("{}", IP_MULTICAST_DEFAULT),
             error_message,
