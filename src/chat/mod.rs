@@ -18,7 +18,7 @@ use crate::{app::UserSetup, chat::peers::Presence};
 use eframe::Result;
 use flume::{Receiver, Sender};
 use inbox::Inbox;
-use log::error;
+use log::{debug, error};
 use message::{Command, Id, UdpMessage};
 use peers::PeerId;
 use std::{
@@ -317,6 +317,7 @@ impl UdpChat {
             .send(UdpMessage::enter(self.id, &self.name), PeerId::PUBLIC)
             .inspect_err(|e| error!("{e}"))
             .ok();
+        debug!("I joined with id {}", self.id.0);
         self.receive(ctx);
     }
 
@@ -336,12 +337,12 @@ impl UdpChat {
                             let ip = *src_addr_v4.ip();
                             if let Ok(message) = UdpMessage::from_be_bytes(&buf[..number_of_bytes])
                             {
-                                log::debug!(
-                                    "{:?} From PeerId {}",
-                                    message.command,
-                                    message.from_peer_id.0
-                                );
                                 if message.from_peer_id != local_id {
+                                    log::debug!(
+                                        "{:?} From PeerId {}",
+                                        message.command,
+                                        message.from_peer_id.0
+                                    );
                                     receiver.send(ChatEvent::Incoming(ip, message)).ok();
                                 } else if message.command == Command::Exit {
                                     #[cfg(not(target_os = "android"))] // FIXME

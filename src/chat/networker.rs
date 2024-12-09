@@ -72,7 +72,7 @@ impl NetWorker {
     }
 
     pub fn send(&self, message: UdpMessage, peer_id: PeerId) -> std::io::Result<usize> {
-        let recepients = if message.public {
+        let recepients = if message.public || peer_id == PeerId::PUBLIC {
             Recepients::All
         } else {
             let ip = self

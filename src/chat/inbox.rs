@@ -243,7 +243,7 @@ impl InMessage {
     pub fn is_old_enough(&self) -> bool {
         SystemTime::now()
             .duration_since(self.ts)
-            .is_ok_and(|d| d > TIMEOUT_SECOND * self.attempt.max(1) as u32)
+            .is_ok_and(|d| d > TIMEOUT_SECOND) // * self.attempt.max(1) as u32)
     }
 
     pub fn send_seen(&self, networker: &mut NetWorker) {
