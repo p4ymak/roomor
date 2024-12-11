@@ -4,7 +4,7 @@ mod rooms;
 use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
-    message::MAX_NAME_SIZE,
+    message::{new_id, MAX_NAME_SIZE},
     networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, PORT_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     peers::PeerId,
@@ -535,13 +535,30 @@ impl Roomor {
             RoomAction::File =>
             {
                 #[cfg(not(target_os = "android"))]
-                if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                    if !self.rooms.is_active_public() {
-                        self.dispatch_files(&paths);
-                    }
+                if !self.rooms.is_active_public() {
+                    self.pick_files();
                 }
             }
         });
+    }
+
+    fn pick_files(&self) {
+        let tx = self.back_tx.clone();
+        let peer_id = self.rooms.active_chat();
+        thread::Builder::new()
+            .name("file_picker".to_string())
+            .spawn(move || {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                    let mut id = new_id();
+                    for path in paths {
+                        if let Some(link) = Rooms::compose_file(peer_id, id, &path) {
+                            tx.send(ChatEvent::Front(FrontEvent::Message(link))).ok();
+                        }
+                        id += 1;
+                    }
+                }
+            })
+            .expect("file picker thread failed");
     }
 
     fn draw_input_buttons(&mut self, ui: &mut egui::Ui) {
@@ -563,9 +580,7 @@ impl Roomor {
                     )
                     .clicked()
             {
-                if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                    self.dispatch_files(&paths);
-                }
+                self.pick_files();
             }
             if is_text_empty
                 && ui
@@ -677,9 +692,7 @@ impl Roomor {
                 debug!("open file");
 
                 if self.chat_init.is_none() && !self.rooms.is_active_public() {
-                    if let Some(path) = rfd::FileDialog::new().pick_files() {
-                        self.dispatch_files(&path);
-                    }
+                    self.pick_files();
                 }
             }
             if i.consume_shortcut(&KeyboardShortcut::new(
