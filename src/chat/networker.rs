@@ -72,7 +72,7 @@ impl NetWorker {
     }
 
     pub fn send(&self, message: UdpMessage, peer_id: PeerId) -> std::io::Result<usize> {
-        let recepients = if message.public {
+        let recepients = if message.public || peer_id == PeerId::PUBLIC {
             Recepients::All
         } else {
             let ip = self
@@ -157,6 +157,7 @@ impl NetWorker {
 
     pub fn handle_front_event(
         &mut self,
+        inbox: &mut Inbox,
         outbox: &mut Outbox,
         ctx: &impl Repaintable,
         event: FrontEvent,
@@ -175,6 +176,9 @@ impl NetWorker {
                 self.send(UdpMessage::enter(self.id, &self.name), peer_id)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
+            }
+            FrontEvent::AskMissed => {
+                inbox.wake_for_missed_all(self, ctx);
             }
             FrontEvent::Exit => {
                 debug!("I'm Exit");

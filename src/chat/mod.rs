@@ -18,8 +18,9 @@ use crate::{app::UserSetup, chat::peers::Presence};
 use eframe::Result;
 use flume::{Receiver, Sender};
 use inbox::Inbox;
-use log::error;
+use log::{debug, error};
 use message::{Command, Id, UdpMessage};
+use networker::TIMEOUT_SECOND;
 use peers::PeerId;
 use std::{
     error::Error,
@@ -27,9 +28,10 @@ use std::{
     ops::ControlFlow,
     path::PathBuf,
     sync::Arc,
-    thread::{self, JoinHandle},
+    thread::{self, sleep, JoinHandle},
     time::SystemTime,
 };
+pub type ErrorBoxed = Box<dyn Error + 'static>;
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Recepients {
@@ -72,6 +74,7 @@ pub enum BackEvent {
 #[derive(Debug)]
 pub enum FrontEvent {
     Ping(PeerId),
+    AskMissed,
     Exit,
     Message(TextMessage),
 }
@@ -308,6 +311,7 @@ impl UdpChat {
         self.networker.set_id(user.id());
         self.networker.name = user.name().to_string();
         self.networker.connect(user.multicast())?;
+        self.wake_for_missed();
         self.listen();
         Ok(())
     }
@@ -317,14 +321,26 @@ impl UdpChat {
             .send(UdpMessage::enter(self.id, &self.name), PeerId::PUBLIC)
             .inspect_err(|e| error!("{e}"))
             .ok();
+        debug!("I joined with id {}", self.id.0);
         self.receive(ctx);
+    }
+
+    fn wake_for_missed(&self) {
+        let sender = self.tx.clone();
+        thread::Builder::new()
+            .name("waker".to_string())
+            .spawn(move || loop {
+                sleep(TIMEOUT_SECOND);
+                sender.send(ChatEvent::Front(FrontEvent::AskMissed)).ok();
+            })
+            .expect("can't build thread");
     }
 
     fn listen(&mut self) {
         self.thread_handle = self.networker.socket.as_ref().map(|socket| {
             let local_id = self.networker.id(); // FIXME maybe need update
             let socket = Arc::clone(socket);
-            let receiver = self.tx.clone();
+            let sender = self.tx.clone();
             thread::Builder::new()
                 .name("listener".to_string())
                 .spawn(move || {
@@ -336,13 +352,13 @@ impl UdpChat {
                             let ip = *src_addr_v4.ip();
                             if let Ok(message) = UdpMessage::from_be_bytes(&buf[..number_of_bytes])
                             {
-                                log::debug!(
-                                    "{:?} From PeerId {}",
-                                    message.command,
-                                    message.from_peer_id.0
-                                );
                                 if message.from_peer_id != local_id {
-                                    receiver.send(ChatEvent::Incoming(ip, message)).ok();
+                                    log::debug!(
+                                        "{:?} From PeerId {}",
+                                        message.command,
+                                        message.from_peer_id.0
+                                    );
+                                    sender.send(ChatEvent::Incoming(ip, message)).ok();
                                 } else if message.command == Command::Exit {
                                     #[cfg(not(target_os = "android"))] // FIXME
                                     break;
@@ -359,10 +375,12 @@ impl UdpChat {
         for event in self.rx.iter() {
             match event {
                 ChatEvent::Front(front) => {
-                    match self
-                        .networker
-                        .handle_front_event(&mut self.outbox, ctx, front)
-                    {
+                    match self.networker.handle_front_event(
+                        &mut self.inbox,
+                        &mut self.outbox,
+                        ctx,
+                        front,
+                    ) {
                         ControlFlow::Continue(_) => continue,
                         ControlFlow::Break(_) => break,
                     }

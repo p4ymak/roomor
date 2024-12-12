@@ -3154,9 +3154,9 @@ dependencies = [
 
 [[package]]
 name = "range_rover"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "728ceca8f6cf1b6f8bfca6e6fc6fd6e0f36b1205cda29a7f91f5077399e97096"
+checksum = "7dd0ad4995ec84add5cd0bad2bfd2d48e1e9f05a0c897414be0155e6ad29f055"
 dependencies = [
  "num",
 ]
@@ -3265,7 +3265,7 @@ dependencies = [
 
 [[package]]
 name = "roomor"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "android_logger",
  "chrono",

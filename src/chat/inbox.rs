@@ -2,14 +2,14 @@ use crate::chat::Destination;
 
 use super::{
     file::FileLink,
-    message::{CheckSum, Command, Id, Part, ShardCount, UdpMessage, CRC},
+    message::{CheckSum, Command, Id, Part, PartInit, ShardCount, UdpMessage, CRC},
     networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     peers::PeerId,
-    BackEvent, Content, Presence, Seen, TextMessage,
+    BackEvent, Content, ErrorBoxed, Presence, Seen, TextMessage,
 };
 use log::{debug, error, warn};
-use range_rover::range_rover;
+use range_rover::RangeTree;
 use std::{
     collections::BTreeMap, error::Error, fs, net::Ipv4Addr, ops::RangeInclusive, path::Path,
     sync::Arc, time::SystemTime,
@@ -21,6 +21,26 @@ pub type Shard = Vec<u8>;
 #[derive(Default)]
 pub struct Inbox(BTreeMap<Id, InMessage>);
 impl Inbox {
+    pub fn wake_for_missed_all(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable) {
+        let messages = self
+            .0
+            .values_mut()
+            .filter_map(|m| {
+                (
+                    networker.peers.online_status(m.from_peer_id) != Presence::Offline
+                        && !(m.link.is_aborted() || m.link.is_ready())
+                        && m.is_old_enough()
+                    // * m.attempt.max(1) as u32)
+                )
+                .then_some(m)
+            })
+            .collect::<Vec<_>>();
+
+        messages.into_iter().for_each(|m| {
+            debug!("Wake for missed");
+            m.combine(networker, ctx).ok();
+        });
+    }
     pub fn wake_for_missed_one(
         &mut self,
         networker: &mut NetWorker,
@@ -69,6 +89,67 @@ impl Inbox {
     // }
 }
 
+#[derive(Default, Debug)]
+pub struct CompletedCounter {
+    pub ranges: Option<RangeTree<ShardCount>>,
+}
+impl CompletedCounter {
+    fn clear(&mut self) {
+        self.ranges = None;
+    }
+    pub fn insert(&mut self, position: ShardCount) {
+        self.ranges
+            .get_or_insert(RangeTree::new(position))
+            .insert(position);
+    }
+}
+pub struct Shards {
+    pub _total_checksum: CheckSum,
+    pub shards: Vec<Option<Shard>>,
+    pub completed: CompletedCounter,
+    pub terminal: ShardCount,
+    pub attempt: u8,
+}
+impl Shards {
+    pub fn new(init: PartInit) -> Self {
+        Shards {
+            _total_checksum: init.checksum(),
+            shards: vec![None; init.count() as usize],
+            completed: CompletedCounter::default(),
+            terminal: init.count().saturating_sub(1),
+            attempt: 0,
+        }
+    }
+    pub fn clear(&mut self) {
+        self.shards.clear();
+        self.completed.clear();
+    }
+    pub fn insert(&mut self, position: ShardCount, msg: UdpMessage) -> Result<(), ErrorBoxed> {
+        if let Some(shard) = self.shards.get_mut(position as usize) {
+            if shard.is_some() {
+                return Ok(());
+            }
+
+            (msg.checksum() == CRC.checksum(&msg.data))
+                .then_some(())
+                .ok_or("Checksum doesn't match")?;
+
+            *shard = Some(msg.data);
+
+            self.completed.insert(position);
+        }
+        Ok(())
+    }
+
+    pub fn missed(&self) -> Vec<RangeInclusive<ShardCount>> {
+        let last = self.shards.len().saturating_sub(1) as ShardCount;
+        if let Some(ranges) = &self.completed.ranges {
+            ranges.missed_in_range(0..=last)
+        } else {
+            vec![0..=last]
+        }
+    }
+}
 pub struct InMessage {
     pub ts: SystemTime,
     pub id: Id,
@@ -76,11 +157,8 @@ pub struct InMessage {
     pub from_peer_id: PeerId,
     pub public: bool,
     pub command: Command,
-    pub _total_checksum: CheckSum,
     pub link: Arc<FileLink>,
-    pub terminal: ShardCount,
-    pub shards: Vec<Option<Shard>>,
-    pub attempt: u8,
+    pub shards: Shards,
 }
 impl InMessage {
     pub fn new(ip: Ipv4Addr, msg: UdpMessage, downloads_path: &Path) -> Option<Self> {
@@ -100,11 +178,8 @@ impl InMessage {
                 _ip: ip,
                 public: msg.public,
                 command: msg.command,
-                _total_checksum: init.checksum(),
                 link: Arc::new(link),
-                terminal: init.count().saturating_sub(1),
-                shards: vec![None; init.count() as usize],
-                attempt: 0,
+                shards: Shards::new(init),
             })
         } else {
             None
@@ -126,51 +201,64 @@ impl InMessage {
             self.shards.clear();
             return;
         }
-        if let Some(block) = self.shards.get_mut(position as usize) {
+
+        if self
+            .shards
+            .insert(position, msg)
+            .inspect_err(|e| error!("{e}"))
+            .is_ok()
+        {
             self.ts = SystemTime::now();
-            if block.is_none() && msg.checksum() == CRC.checksum(&msg.data) {
-                *block = Some(msg.data);
-                self.link
-                    .completed
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                ctx.request_repaint();
+
+            self.link
+                .completed
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            ctx.request_repaint();
+
+            if self.shards.terminal == position {
+                warn!("Received terminal {position}");
+                // let missed_left = self.shards.missed_left(position.saturating_sub(1));
+                // if missed_left.is_empty() {
+                self.combine(networker, ctx).ok();
+                // } else {
+                // self.ask_for_missed(networker, missed_left, true);
+                // }
             }
-        }
-        if position == self.terminal {
-            warn!("Received terminal {position}");
-            self.combine(networker, ctx).ok();
+            // } else {
+            //     let missed_left = self.shards.missed_left(position);
+            //     self.ask_for_missed(networker, missed_left, true);
         }
     }
 
-    pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
-        let missed = range_rover(
-            self.shards
-                .iter()
-                .enumerate()
-                .filter(|s| s.1.is_none())
-                .map(|s| s.0 as ShardCount),
-        );
-        let missed = missed.into_iter().fold(
-            vec![],
-            |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-                if let Some(last) = r.last_mut() {
-                    let empty_len = m.start().saturating_sub(*last.end());
-                    if empty_len <= m.clone().count() as ShardCount
-                    // || empty_len <= last.clone().count() as ShardCount
-                    {
-                        *last = *last.start()..=*m.end();
-                    } else {
-                        r.push(m);
-                    }
-                } else {
-                    r.push(m);
-                }
-                r
-            },
-        );
+    // pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
+    //     let missed = range_rover(
+    //         self.shards
+    //             .iter()
+    //             .enumerate()
+    //             .filter(|s| s.1.is_none())
+    //             .map(|s| s.0 as ShardCount),
+    //     );
+    //     let missed = missed.into_iter().fold(
+    //         vec![],
+    //         |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
+    //             if let Some(last) = r.last_mut() {
+    //                 let empty_len = m.start().saturating_sub(*last.end());
+    //                 if empty_len <= m.clone().count() as ShardCount
+    //                 // || empty_len <= last.clone().count() as ShardCount
+    //                 {
+    //                     *last = *last.start()..=*m.end();
+    //                 } else {
+    //                     r.push(m);
+    //                 }
+    //             } else {
+    //                 r.push(m);
+    //             }
+    //             r
+    //         },
+    //     );
 
-        missed
-    }
+    //     missed
+    // }
 
     pub fn combine(
         &mut self,
@@ -186,10 +274,10 @@ impl InMessage {
             return Ok(());
         }
         debug!("Combining");
-        let missed = self.missed_shards();
-        debug!("Shards count: {}", self.shards.len());
+        let missed = self.shards.missed();
+        debug!("Shards count: {}", self.shards.shards.len());
         if missed.is_empty() {
-            let data = std::mem::take(&mut self.shards)
+            let data = std::mem::take(&mut self.shards.shards)
                 .into_iter()
                 .flatten()
                 .flatten()
@@ -243,7 +331,7 @@ impl InMessage {
     pub fn is_old_enough(&self) -> bool {
         SystemTime::now()
             .duration_since(self.ts)
-            .is_ok_and(|d| d > TIMEOUT_SECOND * self.attempt.max(1) as u32)
+            .is_ok_and(|d| d > TIMEOUT_SECOND) // * self.attempt.max(1) as u32)
     }
 
     pub fn send_seen(&self, networker: &mut NetWorker) {
@@ -275,12 +363,12 @@ impl InMessage {
             .last()
             .map(|l| *l.end())
             .unwrap_or(self.link.count.saturating_sub(1));
-        if terminal == self.terminal {
-            self.attempt = self.attempt.saturating_add(1);
-            warn!("New attempt: {}", self.attempt);
+        if self.shards.terminal == terminal {
+            self.shards.attempt = self.shards.attempt.saturating_add(1);
+            warn!("New attempt: {}", self.shards.attempt);
         } else {
-            self.terminal = terminal;
-            warn!("New terminal: {}", self.terminal);
+            self.shards.terminal = terminal;
+            warn!("New terminal: {}", terminal);
         }
 
         for range in missed {
@@ -304,11 +392,5 @@ impl InMessage {
                 )
                 .ok();
         }
-        // networker
-        //     .send(
-        //         UdpMessage::ask_to_repeat(self.id, Part::AskRange(terminal..=terminal)),
-        //         Recepients::One(self.sender),
-        //     )
-        //     .ok();
     }
 }

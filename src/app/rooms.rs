@@ -71,16 +71,20 @@ impl Rooms {
         }
     }
 
-    pub fn dispatch_files(&mut self, paths: &[PathBuf]) {
+    pub fn dispatch_files(&self, paths: &[PathBuf]) {
         let mut id = new_id();
         for path in paths {
-            if let Some(link) = self.compose_file(id, path) {
+            if let Some(link) = Rooms::compose_file(self.active_chat, id, path) {
                 self.back_tx
                     .send(ChatEvent::Front(FrontEvent::Message(link)))
                     .ok();
             }
             id += 1;
         }
+    }
+
+    pub fn active_chat(&self) -> PeerId {
+        self.active_chat
     }
 
     pub fn clear_history(&mut self) {
@@ -146,13 +150,11 @@ impl Rooms {
         };
         Some(TextMessage::out_message(content, self.active_chat))
     }
-    pub fn compose_file(&mut self, id: Id, path: &Path) -> Option<TextMessage> {
+
+    pub fn compose_file(peer_id: PeerId, id: Id, path: &Path) -> Option<TextMessage> {
         let link = Arc::new(FileLink::from_path(id, path)?);
 
-        Some(TextMessage::out_message(
-            Content::FileLink(link),
-            self.active_chat,
-        ))
+        Some(TextMessage::out_message(Content::FileLink(link), peer_id))
     }
 
     pub fn peer_joined(&mut self, ip: Ipv4Addr, id: PeerId, name: Option<String>) {
