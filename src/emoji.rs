@@ -1,6 +1,6 @@
 use egui_phosphor::regular;
 
-pub const EMOJI_LIST: [&str; 96] = [
+pub const EMOJI_LIST: [&str; 98] = [
     // smiles
     regular::SMILEY,
     regular::SMILEY_WINK,
@@ -15,6 +15,8 @@ pub const EMOJI_LIST: [&str; 96] = [
     // reactions
     regular::THUMBS_UP,
     regular::THUMBS_DOWN,
+    regular::ARROW_FAT_UP,
+    regular::ARROW_FAT_DOWN,
     regular::CHECK_FAT,
     regular::EYES,
     regular::FIRE,
@@ -40,6 +42,7 @@ pub const EMOJI_LIST: [&str; 96] = [
     // objects
     regular::SPEAKER_SLASH,
     regular::ALARM,
+    regular::WATCH,
     regular::LIGHTBULB,
     regular::PAPERCLIP,
     regular::PENCIL,
@@ -51,7 +54,6 @@ pub const EMOJI_LIST: [&str; 96] = [
     regular::MEDAL,
     regular::TROPHY,
     regular::ARMCHAIR,
-    regular::WATCH,
     regular::BACKPACK,
     regular::BRIEFCASE,
     regular::BATHTUB,

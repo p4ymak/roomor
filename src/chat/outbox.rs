@@ -1,16 +1,20 @@
-use std::{collections::BTreeMap, sync::Arc, time::SystemTime};
+use std::{collections::BTreeMap, sync::Arc, thread, time::SystemTime};
+
+use flume::Sender;
 
 use super::{
-    file::FileLink,
+    file::{shards_sender, FileLink, ShardsInfo},
     message::{Id, UdpMessage},
-    networker::TIMEOUT_CHECK,
+    networker::{NetWorker, TIMEOUT_CHECK},
+    notifier::Repaintable,
     peers::PeerId,
+    ErrorBoxed,
 };
 
 #[derive(Default)]
 pub struct Outbox {
     pub texts: BTreeMap<PeerId, Vec<OutMessage>>,
-    pub files: BTreeMap<Id, Arc<FileLink>>,
+    pub files: BTreeMap<Id, (Arc<FileLink>, Sender<ShardsInfo>)>,
 }
 
 pub struct OutMessage {
@@ -63,5 +67,23 @@ impl Outbox {
         } else {
             vec![]
         }
+    }
+    pub fn new_file(
+        &mut self,
+        networker: &NetWorker,
+        ctx: &impl Repaintable,
+        msg_id: Id,
+        link: Arc<FileLink>,
+    ) -> Result<(), ErrorBoxed> {
+        let (tx, rx) = flume::unbounded::<ShardsInfo>();
+        let socket = networker.socket.as_ref().ok_or("No Socket")?.clone();
+        let multicast_port = networker.multicast;
+        let ctx = ctx.clone();
+        let peer_id = networker.id();
+        thread::Builder::new()
+            .name(format!("shards_sender_{msg_id}"))
+            .spawn(move || shards_sender(peer_id, socket, multicast_port, &ctx, rx))?;
+        self.files.insert(msg_id, (link, tx));
+        Ok(())
     }
 }

@@ -397,6 +397,7 @@ impl ChatHistory {
             .stick_to_bottom(true)
             .auto_shrink([false; 2])
             .show(ui, |ui| {
+                #[cfg(not(target_os = "android"))]
                 if !self.peer_id.is_public() {
                     ui.interact(
                         ui.clip_rect(),
@@ -786,15 +787,24 @@ impl TextMessage {
                     } else {
                         let rounding =
                             Rounding::same(rounding(ui) * ui.style().visuals.window_stroke.width);
+
                         ui.add(
                             egui::ProgressBar::new(link.progress())
                                 .rounding(rounding)
                                 .desired_width(width)
                                 .show_percentage(),
                         );
-                        if ui.link("Cancel").clicked() {
-                            link.abort();
-                        }
+                        ui.horizontal(|h| {
+                            if h.link("Cancel").clicked() {
+                                link.abort();
+                            }
+                            let ico = if link.breath_out() {
+                                egui_phosphor::regular::DOTS_THREE_OUTLINE
+                            } else {
+                                egui_phosphor::regular::DOTS_THREE
+                            };
+                            h.add_enabled(false, egui::Label::new(ico));
+                        });
                     }
                 }
             }

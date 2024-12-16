@@ -312,6 +312,7 @@ impl UdpChat {
         self.networker.name = user.name().to_string();
         self.networker.connect(user.multicast())?;
         self.wake_for_missed();
+
         self.listen();
         Ok(())
     }
