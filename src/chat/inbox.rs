@@ -1,4 +1,4 @@
-use crate::chat::Destination;
+use crate::chat::{networker::TIMEOUT_ALIVE, Destination};
 
 use super::{
     file::FileLink,
@@ -310,6 +310,9 @@ impl InMessage {
                     if written {
                         self.send_seen(networker);
                         self.link.set_ready();
+                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                            ctx.notify(&self.link.name);
+                        }
                     } else {
                         self.send_abort(networker);
                         self.link.abort();

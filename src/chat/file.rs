@@ -150,6 +150,9 @@ impl FileLink {
         self.breath.store(false, Ordering::Relaxed);
         breath
     }
+    pub fn seconds_elapsed(&self) -> u64 {
+        self.seconds_elapsed.load(Ordering::Relaxed)
+    }
 }
 
 pub fn shards_sender(
