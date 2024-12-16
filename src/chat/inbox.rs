@@ -210,9 +210,7 @@ impl InMessage {
         {
             self.ts = SystemTime::now();
 
-            self.link
-                .completed
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.link.completed_add(1);
             ctx.request_repaint();
 
             if self.shards.terminal == position {

@@ -542,6 +542,7 @@ impl Roomor {
         });
     }
 
+    #[cfg(not(target_os = "android"))]
     fn pick_files(&self) {
         let tx = self.back_tx.clone();
         let peer_id = self.rooms.active_chat();

@@ -1,12 +1,12 @@
 use crate::chat::{
     inbox::InMessage,
-    message::{self, send_shards, Command, ShardCount},
+    message::{self, Command, ShardCount},
     TextMessage,
 };
 
 use super::{
-    file::FileLink,
-    message::{Id, UdpMessage},
+    file::ShardsInfo,
+    message::UdpMessage,
     notifier::Repaintable,
     peers::{PeerId, PeersMap},
     BackEvent, Content, FrontEvent, Inbox, Outbox, Recepients,
@@ -16,10 +16,9 @@ use log::{debug, error};
 use std::{
     error::Error,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    ops::{ControlFlow, RangeInclusive},
+    ops::ControlFlow,
     path::Path,
     sync::Arc,
-    thread,
     time::{Duration, SystemTime},
 };
 
@@ -91,41 +90,6 @@ impl NetWorker {
         }
     }
 
-    pub fn send_shards(
-        &self,
-        link: Arc<FileLink>,
-        range: RangeInclusive<ShardCount>,
-        id: Id,
-        recepients: Recepients,
-        ctx: &impl Repaintable,
-    ) {
-        if let Some(socket) = &self.socket {
-            let socket = socket.clone();
-            let multicast_port = self.multicast;
-            let ctx = ctx.clone();
-            let peer_id = self.id();
-
-            thread::Builder::new()
-                .name("shard_sender".to_string())
-                .spawn(move || {
-                    match send_shards(
-                        peer_id,
-                        link,
-                        range,
-                        id,
-                        recepients,
-                        socket,
-                        multicast_port,
-                        ctx,
-                    ) {
-                        Ok(_) => (),
-                        Err(err) => error!("{err}"),
-                    }
-                })
-                .ok();
-        }
-    }
-
     pub fn handle_back_event(&mut self, event: BackEvent, ctx: &impl Repaintable) {
         match &event {
             BackEvent::PeerJoined(ref ip, ref peer_id, ref user_name) => {
@@ -164,7 +128,7 @@ impl NetWorker {
     ) -> ControlFlow<()> {
         match event {
             FrontEvent::Message(msg) => {
-                UdpMessage::send_message(&msg, self, outbox)
+                UdpMessage::send_message(&msg, self, outbox, ctx)
                     .inspect_err(|e| error!("{e}"))
                     .ok();
 
@@ -296,7 +260,7 @@ impl NetWorker {
                 // inbox.remove(&r_id);
 
                 outbox.remove(r_msg.from_peer_id, r_id);
-                if let Some(link) = outbox.files.get(&r_id) {
+                if let Some((link, _tx)) = outbox.files.get(&r_id) {
                     link.abort();
                 }
                 outbox.files.remove(&r_id);
@@ -329,23 +293,18 @@ impl NetWorker {
                     .ok();
                 } else if let message::Part::AskRange(range) = &r_msg.part {
                     let mut is_aborted = false;
-                    if let Some(link) = outbox.files.get(&r_id) {
+                    if let Some((link, tx)) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();
                         if !is_aborted {
-                            let completed =
-                                link.completed.load(std::sync::atomic::Ordering::Relaxed);
-                            link.completed.store(
-                                completed.saturating_sub(range.clone().count() as ShardCount),
-                                std::sync::atomic::Ordering::Relaxed,
-                            );
+                            link.completed_sub(range.clone().count() as ShardCount);
                             debug!("sending shards {range:?}");
-                            self.send_shards(
+                            tx.send(ShardsInfo::new(
                                 link.clone(),
                                 range.to_owned(),
                                 r_id,
                                 Recepients::One(r_ip),
-                                ctx,
-                            );
+                            ))
+                            .ok();
                         }
                     } else {
                         not_found_file = true;

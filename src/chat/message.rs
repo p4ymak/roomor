@@ -1,9 +1,9 @@
 use super::{
-    file::FileLink,
+    file::ShardsInfo,
     networker::{send, NetWorker},
     notifier::Repaintable,
     peers::PeerId,
-    Content, Outbox, Recepients, TextMessage,
+    Content, Outbox, TextMessage,
 };
 use crc::{Crc, CRC_16_IBM_SDLC};
 use enumn::N;
@@ -185,8 +185,9 @@ impl UdpMessage {
 
     pub fn send_message(
         msg: &TextMessage,
-        sender: &mut NetWorker,
+        networker: &mut NetWorker,
         outbox: &mut Outbox,
+        ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
         let (command, data) = match &msg.content {
             Content::Ping(name) => (Command::Enter, be_u8_from_str(name)),
@@ -205,7 +206,7 @@ impl UdpMessage {
             debug!("Count {count}");
             let total_checksum = 0;
             let message = UdpMessage {
-                from_peer_id: sender.id(),
+                from_peer_id: networker.id(),
                 id: msg.id,
                 part: Part::Init(PartInit {
                     total_checksum,
@@ -218,10 +219,8 @@ impl UdpMessage {
             };
 
             outbox.add(peer_id, message.clone());
-            sender.send(message, peer_id)?;
-            outbox.files.insert(msg.id, link.clone());
-
-            Ok(())
+            networker.send(message, peer_id)?;
+            outbox.new_file(networker, ctx, msg.id, link.clone())
         } else {
             let checksum = CRC.checksum(&data);
             let total_checksum = CRC.checksum(&data);
@@ -229,7 +228,7 @@ impl UdpMessage {
             let chunks = data.chunks(DATA_LIMIT_BYTES);
             if data.len() < DATA_LIMIT_BYTES {
                 let message = UdpMessage {
-                    from_peer_id: sender.id(),
+                    from_peer_id: networker.id(),
                     id: msg.id,
                     part: Part::Single,
                     public: msg.public,
@@ -240,11 +239,11 @@ impl UdpMessage {
                 if message.command == Command::Text && !msg.is_public() {
                     outbox.add(peer_id, message.clone());
                 }
-                sender.send(message, peer_id)?;
+                networker.send(message, peer_id)?;
                 Ok(())
             } else {
                 let message = UdpMessage {
-                    from_peer_id: sender.id(),
+                    from_peer_id: networker.id(),
                     id: msg.id,
                     part: Part::Init(PartInit {
                         total_checksum,
@@ -258,12 +257,12 @@ impl UdpMessage {
                 if message.command == Command::Text && !msg.is_public() {
                     outbox.add(peer_id, message.clone());
                 }
-                sender.send(message, peer_id)?;
+                networker.send(message, peer_id)?;
 
                 for (i, chunk) in chunks.enumerate() {
-                    sender.send(
+                    networker.send(
                         UdpMessage {
-                            from_peer_id: sender.id(),
+                            from_peer_id: networker.id(),
                             id: msg.id,
                             part: Part::Shard(i as ShardCount),
                             checksum: CRC.checksum(chunk),
@@ -393,41 +392,33 @@ pub fn new_id() -> Id {
         .as_secs() as u32
 }
 
-#[allow(clippy::too_many_arguments)] // FIXME
 pub fn send_shards(
     peer_id: PeerId,
-    link: Arc<FileLink>,
-    range: RangeInclusive<ShardCount>,
-    id: Id,
-    recepients: Recepients,
+    shards: ShardsInfo,
     socket: Arc<UdpSocket>,
     multicast: SocketAddrV4,
     ctx: impl Repaintable,
 ) -> Result<(), Box<dyn Error + 'static>> {
-    let file = std::fs::File::open(&link.path)?;
+    let file = std::fs::File::open(&shards.link.path)?;
 
-    for i in range {
-        if link.is_aborted() || link.is_ready() {
-            break;
+    for i in shards.range {
+        if shards.link.is_aborted() || shards.link.is_ready() {
+            return Err("Transmission not needed".into());
         }
         let mut data = vec![0; DATA_LIMIT_BYTES];
         file.read_at(&mut data, DATA_LIMIT_BYTES as u64 * i)?;
-        send(
-            &socket,
-            multicast,
-            UdpMessage {
-                from_peer_id: peer_id,
-                id,
-                part: Part::Shard(i),
-                checksum: CRC.checksum(&data),
-                public: recepients.is_public(),
-                command: Command::File,
-                data,
-            },
-            recepients,
-        )?;
-        link.completed
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let udp_message = UdpMessage {
+            from_peer_id: peer_id,
+            id: shards.id,
+            part: Part::Shard(i),
+            checksum: CRC.checksum(&data),
+            public: shards.recepients.is_public(),
+            command: Command::File,
+            data,
+        };
+
+        send(&socket, multicast, udp_message, shards.recepients).ok();
+        shards.link.completed_add(1);
         ctx.request_repaint();
     }
 
