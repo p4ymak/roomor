@@ -19,7 +19,7 @@ eframe = "0.30.0"
 # egui_keyboard = { path="../egui_keyboard" }
 human_bytes = "0.4.3"
 opener = "0.7.2"
-egui-phosphor = "0.7.3"
+egui-phosphor = "0.8.0"
 flume = "0.11.0"
 system-interface = "0.27.2"
 # network-interface = "2.0.0"
