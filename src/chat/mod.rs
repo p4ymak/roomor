@@ -27,7 +27,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     ops::ControlFlow,
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::AtomicU8, Arc},
     thread::{self, sleep, JoinHandle},
     time::SystemTime,
 };
@@ -285,9 +285,14 @@ impl TextMessage {
 }
 
 impl UdpChat {
-    pub fn new(ip: Ipv4Addr, front_tx: Sender<BackEvent>, downloads_path: PathBuf) -> Self {
+    pub fn new(
+        ip: Ipv4Addr,
+        front_tx: Sender<BackEvent>,
+        downloads_path: PathBuf,
+        buffer_size: Arc<AtomicU8>,
+    ) -> Self {
         let (tx, rx) = flume::unbounded::<ChatEvent>();
-        let sender = NetWorker::new(ip, front_tx);
+        let sender = NetWorker::new(ip, front_tx, buffer_size);
 
         UdpChat {
             networker: sender,

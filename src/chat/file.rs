@@ -45,6 +45,7 @@ pub struct FileLink {
     time_start: SystemTime,
     seconds_elapsed: AtomicU64,
     bandwidth: AtomicU64,
+    pub buffer_size: u64,
     pub name: String,
     pub path: PathBuf,
     pub size: u64,
@@ -56,7 +57,7 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
+    pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount, buffer_size: u64) -> Self {
         let mut path = dir.to_owned();
         path.push(name);
 
@@ -69,6 +70,7 @@ impl FileLink {
             path,
             size: count * DATA_LIMIT_BYTES as ShardCount,
             count,
+            buffer_size,
             completed: AtomicU64::new(0),
             is_ready: AtomicBool::new(false),
             is_aborted: AtomicBool::new(false),
@@ -92,6 +94,7 @@ impl FileLink {
             is_ready: AtomicBool::new(false),
             is_aborted: AtomicBool::new(false),
             breath: AtomicBool::new(false),
+            buffer_size: 0, // Because it's outbox
         })
     }
     pub fn id(&self) -> Id {

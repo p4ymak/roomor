@@ -18,7 +18,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     ops::ControlFlow,
     path::Path,
-    sync::Arc,
+    sync::{atomic::AtomicU8, Arc},
     time::{Duration, SystemTime},
 };
 
@@ -35,6 +35,7 @@ pub struct NetWorker {
     id: PeerId,
     pub name: String,
     pub socket: Option<Arc<UdpSocket>>,
+    pub buffer_size: Arc<AtomicU8>,
     pub multicast: SocketAddrV4,
     pub _ip: Ipv4Addr,
     pub peers: PeersMap,
@@ -42,7 +43,7 @@ pub struct NetWorker {
 }
 
 impl NetWorker {
-    pub fn new(_ip: Ipv4Addr, front_tx: Sender<BackEvent>) -> Self {
+    pub fn new(_ip: Ipv4Addr, front_tx: Sender<BackEvent>, buffer_size: Arc<AtomicU8>) -> Self {
         NetWorker {
             id: PeerId::default(),
             name: String::new(),
@@ -50,6 +51,7 @@ impl NetWorker {
             multicast: SocketAddrV4::new(IP_MULTICAST_DEFAULT, PORT_DEFAULT),
             _ip,
             peers: PeersMap::new(),
+            buffer_size,
             front_tx,
         }
     }
@@ -58,6 +60,14 @@ impl NetWorker {
     }
     pub fn id(&self) -> PeerId {
         self.id
+    }
+    pub fn buffer_size_real(&self) -> u64 {
+        // Calculates buffer size in bytes
+        2_u64.pow(
+            self.buffer_size
+                .load(std::sync::atomic::Ordering::Relaxed)
+                .into(),
+        ) * 1024
     }
     pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.multicast.port()))?;
@@ -223,7 +233,9 @@ impl NetWorker {
                         if msg.is_old_enough() {
                             msg.combine(self, ctx).ok();
                         }
-                    } else if let Some(mut inmsg) = InMessage::new(r_ip, r_msg, downloads_path) {
+                    } else if let Some(mut inmsg) =
+                        InMessage::new(r_ip, r_msg, downloads_path, self.buffer_size_real())
+                    {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
                         if inmsg.command == Command::File {
                             self.handle_back_event(BackEvent::Message(txt_msg), ctx);

@@ -104,49 +104,68 @@ impl CompletedCounter {
     }
 }
 pub struct Shards {
-    pub _total_checksum: CheckSum,
     pub shards: Vec<Option<Shard>>,
+    pub buffer_size: ShardCount,
     pub completed: CompletedCounter,
+    pub current_part: ShardCount,
+    pub offset: ShardCount,
+    pub end: ShardCount,
     pub terminal: ShardCount,
     pub attempt: u8,
 }
 impl Shards {
-    pub fn new(init: PartInit) -> Self {
+    pub fn new(end: ShardCount, buffer_size: ShardCount) -> Self {
+        let size = buffer_size.min(end + 1);
         Shards {
-            _total_checksum: init.checksum(),
-            shards: vec![None; init.count() as usize],
+            shards: vec![None; size as usize],
+            buffer_size: size,
             completed: CompletedCounter::default(),
-            terminal: init.count().saturating_sub(1),
+            current_part: 0,
+            offset: 0,
+            end,
+            terminal: end,
             attempt: 0,
         }
+    }
+    pub fn next_clear(&mut self) {
+        self.current_part += 1;
+        self.offset += self.buffer_size;
+        let size = (self.end - self.offset).min(self.buffer_size);
+        self.shards = vec![None; size as usize];
+        self.completed.clear();
+        self.attempt = 0;
     }
     pub fn clear(&mut self) {
         self.shards.clear();
         self.completed.clear();
     }
     pub fn insert(&mut self, position: ShardCount, msg: UdpMessage) -> Result<(), ErrorBoxed> {
-        if let Some(shard) = self.shards.get_mut(position as usize) {
-            if shard.is_some() {
-                return Ok(());
+        if let Some(part_position) = position.checked_sub(self.offset) {
+            if let Some(shard) = self.shards.get_mut(part_position as usize) {
+                if shard.is_some() {
+                    return Ok(());
+                }
+
+                (msg.checksum() == CRC.checksum(&msg.data))
+                    .then_some(())
+                    .ok_or("Checksum doesn't match")?;
+
+                *shard = Some(msg.data);
+
+                self.completed.insert(position);
+                warn!("INSERT: {position} / {part_position}");
             }
-
-            (msg.checksum() == CRC.checksum(&msg.data))
-                .then_some(())
-                .ok_or("Checksum doesn't match")?;
-
-            *shard = Some(msg.data);
-
-            self.completed.insert(position);
         }
         Ok(())
     }
 
     pub fn missed(&self) -> Vec<RangeInclusive<ShardCount>> {
+        error!("Finding missed");
         let last = self.shards.len().saturating_sub(1) as ShardCount;
         if let Some(ranges) = &self.completed.ranges {
-            ranges.missed_in_range(0..=last)
+            ranges.missed_in_range(self.offset..=(self.offset + last))
         } else {
-            vec![0..=last]
+            vec![self.offset..=(self.offset + last)]
         }
     }
 }
@@ -158,10 +177,16 @@ pub struct InMessage {
     pub public: bool,
     pub command: Command,
     pub link: Arc<FileLink>,
+    pub terminal: ShardCount,
     pub shards: Shards,
 }
 impl InMessage {
-    pub fn new(ip: Ipv4Addr, msg: UdpMessage, downloads_path: &Path) -> Option<Self> {
+    pub fn new(
+        ip: Ipv4Addr,
+        msg: UdpMessage,
+        downloads_path: &Path,
+        buffer_size: u64,
+    ) -> Option<Self> {
         debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
             let file_name = if let Command::File = msg.command {
@@ -170,7 +195,18 @@ impl InMessage {
             } else {
                 String::new()
             };
-            let link = FileLink::new(msg.id, &file_name, downloads_path, init.count());
+            warn!("Shards {}", init.count());
+            let size = match msg.command {
+                Command::File => buffer_size,
+                _ => init.count(),
+            };
+            let link = FileLink::new(
+                msg.id,
+                &file_name,
+                downloads_path,
+                init.count(),
+                buffer_size,
+            );
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
@@ -178,8 +214,9 @@ impl InMessage {
                 _ip: ip,
                 public: msg.public,
                 command: msg.command,
+                terminal: init.count().saturating_sub(1),
                 link: Arc::new(link),
-                shards: Shards::new(init),
+                shards: Shards::new(init.count().saturating_sub(1), size),
             })
         } else {
             None
@@ -263,6 +300,7 @@ impl InMessage {
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
+        error!("COMBINE");
         if self.link.is_ready() {
             self.send_seen(networker);
             return Ok(());
@@ -303,22 +341,44 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
-                    let path = &self.link.path;
-                    debug!("Data lenght: {}", data.len());
-                    debug!("Writing new file to {path:?}");
-                    let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
-                    if written {
-                        self.send_seen(networker);
-                        self.link.set_ready();
-                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
-                            ctx.notify(&self.link.name);
+                    if self.terminal == self.shards.terminal {
+                        let path = &self.link.path;
+                        // FIXME TODO combine parts and append tail data
+                        debug!("Data lenght: {}", data.len());
+                        debug!("Writing new file to {path:?}");
+                        let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
+                        if written {
+                            self.send_seen(networker);
+                            self.link.set_ready();
+                            if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                                ctx.notify(&self.link.name);
+                            }
+                        } else {
+                            self.send_abort(networker);
+                            self.link.abort();
                         }
+                        ctx.request_repaint();
+                        Ok(())
                     } else {
-                        self.send_abort(networker);
-                        self.link.abort();
+                        error!("Combining part");
+                        let mut path = self.link.path.to_path_buf();
+                        fs::create_dir_all(&path).ok();
+                        path.set_file_name(format!("part_{}", self.shards.current_part));
+                        let _written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
+                        self.shards.next_clear();
+                        let last = self.shards.shards.len().saturating_sub(1) as ShardCount;
+                        warn!(
+                            "Offset = {} * {}",
+                            self.shards.offset, self.shards.current_part
+                        );
+                        error!(" -> {last}");
+                        self.ask_for_missed(
+                            networker,
+                            vec![self.shards.offset..=(self.shards.offset + last)],
+                        );
+                        warn!("Asked for next part {}", self.shards.current_part);
+                        Ok(())
                     }
-                    ctx.request_repaint();
-                    Ok(())
                 }
                 _ => Ok(()),
             }
@@ -394,4 +454,12 @@ impl InMessage {
                 .ok();
         }
     }
+}
+
+fn offset_range(
+    range: RangeInclusive<ShardCount>,
+    offset: ShardCount,
+) -> RangeInclusive<ShardCount> {
+    let (s, e) = range.into_inner();
+    RangeInclusive::new(s + offset, e + offset)
 }

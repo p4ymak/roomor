@@ -15,11 +15,11 @@ build = "build.rs"
 
 
 [dependencies]
-eframe = "0.30.0"
+eframe = "0.31.1"
 # egui_keyboard = { path="../egui_keyboard" }
 human_bytes = "0.4.3"
 opener = "0.7.2"
-egui-phosphor = "0.8.0"
+egui-phosphor = "0.9.0"
 flume = "0.11.0"
 system-interface = "0.27.2"
 # network-interface = "2.0.0"
@@ -34,7 +34,7 @@ enumn = "0.1.14"
 crc = "3.2.1"
 range_rover = "0.1.4"
 
-notify-rust = "4.11.3"
+notify-rust = "4.11.7"
 rodio = { version = "0.20.1", default-features = false }
 
 log = { version = "0.4", features = ["std"] }
