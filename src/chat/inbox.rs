@@ -2,7 +2,7 @@ use crate::chat::{networker::TIMEOUT_ALIVE, Destination};
 
 use super::{
     file::FileLink,
-    message::{CheckSum, Command, Id, Part, PartInit, ShardCount, UdpMessage, CRC},
+    message::{Command, Id, Part, ShardCount, UdpMessage, CRC},
     networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     peers::PeerId,
@@ -11,8 +11,15 @@ use super::{
 use log::{debug, error, warn};
 use range_rover::RangeTree;
 use std::{
-    collections::BTreeMap, error::Error, fs, net::Ipv4Addr, ops::RangeInclusive, path::Path,
-    sync::Arc, time::SystemTime,
+    collections::BTreeMap,
+    error::Error,
+    fs::{self, OpenOptions},
+    io::Write,
+    net::Ipv4Addr,
+    ops::RangeInclusive,
+    path::Path,
+    sync::Arc,
+    time::SystemTime,
 };
 
 pub type Shard = Vec<u8>;
@@ -130,7 +137,8 @@ impl Shards {
     pub fn next_clear(&mut self) {
         self.current_part += 1;
         self.offset += self.buffer_size;
-        let size = (self.end - self.offset).min(self.buffer_size);
+        warn!("NEW SIZE: {}", self.end as isize - self.offset as isize);
+        let size = (self.end - self.offset + 1).min(self.buffer_size);
         self.shards = vec![None; size as usize];
         self.completed.clear();
         self.attempt = 0;
@@ -177,7 +185,7 @@ pub struct InMessage {
     pub public: bool,
     pub command: Command,
     pub link: Arc<FileLink>,
-    pub terminal: ShardCount,
+    pub parts_count: ShardCount,
     pub shards: Shards,
 }
 impl InMessage {
@@ -185,7 +193,7 @@ impl InMessage {
         ip: Ipv4Addr,
         msg: UdpMessage,
         downloads_path: &Path,
-        buffer_size: u64,
+        buffer_size: ShardCount,
     ) -> Option<Self> {
         debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
@@ -200,13 +208,8 @@ impl InMessage {
                 Command::File => buffer_size,
                 _ => init.count(),
             };
-            let link = FileLink::new(
-                msg.id,
-                &file_name,
-                downloads_path,
-                init.count(),
-                buffer_size,
-            );
+            let link = FileLink::new(msg.id, &file_name, downloads_path, init.count());
+            let parts_count = init.count().div_ceil(buffer_size);
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
@@ -214,7 +217,7 @@ impl InMessage {
                 _ip: ip,
                 public: msg.public,
                 command: msg.command,
-                terminal: init.count().saturating_sub(1),
+                parts_count,
                 link: Arc::new(link),
                 shards: Shards::new(init.count().saturating_sub(1), size),
             })
@@ -310,6 +313,11 @@ impl InMessage {
             return Ok(());
         }
         debug!("Combining");
+        warn!(
+            "Current part: {} / {}",
+            self.shards.current_part, self.parts_count
+        );
+
         let missed = self.shards.missed();
         debug!("Shards count: {}", self.shards.shards.len());
         if missed.is_empty() {
@@ -341,44 +349,44 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
-                    if self.terminal == self.shards.terminal {
-                        let path = &self.link.path;
-                        // FIXME TODO combine parts and append tail data
-                        debug!("Data lenght: {}", data.len());
-                        debug!("Writing new file to {path:?}");
-                        let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
-                        if written {
-                            self.send_seen(networker);
-                            self.link.set_ready();
-                            if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
-                                ctx.notify(&self.link.name);
-                            }
-                        } else {
+                    error!("Combining part");
+                    let path = &self.link.path;
+                    if let Ok(mut file) = OpenOptions::new().create(false).append(true).open(path) {
+                        let written = file.write(&data).inspect_err(|e| error!("{e}")).is_ok();
+                        if !written {
                             self.send_abort(networker);
                             self.link.abort();
                         }
-                        ctx.request_repaint();
-                        Ok(())
                     } else {
-                        error!("Combining part");
-                        let mut path = self.link.path.to_path_buf();
-                        fs::create_dir_all(&path).ok();
-                        path.set_file_name(format!("part_{}", self.shards.current_part));
-                        let _written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
+                        self.send_abort(networker);
+                        self.link.abort();
+                    }
+
+                    if self.shards.current_part + 1 < self.parts_count {
                         self.shards.next_clear();
                         let last = self.shards.shards.len().saturating_sub(1) as ShardCount;
-                        warn!(
-                            "Offset = {} * {}",
-                            self.shards.offset, self.shards.current_part
-                        );
-                        error!(" -> {last}");
                         self.ask_for_missed(
                             networker,
                             vec![self.shards.offset..=(self.shards.offset + last)],
                         );
                         warn!("Asked for next part {}", self.shards.current_part);
-                        Ok(())
+                    } else {
+                        let mut correct_path = path.clone();
+                        // correct_path.set_file_name(path.file_name().unwrap().to_str());
+                        if fs::rename(path, &correct_path).is_ok() {
+                            self.send_seen(networker);
+                            self.link.set_ready();
+                            if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                                ctx.notify(&self.link.name);
+                            }
+                            ctx.request_repaint();
+                        } else {
+                            self.send_abort(networker);
+                            self.link.abort();
+                        }
                     }
+                    Ok(())
+                    // }
                 }
                 _ => Ok(()),
             }
@@ -420,6 +428,9 @@ impl InMessage {
         networker: &mut NetWorker,
         missed: Vec<RangeInclusive<ShardCount>>,
     ) {
+        if missed.is_empty() {
+            return;
+        }
         let terminal = missed
             .last()
             .map(|l| *l.end())
@@ -456,10 +467,11 @@ impl InMessage {
     }
 }
 
-fn offset_range(
-    range: RangeInclusive<ShardCount>,
-    offset: ShardCount,
-) -> RangeInclusive<ShardCount> {
-    let (s, e) = range.into_inner();
-    RangeInclusive::new(s + offset, e + offset)
-}
+// TODO cleanup
+// fn offset_range(
+//     range: RangeInclusive<ShardCount>,
+//     offset: ShardCount,
+// ) -> RangeInclusive<ShardCount> {
+//     let (s, e) = range.into_inner();
+//     RangeInclusive::new(s + offset, e + offset)
+// }

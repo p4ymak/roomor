@@ -6,7 +6,7 @@ use crate::chat::{
 
 use super::{
     file::ShardsInfo,
-    message::UdpMessage,
+    message::{UdpMessage, DATA_LIMIT_BYTES},
     notifier::Repaintable,
     peers::{PeerId, PeersMap},
     BackEvent, Content, FrontEvent, Inbox, Outbox, Recepients,
@@ -61,13 +61,17 @@ impl NetWorker {
     pub fn id(&self) -> PeerId {
         self.id
     }
-    pub fn buffer_size_real(&self) -> u64 {
-        // Calculates buffer size in bytes
+    pub fn buffer_size_shards(&self) -> ShardCount {
+        // Calculates buffer size in Shards
         2_u64.pow(
             self.buffer_size
                 .load(std::sync::atomic::Ordering::Relaxed)
                 .into(),
-        ) * 1024
+        )
+    }
+    pub fn buffer_size_bytes(&self) -> usize {
+        // Calculates buffer size in bytes
+        self.buffer_size_shards() as usize * DATA_LIMIT_BYTES
     }
     pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.multicast.port()))?;
@@ -234,7 +238,7 @@ impl NetWorker {
                             msg.combine(self, ctx).ok();
                         }
                     } else if let Some(mut inmsg) =
-                        InMessage::new(r_ip, r_msg, downloads_path, self.buffer_size_real())
+                        InMessage::new(r_ip, r_msg, downloads_path, self.buffer_size_shards())
                     {
                         let txt_msg = TextMessage::from_inmsg(&inmsg);
                         if inmsg.command == Command::File {
