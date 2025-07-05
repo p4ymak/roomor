@@ -107,6 +107,7 @@ impl FileLink {
         (self.completed.load(Ordering::Relaxed) as f32 / self.count as f32).min(0.99)
     }
     pub fn abort(&self) {
+        std::fs::remove_file(&self.path).ok();
         self.is_aborted.store(true, Ordering::Relaxed);
         self.breath_in();
     }

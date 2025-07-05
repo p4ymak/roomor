@@ -39,7 +39,7 @@ use std::{
     time::SystemTime,
 };
 
-const BUFFER_SIZE_DEFAULT: u8 = 2; // 2^X KiB
+const BUFFER_SIZE_DEFAULT: u8 = 12; // 2^X * Shard
 pub const ZOOM_STEP: f32 = 0.25;
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;

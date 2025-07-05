@@ -137,7 +137,6 @@ impl Shards {
     pub fn next_clear(&mut self) {
         self.current_part += 1;
         self.offset += self.buffer_size;
-        warn!("NEW SIZE: {}", self.end as isize - self.offset as isize);
         let size = (self.end - self.offset + 1).min(self.buffer_size);
         self.shards = vec![None; size as usize];
         self.completed.clear();
@@ -161,7 +160,6 @@ impl Shards {
                 *shard = Some(msg.data);
 
                 self.completed.insert(position);
-                warn!("INSERT: {position} / {part_position}");
             }
         }
         Ok(())
@@ -203,7 +201,6 @@ impl InMessage {
             } else {
                 String::new()
             };
-            warn!("Shards {}", init.count());
             let size = match msg.command {
                 Command::File => buffer_size,
                 _ => init.count(),
@@ -254,49 +251,10 @@ impl InMessage {
             ctx.request_repaint();
 
             if self.shards.terminal == position {
-                warn!("Received terminal {position}");
-                // let missed_left = self.shards.missed_left(position.saturating_sub(1));
-                // if missed_left.is_empty() {
                 self.combine(networker, ctx).ok();
-                // } else {
-                // self.ask_for_missed(networker, missed_left, true);
-                // }
             }
-            // } else {
-            //     let missed_left = self.shards.missed_left(position);
-            //     self.ask_for_missed(networker, missed_left, true);
         }
     }
-
-    // pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
-    //     let missed = range_rover(
-    //         self.shards
-    //             .iter()
-    //             .enumerate()
-    //             .filter(|s| s.1.is_none())
-    //             .map(|s| s.0 as ShardCount),
-    //     );
-    //     let missed = missed.into_iter().fold(
-    //         vec![],
-    //         |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-    //             if let Some(last) = r.last_mut() {
-    //                 let empty_len = m.start().saturating_sub(*last.end());
-    //                 if empty_len <= m.clone().count() as ShardCount
-    //                 // || empty_len <= last.clone().count() as ShardCount
-    //                 {
-    //                     *last = *last.start()..=*m.end();
-    //                 } else {
-    //                     r.push(m);
-    //                 }
-    //             } else {
-    //                 r.push(m);
-    //             }
-    //             r
-    //         },
-    //     );
-
-    //     missed
-    // }
 
     pub fn combine(
         &mut self,
@@ -313,7 +271,7 @@ impl InMessage {
             return Ok(());
         }
         debug!("Combining");
-        warn!(
+        debug!(
             "Current part: {} / {}",
             self.shards.current_part, self.parts_count
         );
@@ -370,21 +328,18 @@ impl InMessage {
                             vec![self.shards.offset..=(self.shards.offset + last)],
                         );
                         warn!("Asked for next part {}", self.shards.current_part);
-                    } else {
-                        let mut correct_path = path.clone();
-                        // correct_path.set_file_name(path.file_name().unwrap().to_str());
-                        if fs::rename(path, &correct_path).is_ok() {
-                            self.send_seen(networker);
-                            self.link.set_ready();
-                            if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
-                                ctx.notify(&self.link.name);
-                            }
-                            ctx.request_repaint();
-                        } else {
-                            self.send_abort(networker);
-                            self.link.abort();
+                    } else if rename_file(path).is_ok() {
+                        self.send_seen(networker);
+                        self.link.set_ready();
+                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                            ctx.notify(&self.link.name);
                         }
+                        ctx.request_repaint();
+                    } else {
+                        self.send_abort(networker);
+                        self.link.abort();
                     }
+
                     Ok(())
                     // }
                 }
@@ -467,6 +422,14 @@ impl InMessage {
     }
 }
 
+fn rename_file(path: &Path) -> Result<(), ErrorBoxed> {
+    let correct_path = path
+        .to_str()
+        .and_then(|s| s.strip_suffix("_WIP"))
+        .ok_or("can't rename")?;
+    fs::rename(path, correct_path)?;
+    Ok(())
+}
 // TODO cleanup
 // fn offset_range(
 //     range: RangeInclusive<ShardCount>,
