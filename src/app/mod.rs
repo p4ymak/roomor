@@ -4,7 +4,7 @@ mod rooms;
 use self::rooms::Rooms;
 use crate::chat::{
     limit_text,
-    message::{new_id, MAX_NAME_SIZE},
+    message::{new_id, DATA_LIMIT_BYTES, MAX_NAME_SIZE},
     networker::{get_my_ipv4, IP_MULTICAST_DEFAULT, PORT_DEFAULT, TIMEOUT_ALIVE, TIMEOUT_CHECK},
     notifier::{Notifier, Repaintable},
     peers::PeerId,
@@ -22,6 +22,7 @@ use egui_winit::winit::platform::android::activity::{
     AndroidApp,
 };
 use flume::{Receiver, Sender};
+use human_bytes::human_bytes;
 use log::{debug, error};
 use opener::{open, open_browser};
 use rodio::{OutputStream, OutputStreamHandle};
@@ -39,7 +40,8 @@ use std::{
     time::SystemTime,
 };
 
-const BUFFER_SIZE_DEFAULT: u8 = 12; // 2^X * Shard
+const BUFFER_SIZE_DEFAULT: u8 = 13; // 2^X * Shard
+const BUFFER_SIZE_MAX: u8 = 24;
 pub const ZOOM_STEP: f32 = 0.25;
 pub const FONT_SCALE: f32 = 1.5;
 pub const EMOJI_SCALE: f32 = 4.0;
@@ -644,6 +646,8 @@ impl Roomor {
                 egui::widgets::global_theme_preference_switch(h);
             });
             ui.separator();
+            self.draw_buffer_settings(ui);
+            ui.separator();
             if ui
                 .button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
                 .clicked()
@@ -677,6 +681,23 @@ impl Roomor {
                 ui.close_menu();
             }
         });
+    }
+    fn draw_buffer_settings(&mut self, ui: &mut egui::Ui) {
+        let formatter = |num, _| -> String {
+            let size = 2_usize.pow(num as u32) * DATA_LIMIT_BYTES;
+            human_bytes(size as f64)
+        };
+        let ordering = std::sync::atomic::Ordering::Relaxed;
+        let mut buffer_size = self.buffer_size.load(ordering);
+        ui.horizontal(|h| {
+            h.label("Buffer size");
+            h.add(
+                DragValue::new(&mut buffer_size)
+                    .range(1..=BUFFER_SIZE_MAX)
+                    .custom_formatter(formatter),
+            );
+        });
+        self.buffer_size.store(buffer_size, ordering);
     }
 
     fn handle_dnd_files(&mut self, ctx: &egui::Context) {

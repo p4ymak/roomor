@@ -69,10 +69,10 @@ impl NetWorker {
                 .into(),
         )
     }
-    pub fn buffer_size_bytes(&self) -> usize {
-        // Calculates buffer size in bytes
-        self.buffer_size_shards() as usize * DATA_LIMIT_BYTES
-    }
+    // pub fn buffer_size_bytes(&self) -> usize {
+    //     // Calculates buffer size in bytes
+    //     self.buffer_size_shards() as usize * DATA_LIMIT_BYTES
+    // }
     pub fn connect(&mut self, multicast: Ipv4Addr) -> Result<(), Box<dyn Error + 'static>> {
         let socket = UdpSocket::bind(SocketAddrV4::new(IP_UNSPECIFIED, self.multicast.port()))?;
         socket.set_broadcast(true)?;
