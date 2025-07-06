@@ -295,7 +295,7 @@ impl NetWorker {
                 .ok();
             }
 
-            Command::AskToSend | Command::AskToRepeat => {
+            Command::AskToRepeat => {
                 debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 let mut not_found_text = false;
@@ -312,7 +312,7 @@ impl NetWorker {
                     if let Some((link, tx)) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();
                         if !is_aborted {
-                            if r_msg.command == Command::AskToRepeat {
+                            if r_msg.data.is_empty() {
                                 link.completed_sub(range.clone().count() as ShardCount);
                             }
                             debug!("sending shards {range:?}");

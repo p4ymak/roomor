@@ -413,21 +413,17 @@ impl InMessage {
             debug!("Asked to repeat shards #{range:?}");
 
             self.ts = SystemTime::now();
-            if repeat {
-                networker
-                    .send(
-                        UdpMessage::ask_to_repeat(networker.id(), self.id, Part::AskRange(range)),
-                        self.from_peer_id,
-                    )
-                    .ok();
-            } else {
-                networker
-                    .send(
-                        UdpMessage::ask_to_send(networker.id(), self.id, Part::AskRange(range)),
-                        self.from_peer_id,
-                    )
-                    .ok();
-            }
+            networker
+                .send(
+                    UdpMessage::ask_to_repeat(
+                        networker.id(),
+                        self.id,
+                        Part::AskRange(range),
+                        repeat,
+                    ),
+                    self.from_peer_id,
+                )
+                .ok();
         }
     }
 }

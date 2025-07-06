@@ -36,7 +36,6 @@ pub enum Command {
     Greating,
     Text,
     File,
-    AskToSend,
     AskToRepeat,
     Repeat,
     Exit,
@@ -173,18 +172,8 @@ impl UdpMessage {
         }
     }
 
-    pub fn ask_to_send(from_peer_id: PeerId, id: Id, part: Part) -> Self {
-        UdpMessage {
-            from_peer_id,
-            id,
-            public: false,
-            part,
-            checksum: 0,
-            command: Command::AskToSend,
-            data: vec![],
-        }
-    }
-    pub fn ask_to_repeat(from_peer_id: PeerId, id: Id, part: Part) -> Self {
+    pub fn ask_to_repeat(from_peer_id: PeerId, id: Id, part: Part, repeat: bool) -> Self {
+        let data = if repeat { vec![] } else { vec![13_u8] }; // for compatibilty with v.0.4 TODO
         UdpMessage {
             from_peer_id,
             id,
@@ -192,7 +181,7 @@ impl UdpMessage {
             part,
             checksum: 0,
             command: Command::AskToRepeat,
-            data: vec![],
+            data,
         }
     }
 
