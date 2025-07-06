@@ -36,6 +36,7 @@ pub enum Command {
     Greating,
     Text,
     File,
+    AskToSend,
     AskToRepeat,
     Repeat,
     Exit,
@@ -77,7 +78,7 @@ pub struct PartInit {
     count: ShardCount,
 }
 impl PartInit {
-    pub fn checksum(&self) -> CheckSum {
+    pub fn _checksum(&self) -> CheckSum {
         self.total_checksum
     }
     pub fn count(&self) -> ShardCount {
@@ -168,6 +169,18 @@ impl UdpMessage {
             part: Part::Single,
             checksum: 0,
             command: Command::Abort,
+            data: vec![],
+        }
+    }
+
+    pub fn ask_to_send(from_peer_id: PeerId, id: Id, part: Part) -> Self {
+        UdpMessage {
+            from_peer_id,
+            id,
+            public: false,
+            part,
+            checksum: 0,
+            command: Command::AskToSend,
             data: vec![],
         }
     }

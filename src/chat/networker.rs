@@ -6,7 +6,7 @@ use crate::chat::{
 
 use super::{
     file::ShardsInfo,
-    message::{UdpMessage, DATA_LIMIT_BYTES},
+    message::UdpMessage,
     notifier::Repaintable,
     peers::{PeerId, PeersMap},
     BackEvent, Content, FrontEvent, Inbox, Outbox, Recepients,
@@ -295,7 +295,7 @@ impl NetWorker {
                 .ok();
             }
 
-            Command::AskToRepeat => {
+            Command::AskToSend | Command::AskToRepeat => {
                 debug!("Was asked to repeat {r_id}, part: {:?}", r_msg.part);
                 // Resend my Name
                 let mut not_found_text = false;
@@ -312,7 +312,9 @@ impl NetWorker {
                     if let Some((link, tx)) = outbox.files.get(&r_id) {
                         is_aborted = link.is_aborted();
                         if !is_aborted {
-                            link.completed_sub(range.clone().count() as ShardCount);
+                            if r_msg.command == Command::AskToRepeat {
+                                link.completed_sub(range.clone().count() as ShardCount);
+                            }
                             debug!("sending shards {range:?}");
                             tx.send(ShardsInfo::new(
                                 link.clone(),

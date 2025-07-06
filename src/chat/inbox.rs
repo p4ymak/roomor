@@ -326,6 +326,7 @@ impl InMessage {
                         self.ask_for_missed(
                             networker,
                             vec![self.shards.offset..=(self.shards.offset + last)],
+                            false,
                         );
                         warn!("Asked for next part {}", self.shards.current_part);
                     } else if rename_file(path).is_ok() {
@@ -347,7 +348,7 @@ impl InMessage {
             }
         } else {
             debug!("Shards missing!");
-            self.ask_for_missed(networker, missed);
+            self.ask_for_missed(networker, missed, true);
             Err("Missing Shards".into())
         }
     }
@@ -382,6 +383,7 @@ impl InMessage {
         &mut self,
         networker: &mut NetWorker,
         missed: Vec<RangeInclusive<ShardCount>>,
+        repeat: bool,
     ) {
         if missed.is_empty() {
             return;
@@ -411,13 +413,21 @@ impl InMessage {
             debug!("Asked to repeat shards #{range:?}");
 
             self.ts = SystemTime::now();
-
-            networker
-                .send(
-                    UdpMessage::ask_to_repeat(networker.id(), self.id, Part::AskRange(range)),
-                    self.from_peer_id,
-                )
-                .ok();
+            if repeat {
+                networker
+                    .send(
+                        UdpMessage::ask_to_repeat(networker.id(), self.id, Part::AskRange(range)),
+                        self.from_peer_id,
+                    )
+                    .ok();
+            } else {
+                networker
+                    .send(
+                        UdpMessage::ask_to_send(networker.id(), self.id, Part::AskRange(range)),
+                        self.from_peer_id,
+                    )
+                    .ok();
+            }
         }
     }
 }

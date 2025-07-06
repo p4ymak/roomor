@@ -14,6 +14,7 @@ pub fn protocol() {
             Command::Text => UdpMessage::new_single(peer_id, Command::Text, vec![], false),
             Command::File => UdpMessage::new_single(peer_id, Command::File, vec![], false),
             Command::AskToRepeat => UdpMessage::ask_to_repeat(peer_id, 4, Part::Single),
+            Command::AskToSend => UdpMessage::ask_to_repeat(peer_id, 4, Part::Single),
             Command::Repeat => UdpMessage::new_single(peer_id, Command::Text, vec![], false),
             Command::Exit => UdpMessage::exit(peer_id),
             Command::Seen => UdpMessage::seen_id(peer_id, 0, true),
