@@ -8,7 +8,7 @@ use super::{
     peers::PeerId,
     BackEvent, Content, ErrorBoxed, Presence, Seen, TextMessage,
 };
-use log::{debug, error, warn};
+use log::{debug, error};
 use range_rover::RangeTree;
 use std::{
     collections::BTreeMap,
@@ -77,23 +77,12 @@ impl Inbox {
             }
         });
     }
-    // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
-    //     self.0.retain(|_, msg| {
-    //         !(SystemTime::now()
-    //             .duration_since(msg.ts)
-    //             .is_ok_and(|d| d > delta * msg.attempt.max(1) as u32)
-    //             && (msg.combine(networker, ctx).is_ok()))
-    //     });
-    // }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
         self.0.insert(id, msg);
     }
     pub fn get_mut(&mut self, id: &Id) -> Option<&mut InMessage> {
         self.0.get_mut(id)
     }
-    // pub fn remove(&mut self, id: &Id) {
-    //     self.0.remove(id);
-    // }
 }
 
 #[derive(Default, Debug)]
@@ -166,7 +155,6 @@ impl Shards {
     }
 
     pub fn missed(&self) -> Vec<RangeInclusive<ShardCount>> {
-        error!("Finding missed");
         let last = self.shards.len().saturating_sub(1) as ShardCount;
         if let Some(ranges) = &self.completed.ranges {
             ranges.missed_in_range(self.offset..=(self.offset + last))
@@ -261,7 +249,6 @@ impl InMessage {
         networker: &mut NetWorker,
         ctx: &impl Repaintable,
     ) -> Result<(), Box<dyn Error + 'static>> {
-        error!("COMBINE");
         if self.link.is_ready() {
             self.send_seen(networker);
             return Ok(());
@@ -270,9 +257,8 @@ impl InMessage {
             self.send_abort(networker);
             return Ok(());
         }
-        debug!("Combining");
         debug!(
-            "Current part: {} / {}",
+            "Combining! Current part: {} / {}",
             self.shards.current_part, self.parts_count
         );
 
@@ -307,7 +293,6 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
-                    error!("Combining part");
                     let path = &self.link.path;
                     if let Ok(mut file) = OpenOptions::new().create(false).append(true).open(path) {
                         let written = file.write(&data).inspect_err(|e| error!("{e}")).is_ok();
@@ -328,7 +313,6 @@ impl InMessage {
                             vec![self.shards.offset..=(self.shards.offset + last)],
                             false,
                         );
-                        warn!("Asked for next part {}", self.shards.current_part);
                     } else if rename_file(path).is_ok() {
                         self.send_seen(networker);
                         self.link.set_ready();
@@ -394,10 +378,8 @@ impl InMessage {
             .unwrap_or(self.link.count.saturating_sub(1));
         if self.shards.terminal == terminal {
             self.shards.attempt = self.shards.attempt.saturating_add(1);
-            warn!("New attempt: {}", self.shards.attempt);
         } else {
             self.shards.terminal = terminal;
-            warn!("New terminal: {}", terminal);
         }
 
         for range in missed {
