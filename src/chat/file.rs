@@ -1,4 +1,5 @@
 use flume::Receiver;
+use log::error;
 
 use super::{
     message::{send_shards, Id, ShardCount, DATA_LIMIT_BYTES},
@@ -7,7 +8,7 @@ use super::{
     Recepients,
 };
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     net::{SocketAddrV4, UdpSocket},
     ops::RangeInclusive,
     path::{Path, PathBuf},
@@ -58,8 +59,13 @@ pub struct FileLink {
 impl FileLink {
     pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
-        path.push(name);
-
+        path.push(format!("{name}_WIP"));
+        let _file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .inspect_err(|e| error!("{e} : {path:?}"));
         FileLink {
             id,
             time_start: SystemTime::now(),
@@ -101,6 +107,7 @@ impl FileLink {
         (self.completed.load(Ordering::Relaxed) as f32 / self.count as f32).min(0.99)
     }
     pub fn abort(&self) {
+        std::fs::remove_file(&self.path).ok();
         self.is_aborted.store(true, Ordering::Relaxed);
         self.breath_in();
     }

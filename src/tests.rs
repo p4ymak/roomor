@@ -13,7 +13,7 @@ pub fn protocol() {
             Command::Greating => UdpMessage::greating(peer_id, "name"),
             Command::Text => UdpMessage::new_single(peer_id, Command::Text, vec![], false),
             Command::File => UdpMessage::new_single(peer_id, Command::File, vec![], false),
-            Command::AskToRepeat => UdpMessage::ask_to_repeat(peer_id, 4, Part::Single),
+            Command::AskToRepeat => UdpMessage::ask_to_repeat(peer_id, 4, Part::Single, true),
             Command::Repeat => UdpMessage::new_single(peer_id, Command::Text, vec![], false),
             Command::Exit => UdpMessage::exit(peer_id),
             Command::Seen => UdpMessage::seen_id(peer_id, 0, true),

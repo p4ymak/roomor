@@ -10,8 +10,9 @@ use crate::{
     emoji::EMOJI_LIST,
 };
 use eframe::{
-    egui::{self, KeyboardShortcut, Modifiers, Rounding, Stroke},
+    egui::{self, KeyboardShortcut, Modifiers, Stroke, StrokeKind},
     emath::Align2,
+    epaint::CornerRadiusF32,
 };
 use flume::Sender;
 use human_bytes::human_bytes;
@@ -574,10 +575,11 @@ impl ChatHistory {
         });
         let clicked = response.clicked();
 
-        let rounding = Rounding {
-            nw: rounding(ui) * 2.0,
+        let radius = rounding(ui) * 2.0;
+        let corner_radius = CornerRadiusF32 {
+            nw: radius,
             ne: 0.0,
-            sw: rounding(ui) * 2.0,
+            sw: radius,
             se: 0.0,
         };
 
@@ -593,8 +595,9 @@ impl ChatHistory {
                 .clip_rect()
                 .expand(-stroke_width)
                 .shrink2(egui::Vec2::new(stroke_width, 0.0)),
-            rounding,
+            corner_radius,
             stroke,
+            StrokeKind::Middle,
         );
 
         if self.unread > 0 {
@@ -615,13 +618,13 @@ impl ChatHistory {
         }
         if let Some(msg) = self.history.last() {
             if let Some(ago) = pretty_ago(msg.time()) {
-                hover_lines.push(format!("Last message {}", ago));
+                hover_lines.push(format!("Last message {ago}"));
             }
         }
         if !self.peer_id.is_public() {
             let peer = peers.ids.get(&self.peer_id).expect("Peer exists");
             if let Some(ago) = pretty_ago(peer.last_time()) {
-                hover_lines.push(format!("Last seen {}", ago));
+                hover_lines.push(format!("Last seen {ago}"));
             }
             hover_lines.push(format!("{}", peer.ip()));
         }
@@ -663,18 +666,18 @@ impl TextMessage {
         let ui_width = ui.available_width() - text_height(ui);
         ui.with_layout(egui::Layout::top_down(align), |line| {
             line.set_max_width(ui_width);
-            let mut rounding =
-                Rounding::same(rounding(line) * line.style().visuals.window_stroke.width);
+            let mut corner_radius =
+                CornerRadiusF32::same(rounding(line) * line.style().visuals.window_stroke.width);
             if self.is_seen() {
                 if self.is_incoming() {
-                    rounding.sw = 0.0;
+                    corner_radius.sw = 0.0;
                 } else {
-                    rounding.se = 0.0;
+                    corner_radius.se = 0.0;
                 }
             }
             let frame = egui::Frame::group(line.style())
                 .outer_margin(line.style().visuals.window_stroke.width)
-                .rounding(rounding)
+                .corner_radius(corner_radius)
                 .stroke(Stroke::new(
                     stroke_width(line),
                     line.style().visuals.widgets.inactive.fg_stroke.color,
@@ -785,12 +788,13 @@ impl TextMessage {
                             ui.label(format!("{}/s", human_bytes(bandwidth as f32)));
                         }
                     } else {
-                        let rounding =
-                            Rounding::same(rounding(ui) * ui.style().visuals.window_stroke.width);
+                        let corner_radius = CornerRadiusF32::same(
+                            rounding(ui) * ui.style().visuals.window_stroke.width,
+                        );
 
                         ui.add(
                             egui::ProgressBar::new(link.progress())
-                                .rounding(rounding)
+                                .corner_radius(corner_radius)
                                 .desired_width(width)
                                 .show_percentage(),
                         );

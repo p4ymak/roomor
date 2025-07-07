@@ -2,17 +2,24 @@ use crate::chat::{networker::TIMEOUT_ALIVE, Destination};
 
 use super::{
     file::FileLink,
-    message::{CheckSum, Command, Id, Part, PartInit, ShardCount, UdpMessage, CRC},
+    message::{Command, Id, Part, ShardCount, UdpMessage, CRC},
     networker::{NetWorker, TIMEOUT_SECOND},
     notifier::Repaintable,
     peers::PeerId,
     BackEvent, Content, ErrorBoxed, Presence, Seen, TextMessage,
 };
-use log::{debug, error, warn};
+use log::{debug, error};
 use range_rover::RangeTree;
 use std::{
-    collections::BTreeMap, error::Error, fs, net::Ipv4Addr, ops::RangeInclusive, path::Path,
-    sync::Arc, time::SystemTime,
+    collections::BTreeMap,
+    error::Error,
+    fs::{self, OpenOptions},
+    io::Write,
+    net::Ipv4Addr,
+    ops::RangeInclusive,
+    path::Path,
+    sync::Arc,
+    time::SystemTime,
 };
 
 pub type Shard = Vec<u8>;
@@ -70,23 +77,12 @@ impl Inbox {
             }
         });
     }
-    // pub fn retain(&mut self, networker: &mut NetWorker, ctx: &impl Repaintable, delta: Duration) {
-    //     self.0.retain(|_, msg| {
-    //         !(SystemTime::now()
-    //             .duration_since(msg.ts)
-    //             .is_ok_and(|d| d > delta * msg.attempt.max(1) as u32)
-    //             && (msg.combine(networker, ctx).is_ok()))
-    //     });
-    // }
     pub fn insert(&mut self, id: Id, msg: InMessage) {
         self.0.insert(id, msg);
     }
     pub fn get_mut(&mut self, id: &Id) -> Option<&mut InMessage> {
         self.0.get_mut(id)
     }
-    // pub fn remove(&mut self, id: &Id) {
-    //     self.0.remove(id);
-    // }
 }
 
 #[derive(Default, Debug)]
@@ -104,39 +100,56 @@ impl CompletedCounter {
     }
 }
 pub struct Shards {
-    pub _total_checksum: CheckSum,
     pub shards: Vec<Option<Shard>>,
+    pub buffer_size: ShardCount,
     pub completed: CompletedCounter,
+    pub current_part: ShardCount,
+    pub offset: ShardCount,
+    pub end: ShardCount,
     pub terminal: ShardCount,
     pub attempt: u8,
 }
 impl Shards {
-    pub fn new(init: PartInit) -> Self {
+    pub fn new(end: ShardCount, buffer_size: ShardCount) -> Self {
+        let size = buffer_size.min(end + 1);
         Shards {
-            _total_checksum: init.checksum(),
-            shards: vec![None; init.count() as usize],
+            shards: vec![None; size as usize],
+            buffer_size: size,
             completed: CompletedCounter::default(),
-            terminal: init.count().saturating_sub(1),
+            current_part: 0,
+            offset: 0,
+            end,
+            terminal: end,
             attempt: 0,
         }
+    }
+    pub fn next_clear(&mut self) {
+        self.current_part += 1;
+        self.offset += self.buffer_size;
+        let size = (self.end - self.offset + 1).min(self.buffer_size);
+        self.shards = vec![None; size as usize];
+        self.completed.clear();
+        self.attempt = 0;
     }
     pub fn clear(&mut self) {
         self.shards.clear();
         self.completed.clear();
     }
     pub fn insert(&mut self, position: ShardCount, msg: UdpMessage) -> Result<(), ErrorBoxed> {
-        if let Some(shard) = self.shards.get_mut(position as usize) {
-            if shard.is_some() {
-                return Ok(());
+        if let Some(part_position) = position.checked_sub(self.offset) {
+            if let Some(shard) = self.shards.get_mut(part_position as usize) {
+                if shard.is_some() {
+                    return Ok(());
+                }
+
+                (msg.checksum() == CRC.checksum(&msg.data))
+                    .then_some(())
+                    .ok_or("Checksum doesn't match")?;
+
+                *shard = Some(msg.data);
+
+                self.completed.insert(position);
             }
-
-            (msg.checksum() == CRC.checksum(&msg.data))
-                .then_some(())
-                .ok_or("Checksum doesn't match")?;
-
-            *shard = Some(msg.data);
-
-            self.completed.insert(position);
         }
         Ok(())
     }
@@ -144,9 +157,9 @@ impl Shards {
     pub fn missed(&self) -> Vec<RangeInclusive<ShardCount>> {
         let last = self.shards.len().saturating_sub(1) as ShardCount;
         if let Some(ranges) = &self.completed.ranges {
-            ranges.missed_in_range(0..=last)
+            ranges.missed_in_range(self.offset..=(self.offset + last))
         } else {
-            vec![0..=last]
+            vec![self.offset..=(self.offset + last)]
         }
     }
 }
@@ -158,10 +171,16 @@ pub struct InMessage {
     pub public: bool,
     pub command: Command,
     pub link: Arc<FileLink>,
+    pub parts_count: ShardCount,
     pub shards: Shards,
 }
 impl InMessage {
-    pub fn new(ip: Ipv4Addr, msg: UdpMessage, downloads_path: &Path) -> Option<Self> {
+    pub fn new(
+        ip: Ipv4Addr,
+        msg: UdpMessage,
+        downloads_path: &Path,
+        buffer_size: ShardCount,
+    ) -> Option<Self> {
         debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
             let file_name = if let Command::File = msg.command {
@@ -170,7 +189,12 @@ impl InMessage {
             } else {
                 String::new()
             };
+            let size = match msg.command {
+                Command::File => buffer_size,
+                _ => init.count(),
+            };
             let link = FileLink::new(msg.id, &file_name, downloads_path, init.count());
+            let parts_count = init.count().div_ceil(buffer_size);
             Some(InMessage {
                 ts: SystemTime::now(),
                 id: msg.id,
@@ -178,8 +202,9 @@ impl InMessage {
                 _ip: ip,
                 public: msg.public,
                 command: msg.command,
+                parts_count,
                 link: Arc::new(link),
-                shards: Shards::new(init),
+                shards: Shards::new(init.count().saturating_sub(1), size),
             })
         } else {
             None
@@ -214,49 +239,10 @@ impl InMessage {
             ctx.request_repaint();
 
             if self.shards.terminal == position {
-                warn!("Received terminal {position}");
-                // let missed_left = self.shards.missed_left(position.saturating_sub(1));
-                // if missed_left.is_empty() {
                 self.combine(networker, ctx).ok();
-                // } else {
-                // self.ask_for_missed(networker, missed_left, true);
-                // }
             }
-            // } else {
-            //     let missed_left = self.shards.missed_left(position);
-            //     self.ask_for_missed(networker, missed_left, true);
         }
     }
-
-    // pub fn missed_shards(&self) -> Vec<RangeInclusive<ShardCount>> {
-    //     let missed = range_rover(
-    //         self.shards
-    //             .iter()
-    //             .enumerate()
-    //             .filter(|s| s.1.is_none())
-    //             .map(|s| s.0 as ShardCount),
-    //     );
-    //     let missed = missed.into_iter().fold(
-    //         vec![],
-    //         |mut r: Vec<RangeInclusive<ShardCount>>, m: RangeInclusive<ShardCount>| {
-    //             if let Some(last) = r.last_mut() {
-    //                 let empty_len = m.start().saturating_sub(*last.end());
-    //                 if empty_len <= m.clone().count() as ShardCount
-    //                 // || empty_len <= last.clone().count() as ShardCount
-    //                 {
-    //                     *last = *last.start()..=*m.end();
-    //                 } else {
-    //                     r.push(m);
-    //                 }
-    //             } else {
-    //                 r.push(m);
-    //             }
-    //             r
-    //         },
-    //     );
-
-    //     missed
-    // }
 
     pub fn combine(
         &mut self,
@@ -271,7 +257,11 @@ impl InMessage {
             self.send_abort(networker);
             return Ok(());
         }
-        debug!("Combining");
+        debug!(
+            "Combining! Current part: {} / {}",
+            self.shards.current_part, self.parts_count
+        );
+
         let missed = self.shards.missed();
         debug!("Shards count: {}", self.shards.shards.len());
         if missed.is_empty() {
@@ -304,27 +294,45 @@ impl InMessage {
                 }
                 Command::File => {
                     let path = &self.link.path;
-                    debug!("Data lenght: {}", data.len());
-                    debug!("Writing new file to {path:?}");
-                    let written = fs::write(path, data).inspect_err(|e| error!("{e}")).is_ok();
-                    if written {
-                        self.send_seen(networker);
-                        self.link.set_ready();
-                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
-                            ctx.notify(&self.link.name);
+                    if let Ok(mut file) = OpenOptions::new().create(false).append(true).open(path) {
+                        let written = file.write(&data).inspect_err(|e| error!("{e}")).is_ok();
+                        if !written {
+                            self.send_abort(networker);
+                            self.link.abort();
                         }
                     } else {
                         self.send_abort(networker);
                         self.link.abort();
                     }
-                    ctx.request_repaint();
+
+                    if self.shards.current_part + 1 < self.parts_count {
+                        self.shards.next_clear();
+                        let last = self.shards.shards.len().saturating_sub(1) as ShardCount;
+                        self.ask_for_missed(
+                            networker,
+                            vec![self.shards.offset..=(self.shards.offset + last)],
+                            false,
+                        );
+                    } else if rename_file(path).is_ok() {
+                        self.send_seen(networker);
+                        self.link.set_ready();
+                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                            ctx.notify(&self.link.name);
+                        }
+                        ctx.request_repaint();
+                    } else {
+                        self.send_abort(networker);
+                        self.link.abort();
+                    }
+
                     Ok(())
+                    // }
                 }
                 _ => Ok(()),
             }
         } else {
             debug!("Shards missing!");
-            self.ask_for_missed(networker, missed);
+            self.ask_for_missed(networker, missed, true);
             Err("Missing Shards".into())
         }
     }
@@ -359,17 +367,19 @@ impl InMessage {
         &mut self,
         networker: &mut NetWorker,
         missed: Vec<RangeInclusive<ShardCount>>,
+        repeat: bool,
     ) {
+        if missed.is_empty() {
+            return;
+        }
         let terminal = missed
             .last()
             .map(|l| *l.end())
             .unwrap_or(self.link.count.saturating_sub(1));
         if self.shards.terminal == terminal {
             self.shards.attempt = self.shards.attempt.saturating_add(1);
-            warn!("New attempt: {}", self.shards.attempt);
         } else {
             self.shards.terminal = terminal;
-            warn!("New terminal: {}", terminal);
         }
 
         for range in missed {
@@ -385,13 +395,34 @@ impl InMessage {
             debug!("Asked to repeat shards #{range:?}");
 
             self.ts = SystemTime::now();
-
             networker
                 .send(
-                    UdpMessage::ask_to_repeat(networker.id(), self.id, Part::AskRange(range)),
+                    UdpMessage::ask_to_repeat(
+                        networker.id(),
+                        self.id,
+                        Part::AskRange(range),
+                        repeat,
+                    ),
                     self.from_peer_id,
                 )
                 .ok();
         }
     }
 }
+
+fn rename_file(path: &Path) -> Result<(), ErrorBoxed> {
+    let correct_path = path
+        .to_str()
+        .and_then(|s| s.strip_suffix("_WIP"))
+        .ok_or("can't rename")?;
+    fs::rename(path, correct_path)?;
+    Ok(())
+}
+// TODO cleanup
+// fn offset_range(
+//     range: RangeInclusive<ShardCount>,
+//     offset: ShardCount,
+// ) -> RangeInclusive<ShardCount> {
+//     let (s, e) = range.into_inner();
+//     RangeInclusive::new(s + offset, e + offset)
+// }

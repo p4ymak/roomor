@@ -30,7 +30,7 @@ fn main() -> Result<(), eframe::Error> {
             .with_resizable(true)
             .with_maximized(false)
             .with_drag_and_drop(true)
-            .with_inner_size([340.0, 620.0])
+            .with_inner_size([340.0, 624.0])
             .with_min_inner_size([280.0, 280.0]),
         ..Default::default()
     };

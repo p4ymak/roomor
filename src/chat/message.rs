@@ -77,7 +77,7 @@ pub struct PartInit {
     count: ShardCount,
 }
 impl PartInit {
-    pub fn checksum(&self) -> CheckSum {
+    pub fn _checksum(&self) -> CheckSum {
         self.total_checksum
     }
     pub fn count(&self) -> ShardCount {
@@ -171,7 +171,9 @@ impl UdpMessage {
             data: vec![],
         }
     }
-    pub fn ask_to_repeat(from_peer_id: PeerId, id: Id, part: Part) -> Self {
+
+    pub fn ask_to_repeat(from_peer_id: PeerId, id: Id, part: Part, repeat: bool) -> Self {
+        let data = if repeat { vec![] } else { vec![13_u8] }; // for compatibilty with v.0.4 TODO
         UdpMessage {
             from_peer_id,
             id,
@@ -179,7 +181,7 @@ impl UdpMessage {
             part,
             checksum: 0,
             command: Command::AskToRepeat,
-            data: vec![],
+            data,
         }
     }
 
