@@ -54,10 +54,11 @@ pub struct FileLink {
     pub is_ready: AtomicBool,
     pub is_aborted: AtomicBool,
     pub breath: AtomicBool,
+    pub inbox: bool,
 }
 
 impl FileLink {
-    pub fn new(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
+    pub fn inbox(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
         let mut path = dir.to_owned();
         path.push(format!("{name}_WIP"));
         let _file = OpenOptions::new()
@@ -79,10 +80,11 @@ impl FileLink {
             is_ready: AtomicBool::new(false),
             is_aborted: AtomicBool::new(false),
             breath: AtomicBool::new(false),
+            inbox: true,
         }
     }
 
-    pub fn from_path(id: Id, path: &Path) -> Option<Self> {
+    pub fn outbox(id: Id, path: &Path) -> Option<Self> {
         let size = File::open(path).ok()?.metadata().ok()?.len();
 
         Some(FileLink {
@@ -98,6 +100,7 @@ impl FileLink {
             is_ready: AtomicBool::new(false),
             is_aborted: AtomicBool::new(false),
             breath: AtomicBool::new(false),
+            inbox: false,
         })
     }
     pub fn id(&self) -> Id {
@@ -107,7 +110,9 @@ impl FileLink {
         (self.completed.load(Ordering::Relaxed) as f32 / self.count as f32).min(0.99)
     }
     pub fn abort(&self) {
-        std::fs::remove_file(&self.path).ok();
+        if self.inbox {
+            std::fs::remove_file(&self.path).ok();
+        }
         self.is_aborted.store(true, Ordering::Relaxed);
         self.breath_in();
     }

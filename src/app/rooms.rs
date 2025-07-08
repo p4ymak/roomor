@@ -153,7 +153,7 @@ impl Rooms {
     }
 
     pub fn compose_file(peer_id: PeerId, id: Id, path: &Path) -> Option<TextMessage> {
-        let link = Arc::new(FileLink::from_path(id, path)?);
+        let link = Arc::new(FileLink::outbox(id, path)?);
 
         Some(TextMessage::out_message(Content::FileLink(link), peer_id))
     }
