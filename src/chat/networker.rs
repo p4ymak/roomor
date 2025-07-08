@@ -262,14 +262,14 @@ impl NetWorker {
             },
 
             Command::Seen => {
-                debug!("SEEN! {}", r_id);
+                debug!("SEEN! {r_id}");
                 let txt_msg = TextMessage::from_udp(&r_msg);
                 outbox.remove(r_msg.from_peer_id, txt_msg.id());
                 outbox.files.remove(&r_id);
                 self.handle_back_event(BackEvent::Message(txt_msg), ctx);
             }
             Command::Abort => {
-                debug!("ABORTING! {}", r_id);
+                debug!("ABORTING! {r_id}");
                 if let Some(msg) = inbox.get_mut(&r_id) {
                     msg.link.abort();
                 }

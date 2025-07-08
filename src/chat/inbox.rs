@@ -193,7 +193,7 @@ impl InMessage {
                 Command::File => buffer_size,
                 _ => init.count(),
             };
-            let link = FileLink::new(msg.id, &file_name, downloads_path, init.count());
+            let link = FileLink::inbox(msg.id, &file_name, downloads_path, init.count());
             let parts_count = init.count().div_ceil(buffer_size);
             Some(InMessage {
                 ts: SystemTime::now(),
