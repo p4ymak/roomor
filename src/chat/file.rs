@@ -5,7 +5,7 @@ use super::{
     message::{send_shards, Id, ShardCount, DATA_LIMIT_BYTES},
     notifier::Repaintable,
     peers::PeerId,
-    Recepients,
+    ErrorBoxed, Recepients,
 };
 use std::{
     fs::{File, OpenOptions},
@@ -59,14 +59,26 @@ pub struct FileLink {
 
 impl FileLink {
     pub fn inbox(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
+        let mut aborted = false;
         let mut path = dir.to_owned();
-        path.push(format!("{name}_WIP"));
-        let _file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&path)
-            .inspect_err(|e| error!("{e} : {path:?}"));
+        path.push(name);
+        while std::fs::exists(&path).is_ok_and(|t| t) {
+            path = increment_path(&path).unwrap_or(path);
+            error!("INCREMENT: {path:?}");
+        }
+        if let Some(path_wip) = path_wip(&path) {
+            let _file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path_wip)
+                .inspect_err(|e| {
+                    aborted = true;
+                    error!("{e} : {path_wip:?}")
+                });
+        } else {
+            aborted = true
+        }
         FileLink {
             id,
             time_start: SystemTime::now(),
@@ -78,7 +90,7 @@ impl FileLink {
             count,
             completed: AtomicU64::new(0),
             is_ready: AtomicBool::new(false),
-            is_aborted: AtomicBool::new(false),
+            is_aborted: AtomicBool::new(aborted),
             breath: AtomicBool::new(false),
             inbox: true,
         }
@@ -111,7 +123,9 @@ impl FileLink {
     }
     pub fn abort(&self) {
         if self.inbox {
-            std::fs::remove_file(&self.path).ok();
+            if let Some(path_wip) = path_wip(&self.path) {
+                std::fs::remove_file(&path_wip).ok();
+            }
         }
         self.is_aborted.store(true, Ordering::Relaxed);
         self.breath_in();
@@ -179,4 +193,45 @@ pub fn shards_sender(
             return;
         }
     }
+}
+
+pub fn rename_file(path: &Path) -> Result<(), ErrorBoxed> {
+    let correct_path = PathBuf::from(
+        path.to_str()
+            .and_then(|s| s.strip_suffix("_WIP"))
+            .ok_or("can't rename")?,
+    );
+
+    std::fs::rename(path, correct_path)?;
+    Ok(())
+}
+
+pub fn path_wip(path: &Path) -> Option<PathBuf> {
+    let file_name = &path.file_name().and_then(|f| f.to_str())?;
+    let mut path_wip = path.to_owned();
+    path_wip.set_file_name(format!("{file_name}_WIP"));
+    Some(path_wip)
+}
+
+fn increment_path(path: &Path) -> Option<PathBuf> {
+    let mut path = path.to_path_buf();
+    let mut postfix_changed = false;
+    let file_ext = path.extension()?.to_str()?;
+    let mut file_stem = path.file_stem()?.to_str()?.to_string();
+    if let Some((n, p)) = file_stem.rsplit_once('_') {
+        let post = if let Ok(num) = p.parse::<u64>() {
+            postfix_changed = true;
+            (num + 1).to_string()
+        } else {
+            p.to_string()
+        };
+        file_stem = format!("{n}_{post}");
+    }
+    if !postfix_changed {
+        file_stem.push_str("_1");
+    }
+    file_stem.push('.');
+    file_stem.push_str(file_ext);
+    path.set_file_name(file_stem);
+    Some(path)
 }

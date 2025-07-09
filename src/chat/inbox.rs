@@ -1,4 +1,8 @@
-use crate::chat::{networker::TIMEOUT_ALIVE, Destination};
+use crate::chat::{
+    file::{path_wip, rename_file},
+    networker::TIMEOUT_ALIVE,
+    Destination,
+};
 
 use super::{
     file::FileLink,
@@ -11,15 +15,8 @@ use super::{
 use log::{debug, error};
 use range_rover::RangeTree;
 use std::{
-    collections::BTreeMap,
-    error::Error,
-    fs::{self, OpenOptions},
-    io::Write,
-    net::Ipv4Addr,
-    ops::RangeInclusive,
-    path::Path,
-    sync::Arc,
-    time::SystemTime,
+    collections::BTreeMap, error::Error, fs::OpenOptions, io::Write, net::Ipv4Addr,
+    ops::RangeInclusive, path::Path, sync::Arc, time::SystemTime,
 };
 
 pub type Shard = Vec<u8>;
@@ -293,10 +290,39 @@ impl InMessage {
                     Ok(())
                 }
                 Command::File => {
-                    let path = &self.link.path;
-                    if let Ok(mut file) = OpenOptions::new().create(false).append(true).open(path) {
-                        let written = file.write(&data).inspect_err(|e| error!("{e}")).is_ok();
-                        if !written {
+                    if let Some(path_wip) = path_wip(&self.link.path) {
+                        if let Ok(mut file) = OpenOptions::new()
+                            .create(false)
+                            .append(true)
+                            .open(&path_wip)
+                            .inspect_err(|e| error!("{e}"))
+                        {
+                            let written = file.write(&data).inspect_err(|e| error!("{e}")).is_ok();
+                            if !written {
+                                self.send_abort(networker);
+                                self.link.abort();
+                            }
+                        } else {
+                            self.send_abort(networker);
+                            self.link.abort();
+                        }
+
+                        if self.shards.current_part + 1 < self.parts_count {
+                            self.shards.next_clear();
+                            let last = self.shards.shards.len().saturating_sub(1) as ShardCount;
+                            self.ask_for_missed(
+                                networker,
+                                vec![self.shards.offset..=(self.shards.offset + last)],
+                                false,
+                            );
+                        } else if rename_file(&path_wip).is_ok() {
+                            self.send_seen(networker);
+                            self.link.set_ready();
+                            if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
+                                ctx.notify(&self.link.name);
+                            }
+                            ctx.request_repaint();
+                        } else {
                             self.send_abort(networker);
                             self.link.abort();
                         }
@@ -305,28 +331,7 @@ impl InMessage {
                         self.link.abort();
                     }
 
-                    if self.shards.current_part + 1 < self.parts_count {
-                        self.shards.next_clear();
-                        let last = self.shards.shards.len().saturating_sub(1) as ShardCount;
-                        self.ask_for_missed(
-                            networker,
-                            vec![self.shards.offset..=(self.shards.offset + last)],
-                            false,
-                        );
-                    } else if rename_file(path).is_ok() {
-                        self.send_seen(networker);
-                        self.link.set_ready();
-                        if self.link.seconds_elapsed() > TIMEOUT_ALIVE.as_secs() {
-                            ctx.notify(&self.link.name);
-                        }
-                        ctx.request_repaint();
-                    } else {
-                        self.send_abort(networker);
-                        self.link.abort();
-                    }
-
                     Ok(())
-                    // }
                 }
                 _ => Ok(()),
             }
@@ -410,14 +415,6 @@ impl InMessage {
     }
 }
 
-fn rename_file(path: &Path) -> Result<(), ErrorBoxed> {
-    let correct_path = path
-        .to_str()
-        .and_then(|s| s.strip_suffix("_WIP"))
-        .ok_or("can't rename")?;
-    fs::rename(path, correct_path)?;
-    Ok(())
-}
 // TODO cleanup
 // fn offset_range(
 //     range: RangeInclusive<ShardCount>,
