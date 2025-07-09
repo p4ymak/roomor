@@ -230,8 +230,10 @@ fn increment_path(path: &Path) -> Option<PathBuf> {
     if !postfix_changed {
         file_stem.push_str("_1");
     }
-    file_stem.push('.');
-    file_stem.push_str(file_ext);
+    if !file_ext.is_empty() {
+        file_stem.push('.');
+        file_stem.push_str(file_ext);
+    }
     path.set_file_name(file_stem);
     Some(path)
 }
