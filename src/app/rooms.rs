@@ -411,7 +411,7 @@ impl ChatHistory {
                             .clicked()
                         {
                             action = RoomAction::File;
-                            ui.close_menu();
+                            ui.close();
                         }
                         // if ui
                         //     .small_button(format!("{}  Clear History", egui_phosphor::regular::BROOM))
@@ -570,7 +570,7 @@ impl ChatHistory {
                 .clicked()
             {
                 self.clear_history();
-                ui.close_menu();
+                ui.close();
             }
         });
         let clicked = response.clicked();

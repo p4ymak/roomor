@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.4.6"
+version = "0.4.7"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -15,11 +15,11 @@ build = "build.rs"
 
 
 [dependencies]
-eframe = "0.31.1"
+eframe = "0.32"
 # egui_keyboard = { path="../egui_keyboard" }
 human_bytes = "0.4.3"
 opener = "0.8.2"
-egui-phosphor = "0.9.0"
+egui-phosphor = "0.10.0"
 flume = "0.11.0"
 system-interface = "0.27.3"
 # network-interface = "2.0.0"
@@ -57,7 +57,7 @@ strip = "debuginfo"
 name = "Roomor"
 identifier = "com.p4ymak.roomor"
 icon = ["icon/128x128.png"]
-version = "0.4.4"
+version = "0.4.7"
 short_description = "Minimalistic offline chat over local network."
 long_description = "Minimalistic offline chat with files transmission over local network."
 deb_depends = ["libgl1-mesa-glx", "libsdl2-2.0-0 (>= 2.0.5)"]
