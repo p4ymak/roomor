@@ -15,7 +15,7 @@ build = "build.rs"
 
 
 [dependencies]
-eframe = "0.32"
+eframe = "0.32.3"
 # egui_keyboard = { path="../egui_keyboard" }
 human_bytes = "0.4.3"
 opener = "0.8.2"

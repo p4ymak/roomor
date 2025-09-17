@@ -180,17 +180,16 @@ impl InMessage {
     ) -> Option<Self> {
         debug!("New Multipart {:?}", msg.command);
         if let Part::Init(init) = msg.part {
-            let file_name = if let Command::File = msg.command {
-                String::from_utf8(msg.data).unwrap_or(format!("{:?}", SystemTime::now()))
-            //FIXME
-            } else {
-                String::new()
-            };
-            let size = match msg.command {
-                Command::File => buffer_size,
-                _ => init.count(),
-            };
-            let link = FileLink::inbox(msg.id, &file_name, downloads_path, init.count());
+            let mut is_file = false;
+            let mut size = init.count();
+            let mut file_name = String::new();
+            if let Command::File = msg.command {
+                file_name =
+                    String::from_utf8(msg.data).unwrap_or(format!("{:?}", SystemTime::now()));
+                size = buffer_size;
+                is_file = true;
+            }
+            let link = FileLink::inbox(msg.id, &file_name, downloads_path, init.count(), is_file);
             let parts_count = init.count().div_ceil(buffer_size);
             Some(InMessage {
                 ts: SystemTime::now(),
