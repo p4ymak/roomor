@@ -1,5 +1,5 @@
 use flume::Receiver;
-use log::error;
+use log::{error, info};
 
 use super::{
     message::{send_shards, Id, ShardCount, DATA_LIMIT_BYTES},
@@ -58,26 +58,33 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn inbox(id: Id, name: &str, dir: &Path, count: ShardCount) -> Self {
+    pub fn inbox(id: Id, name: &str, dir: &Path, count: ShardCount, is_file: bool) -> Self {
         let mut aborted = false;
         let mut path = dir.to_owned();
         path.push(name);
-        while std::fs::exists(&path).is_ok_and(|t| t) {
-            path = increment_path(&path).unwrap_or(path);
-            error!("INCREMENT: {path:?}");
-        }
-        if let Some(path_wip) = path_wip(&path) {
-            let _file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&path_wip)
-                .inspect_err(|e| {
+        if is_file && !name.is_empty() {
+            while std::fs::exists(&path).is_ok_and(|t| t) {
+                if let Some(new_path) = increment_path(&path) {
+                    path = new_path
+                } else {
                     aborted = true;
-                    error!("{e} : {path_wip:?}")
-                });
-        } else {
-            aborted = true
+                    break;
+                }
+                info!("INCREMENT: {path:?}");
+            }
+            if let Some(path_wip) = path_wip(&path) {
+                let _file = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&path_wip)
+                    .inspect_err(|e| {
+                        aborted = true;
+                        error!("{e} : {path_wip:?}")
+                    });
+            } else {
+                aborted = true
+            }
         }
         FileLink {
             id,

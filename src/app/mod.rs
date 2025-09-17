@@ -653,7 +653,6 @@ impl Roomor {
                 .clicked()
             {
                 self.rooms.clear_history();
-                ui.close_menu();
             }
 
             if ui
@@ -664,21 +663,18 @@ impl Roomor {
                 .clicked()
             {
                 open(&self.downloads_path).ok();
-                ui.close_menu();
             }
             if ui
                 .button(format!("{}  Donate", egui_phosphor::regular::HEART))
                 .clicked()
             {
                 open_browser(DONATION_LINK).ok();
-                ui.close_menu();
             }
             if ui
                 .button(format!("{}  Exit", egui_phosphor::regular::SIGN_OUT))
                 .clicked()
             {
                 self.exit();
-                ui.close_menu();
             }
         });
     }
