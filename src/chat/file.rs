@@ -1,5 +1,5 @@
 use flume::Receiver;
-use log::error;
+use log::{error, info};
 
 use super::{
     message::{send_shards, Id, ShardCount, DATA_LIMIT_BYTES},
@@ -67,10 +67,10 @@ impl FileLink {
                 if let Some(new_path) = increment_path(&path) {
                     path = new_path
                 } else {
+                    aborted = true;
                     break;
                 }
-
-                error!("INCREMENT: {path:?}");
+                info!("INCREMENT: {path:?}");
             }
             if let Some(path_wip) = path_wip(&path) {
                 let _file = OpenOptions::new()
