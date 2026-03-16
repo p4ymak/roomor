@@ -1,4 +1,5 @@
 use eframe::egui::Context;
+use log::error;
 use notify_rust::Notification;
 use rodio::{source::SineWave, OutputStreamHandle, Source};
 use std::{
@@ -68,12 +69,19 @@ impl Repaintable for Notifier {
             self.play_sound();
         }
         if self.d_bus.load(Ordering::Relaxed) {
-            Notification::new()
-                .appname("Roomor")
-                .summary("Roomor")
-                .body(text)
-                .auto_icon()
-                .show()
+            let text = text.to_string();
+            std::thread::Builder::new()
+                .name("Notification".to_string())
+                .spawn(move || {
+                    Notification::new()
+                        .appname("Roomor")
+                        .summary("Roomor")
+                        .body(&text)
+                        .auto_icon()
+                        .show()
+                        .inspect_err(|err| error!("{err}"))
+                        .ok();
+                })
                 .ok();
         }
     }
