@@ -81,6 +81,8 @@ impl Repaintable for Notifier {
                         .show()
                         .inspect_err(|err| error!("{err}"))
                         .ok();
+
+                    #[cfg(target_os = "linux")]
                     if let Some(handle) = notification_handle {
                         handle.on_close(|| {});
                     }
