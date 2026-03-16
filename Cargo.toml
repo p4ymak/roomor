@@ -1,6 +1,6 @@
 [package]
 name = "roomor"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2021"
 authors = ["Roman Chumak <p4ymak@yandex.ru>"]
 description = "Minimalistic offline chat over local network."
@@ -33,7 +33,7 @@ enumn = "0.1.14"
 crc = "3.3.0"
 range_rover = "0.1.4"
 
-notify-rust = "4.11.7"
+notify-rust = "4.12.0"
 rodio = { version = "0.20.1", default-features = false }
 
 log = { version = "0.4", features = ["std"] }
