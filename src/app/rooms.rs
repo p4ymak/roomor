@@ -176,6 +176,14 @@ impl Rooms {
     }
 
     pub fn take_message(&mut self, msg: TextMessage) {
+        notify_rust::Notification::new()
+            .appname("Roomor")
+            .summary("Roomor")
+            .body(&msg.get_text())
+            .auto_icon()
+            .show()
+            .inspect_err(|err| log::error!("{err}"))
+            .ok();
         let peer_id = if msg.is_public() {
             PeerId::PUBLIC
         } else {
