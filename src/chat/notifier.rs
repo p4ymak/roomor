@@ -68,6 +68,7 @@ impl Repaintable for Notifier {
         if self.play_audio.load(Ordering::Relaxed) {
             self.play_sound();
         }
+        #[cfg(not(target_os = "macos"))]
         if self.d_bus.load(Ordering::Relaxed) {
             let text = text.to_string();
             std::thread::Builder::new()
