@@ -73,7 +73,7 @@ impl Repaintable for Notifier {
             std::thread::Builder::new()
                 .name("Notification".to_string())
                 .spawn(move || {
-                    Notification::new()
+                    let notification_handle = Notification::new()
                         .appname("Roomor")
                         .summary("Roomor")
                         .body(&text)
@@ -81,6 +81,9 @@ impl Repaintable for Notifier {
                         .show()
                         .inspect_err(|err| error!("{err}"))
                         .ok();
+                    if let Some(handle) = notification_handle {
+                        handle.on_close(|| {});
+                    }
                 })
                 .ok();
         }
