@@ -63,20 +63,26 @@ impl Repaintable for Notifier {
     fn request_repaint(&self) {
         self.ctx.request_repaint();
     }
-    fn notify(&self, _text: &str) {
+    fn notify(&self, text: &str) {
         self.ctx.request_repaint();
         if self.play_audio.load(Ordering::Relaxed) {
             self.play_sound();
         }
-        // if self.d_bus.load(Ordering::Relaxed) {
-        // Notification::new()
-        // .appname("Roomor")
-        // .summary("Roomor")
-        // .body(text)
-        // .auto_icon()
-        // .show()
-        // .inspect_err(|err| error!("{err}"))
-        // .ok();
-        // }
+        if self.d_bus.load(Ordering::Relaxed) {
+            let text = text.to_string();
+            std::thread::Builder::new()
+                .name("Notification".to_string())
+                .spawn(move || {
+                    Notification::new()
+                        .appname("Roomor")
+                        .summary("Roomor")
+                        .body(&text)
+                        .auto_icon()
+                        .show()
+                        .inspect_err(|err| error!("{err}"))
+                        .ok();
+                })
+                .ok();
+        }
     }
 }
