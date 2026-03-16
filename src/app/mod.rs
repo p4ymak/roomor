@@ -498,7 +498,7 @@ impl Roomor {
 
     fn draw(&mut self, ctx: &egui::Context) {
         let mut font_size = 10.0;
-        let max_height = ctx.input(|i| i.screen_rect.height()) * 0.5;
+        let max_height = ctx.input(|i| i.viewport_rect().height()) * 0.5;
         egui::TopBottomPanel::bottom("text intput")
             .max_height(max_height)
             .resizable(false)
@@ -528,7 +528,7 @@ impl Roomor {
             });
         egui::SidePanel::left("Chats List")
             .min_width(font_size * 4.0)
-            .max_width(ctx.input(|i| i.screen_rect.width()) * 0.5)
+            .max_width(ctx.input(|i| i.viewport_rect().width()) * 0.5)
             .default_width(font_size * 8.0)
             .resizable(true)
             .show_separator_line(true)
